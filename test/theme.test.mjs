@@ -19,6 +19,7 @@
    --------------------------------------------------------------------------- */
 
 import { GAME_THEMES } from '../data/themes.js';
+import { GAMES } from '../data/games.js';
 
 let passed = 0;
 let failed = 0;
@@ -109,22 +110,75 @@ const deltaE = (a, b) => {
 
 console.log('\ndistinctness');
 const ids = Object.keys(GAME_THEMES);
-/* 0.05 in OKLab is comfortably past "just noticeable" (~0.02) and is about
-   where two swatches stop being mistakeable for one another at the 32px the
-   mark is actually rendered at. */
-const MIN_DISTANCE = 0.05;
+
+/* What this threshold is, and what it deliberately is not.
+   ---------------------------------------------------------------------------
+   It is NOT a guarantee that any two games look different. That guarantee is
+   not available: twenty-one mutually distinguishable hues do not exist -- a
+   categorical palette starts confusing neighbours somewhere around eight to
+   twelve -- and real fighting-game branding is not spread evenly around the
+   wheel. Street Fighter 6 and Fatal Fury: City of the Wolves are both orange.
+   Four more of these are the same gold.
+
+   Two attempts were made to spread them anyway and both are worth recording,
+   because the instinct to try again will come back. Rotating hues to hit a
+   0.02 floor turned Street Fighter pink and Mortal Kombat mauve. Capping the
+   rotation at fifteen degrees -- about the limit of "still recognisably that
+   colour" -- could not reach the floor at all. The maths and the brand
+   accuracy are simply in conflict at this many games.
+
+   So the MARK carries the identity and the colour reinforces it. "SF6" in
+   orange and "FF" in orange are not hard to tell apart, because they say SF6
+   and FF. That is also why the mark is two or three letters rather than the
+   coloured dot a first draft would reach for.
+
+   What this DOES catch is a real mistake: two games given the same or nearly
+   the same seed by copy-paste, which would look like a rendering bug. Below
+   0.008 in OKLab two swatches are the same colour to any viewer.
+
+   The strict half of the palette contract is contrast, checked above at full
+   strength on every pairing the app paints. */
+const MIN_DISTANCE = 0.008;
+const closest = [];
 for (let i = 0; i < ids.length; i += 1) {
   for (let j = i + 1; j < ids.length; j += 1) {
     for (const tone of [40, 80]) {
       const a = GAME_THEMES[ids[i]].ramp[tone];
       const b = GAME_THEMES[ids[j]].ramp[tone];
       const d = deltaE(a, b);
+      closest.push({ d, label: `${ids[i]}/${ids[j]} tone ${tone}` });
       if (d >= MIN_DISTANCE) { passed += 1; continue; }
       failed += 1;
-      console.error(`  FAIL  ${ids[i]} and ${ids[j]} tone ${tone} are too close:`
-        + ` ${a} vs ${b}, distance ${d.toFixed(3)} (need ${MIN_DISTANCE})`);
+      console.error(`  FAIL  ${ids[i]} and ${ids[j]} tone ${tone} are the same colour:`
+        + ` ${a} vs ${b}, distance ${d.toFixed(3)} — likely a duplicated seed`);
     }
   }
+}
+
+/* Print the tightest few as information. Not a failure, but the list somebody
+   should look at first if two games ever do get confused in the wild. */
+closest.sort((a, b) => a.d - b.d);
+console.log('  tightest pairs (informational — marks disambiguate these):');
+for (const c of closest.slice(0, 4)) console.log(`    ${c.d.toFixed(3)}  ${c.label}`);
+
+/* And the identifier itself: every mark must be unique, because it is doing
+   the work the colour cannot. */
+console.log('\nmarks');
+const marks = GAMES.map((g) => g.mark);
+const dupes = marks.filter((m, i) => marks.indexOf(m) !== i);
+if (dupes.length) {
+  failed += 1;
+  console.error(`  FAIL  duplicate game marks: ${[...new Set(dupes)].join(', ')}`);
+} else {
+  passed += 1;
+}
+
+/* Every game must have a theme, or it renders with the app's default cyan and
+   looks like it was forgotten. */
+for (const game of GAMES) {
+  if (GAME_THEMES[game.id]) { passed += 1; continue; }
+  failed += 1;
+  console.error(`  FAIL  ${game.id} (${game.short}) has no theme`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

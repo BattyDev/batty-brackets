@@ -66,63 +66,137 @@ import { html, raw, esc } from '../lib/ui.js';
    -------------------------------------------------------------------------- */
 
 const RAMPS = {
-  /* Seed #c0392b — a deep comic crimson. Lowest checked pairing 9.48:1. */
-  tokon: {
-    10: '#0e0000', 20: '#320000', 30: '#5a0804', 40: '#880c05', 50: '#b1291d',
-    60: '#d44c3c', 70: '#f76d5a', 80: '#fda293', 90: '#fed2ca', 95: '#ffe9e4', 98: '#fff6f5',
-  },
-  /* Seed #d97706 — warm amber. Chosen over the obvious red-orange because
-     Tōkon is already crimson and two red games are indistinguishable at
-     thumbnail size in an events list, which is where the mark does its work.
-     Lowest checked pairing 9.31:1. */
-  ssbu: {
-    10: '#0b0500', 20: '#251400', 30: '#432500', 40: '#6c3904', 50: '#8f4f06',
-    60: '#b46708', 70: '#d9820f', 80: '#ffa65c', 90: '#ffdcb8', 95: '#ffeeda', 98: '#fff8f1',
-  },
+  /* #f2622a — paint-splash red, pushed orange so it is not Tokon */
+  sf6: { 10: '#0c0100', 20: '#2d0800', 30: '#511903', 40: '#7c2802', 50: '#a83a08', 60: '#d84a00', 70: '#fc6b35', 80: '#faa588', 90: '#fdd4c6', 95: '#ffe9e2', 98: '#fff6f3' },
+  /* #2e5fd9 — electric blue */
+  tekken8: { 10: '#00001b', 20: '#000053', 30: '#000c8d', 40: '#0c36ae', 50: '#2757d0', 60: '#4277f3', 70: '#719bf6', 80: '#a0bef9', 90: '#cfdefe', 95: '#e7efff', 98: '#f5f9ff' },
+  /* #e5177b — magenta */
+  ggst: { 10: '#0d0003', 20: '#300014', 30: '#56072b', 40: '#830b44', 50: '#b1165f', 60: '#e4157a', 70: '#f86199', 80: '#fe9bba', 90: '#ffcfdc', 95: '#fee8ee', 98: '#fff6f8' },
+  /* #7a3fd9 — violet */
+  uni2: { 10: '#050014', 20: '#1c023e', 30: '#380373', 40: '#5518a3', 50: '#7235cf', 60: '#8e58f2', 70: '#a787f6', 80: '#c2b1f9', 90: '#e0d8fe', 95: '#efebff', 98: '#f9f7ff' },
+  /* #b8791e — dragon gold */
+  mk1: { 10: '#070200', 20: '#221200', 30: '#412805', 40: '#633f07', 50: '#885710', 60: '#af710f', 70: '#d08f3b', 80: '#ebb16b', 90: '#fad8b1', 95: '#feebd6', 98: '#fff7ee' },
+  /* #e06018 — SNK orange */
+  ffcotw: { 10: '#0b0100', 20: '#290c01', 30: '#4f1c02', 40: '#782d00', 50: '#a24104', 60: '#ca5a1e', 70: '#f57332', 80: '#fba681', 90: '#fdd4c2', 95: '#ffe9e1', 98: '#fff6f3' },
+  /* #1e7fd4 — that blue menu */
+  mvc2: { 10: '#00030d', 20: '#00162f', 30: '#032f55', 40: '#034982', 50: '#0965af', 60: '#2483d8', 70: '#48a3fb', 80: '#8dc3fc', 90: '#c6e1ff', 95: '#e3f0fe', 98: '#f4f9ff' },
+  /* #2ab0c8 — sky */
+  gbvsr: { 10: '#000406', 20: '#001a1f', 30: '#06343c', 40: '#09515d', 50: '#136f7f', 60: '#1190a4', 70: '#2bb0c8', 80: '#68cfe4', 90: '#b3e9f5', 95: '#d5f5fd', 98: '#edfcff' },
+  /* #16c79a — Riot neon teal */
+  twoxko: { 10: '#000503', 20: '#001c13', 30: '#063729', 40: '#085540', 50: '#127459', 60: '#0f9674', 70: '#2ab890', 80: '#59d8af', 90: '#afeed5', 95: '#d2f9e9', 98: '#e7fff5' },
+  /* #e8b419 — the suit's yellow — its blue was Tekken's */
+  invinc: { 10: '#060300', 20: '#1e1501', 30: '#3b2b00', 40: '#59440b', 50: '#7a5f16', 60: '#9e7b18', 70: '#c49704', 80: '#e4b743', 90: '#f5dba2', 95: '#fdedca', 98: '#fff8e8' },
+  /* #b5705f — clay, moved off Mortal Kombat gold */
+  rivals2: { 10: '#0d0000', 20: '#2f0400', 30: '#521708', 40: '#713224', 50: '#904e3f', 60: '#b06b5b', 70: '#d18978', 80: '#edab9b', 90: '#fbd4ca', 95: '#ffe9e3', 98: '#fff6f4' },
+  /* #5340c4 — indigo, off Tekken blue */
+  bbcf: { 10: '#030018', 20: '#140246', 30: '#2b0280', 40: '#4126ab', 50: '#5948cd', 60: '#7468ef', 70: '#918ffd', 80: '#b4b6fe', 90: '#d9dbfd', 95: '#ecedfe', 98: '#f7f8ff' },
+  /* #1f8fb5 — Sega blue */
+  vf5revo: { 10: '#000408', 20: '#011923', 30: '#003344', 40: '#0d4f65', 50: '#186d8a', 60: '#1b8db2', 70: '#45acd3', 80: '#76cbee', 90: '#b9e6fa', 95: '#daf3ff', 98: '#f0faff' },
+  /* #8b2fa8 — Darkstalkers purple */
+  vsav: { 10: '#08000e', 20: '#250230', 30: '#48045b', 40: '#6e038a', 50: '#8d31aa', 60: '#ac52cb', 70: '#cd72ec', 80: '#e59dff', 90: '#f1d0fe', 95: '#f8e8ff', 98: '#fdf6ff' },
+  /* #b5203f — crimson-magenta */
+  kofxv: { 10: '#0e0001', 20: '#310109', 30: '#5b0018', 40: '#85112b', 50: '#b31e3e', 60: '#d64459', 70: '#fa6576', 80: '#faa2a6', 90: '#fdd2d3', 95: '#ffe8e9', 98: '#fff6f6' },
+  /* #6e7a1c — olive */
+  samsho: { 10: '#030400', 20: '#151801', 30: '#2c3201', 40: '#454d0d', 50: '#606b00', 60: '#7c892e', 70: '#9aa84f', 80: '#b9c67a', 90: '#dbe4b9', 95: '#ecf2d7', 98: '#f7fbea' },
+  /* #7d4a35 — sienna-brown */
+  ggxrd: { 10: '#0b0100', 20: '#2b0a00', 30: '#4c1e09', 40: '#6a3924', 50: '#88543f', 60: '#a8715b', 70: '#c88f78', 80: '#e4b09b', 90: '#f5d6ca', 95: '#fdeae2', 98: '#fff6f3' },
+  /* #c9b528 — pale gold */
+  cvs2: { 10: '#040300', 20: '#1a1600', 30: '#342e05', 40: '#514807', 50: '#706410', 60: '#91810f', 70: '#b1a026', 80: '#d1c051', 90: '#e9e0a7', 95: '#f5f0cd', 98: '#fcf9e3' },
+  /* #0f7d6e — deep green-teal */
+  ki: { 10: '#000503', 20: '#011b17', 30: '#08362f', 40: '#0d5349', 50: '#187365', 60: '#309282', 70: '#54b1a1', 80: '#80cfc0', 90: '#bee9df', 95: '#dbf5ef', 98: '#ecfdf9' },
+  /* #c0392b — deep comic crimson — the reference identity */
+  tokon: { 10: '#0e0000', 20: '#320000', 30: '#5a0804', 40: '#880c05', 50: '#b1291d', 60: '#d44c3c', 70: '#f76d5a', 80: '#fda293', 90: '#fed2ca', 95: '#ffe9e4', 98: '#fff6f5' },
+  /* #d97706 — warm amber */
+  ssbu: { 10: '#090200', 20: '#260f00', 30: '#462403', 40: '#6c3904', 50: '#92500b', 60: '#bd6705', 70: '#e5821f', 80: '#ffa65c', 90: '#ffd4b5', 95: '#feeadc', 98: '#fff7f1' },
 };
 
 /* --------------------------------------------------------------------------
    The themes
    -------------------------------------------------------------------------- */
 
-export const GAME_THEMES = {
-  tokon: {
-    ramp: RAMPS.tokon,
-    /* The two-letter mark, and the colours it is drawn in. Held here rather
-       than as one accent hex because the mark has to work on both a light and
-       a dark surface, and a single colour cannot. */
-    markBg: { light: RAMPS.tokon[40], dark: RAMPS.tokon[30] },
-    markFg: { light: '#ffffff', dark: RAMPS.tokon[90] },
-    motif: 'lineup',
-    /* Shown under the game name. Not marketing copy -- it is what a TO needs
-       to know about the shape of the game before they set an event up. */
-    tagline: 'Four fighters, one health bar',
+/* --------------------------------------------------------------------------
+   The themes
+   --------------------------------------------------------------------------
+   Two levels of finish, and the difference is recorded rather than implied:
 
-    /* ---- the asset slot ------------------------------------------------
-       Every path is relative to `brackets/assets/games/tokon/`. Leave a value
-       null and the drawn artwork below is used instead; fill one in and it
-       takes over with no other change.
+     identity: 'bespoke'      artwork drawn for this game specifically
+     identity: 'placeholder'  a real palette and a generic motif, waiting for
+                              the treatment Tokon has
 
-       Before filling any of these in, read the README section "Official game
-       artwork" — the terms matter, and they are not this file's call. */
-    assets: {
-      hero: null,        // e.g. 'hero.jpg'   — 1600x600 or wider
-      logo: null,        // e.g. 'logo.svg'   — transparent, light-on-dark
-      icon: null,        // e.g. 'icon.png'   — square, 128px+
-      characters: null,  // e.g. a folder of portraits keyed by character name
-      credit: null,      // required if any of the above is set; see below
-    },
-  },
+   Marking it in the data rather than leaving it to be inferred means the
+   wizard can say so, and means there is a list of what is left to do that
+   cannot drift out of date the way a note in a README would.
 
-  ssbu: {
-    ramp: RAMPS.ssbu,
-    markBg: { light: RAMPS.ssbu[40], dark: RAMPS.ssbu[30] },
-    markFg: { light: '#ffffff', dark: RAMPS.ssbu[90] },
-    motif: 'platforms',
-    tagline: 'Stocks, stages and stage striking',
-    assets: { hero: null, logo: null, icon: null, characters: null, credit: null },
-  },
+   ## On the colours
+
+   Each seed is roughly the game's own brand, adjusted only where two would be
+   indistinguishable -- fighting-game branding clusters hard in red, orange and
+   blue, and four of these games are honestly the same red.
+
+   That clustering is accepted rather than designed away, because the MARK is
+   the identifier and the colour is reinforcement. Twenty-one mutually
+   distinguishable hues do not exist; a categorical palette tops out around
+   eight to twelve before people start confusing neighbours. "SF6" in red and
+   "TK" in red are not hard to tell apart, because they say SF6 and TK.
+   `test/theme.test.mjs` therefore checks contrast strictly and distinctness
+   loosely -- only flagging pairs a viewer genuinely could not separate.
+   -------------------------------------------------------------------------- */
+
+/* id -> [motif, tagline]. Every game not listed as bespoke below gets the
+   generic motif; the tagline is what a TO needs to know about the shape of the
+   game before setting an event up, not marketing copy. */
+const TAGLINES = {
+  tokon: 'Four fighters, one health bar',
+  ssbu: 'Stocks, stages and stage striking',
+  sf6: 'Drive gauge, and Modern controls to argue about',
+  tekken8: '3D movement, Heat, three rounds',
+  ggst: 'Roman cancels and very short rounds',
+  uni2: 'GRD — the meter that swings on the clock',
+  mk1: 'Kameo assists, so every pick is two picks',
+  ffcotw: 'REV gauge and the SNK two-line arena',
+  mvc2: '3v3 assists, one round, no timer to speak of',
+  gbvsr: 'Simple inputs on a cooldown',
+  twoxko: 'Two fighters, tag assists, Riot netcode',
+  invinc: '3v3 tag in the Marvel line',
+  rivals2: 'Platform fighter — the stage list is the ruleset',
+  bbcf: 'Drive, Overdrive, and a decade of settled rules',
+  vf5revo: 'Three rounds, forty-five seconds, no meter',
+  vsav: 'One long round, health carries over',
+  kofxv: '3v3 sequential — order is most of the matchup',
+  samsho: 'Slow, heavy, and one Rage burst',
+  ggxrd: 'Xrd, unchanged since 2017',
+  cvs2: 'Ratio teams and six Grooves',
+  ki: 'Combo breakers and the Shadow meter',
 };
+
+const BESPOKE = { tokon: 'lineup', ssbu: 'platforms' };
+
+const emptyAssets = () => ({
+  hero: null,        // e.g. 'hero.jpg'   — 1600x600 or wider
+  logo: null,        // e.g. 'logo.svg'   — transparent, light-on-dark
+  icon: null,        // e.g. 'icon.png'   — square, 128px+
+  characters: null,  // e.g. a folder of portraits keyed by character name
+  credit: null,      // required if any of the above is set; see the README
+});
+
+export const GAME_THEMES = Object.fromEntries(
+  Object.entries(RAMPS).map(([id, ramp]) => [id, {
+    ramp,
+    /* Held as a light/dark pair rather than one accent hex because a single
+       colour cannot be legible on both a light and a dark surface -- white on
+       a mid-tone accent is the pairing that actually failed an audit here. */
+    markBg: { light: ramp[40], dark: ramp[30] },
+    markFg: { light: '#ffffff', dark: ramp[90] },
+    motif: BESPOKE[id] || 'generic',
+    identity: BESPOKE[id] ? 'bespoke' : 'placeholder',
+    tagline: TAGLINES[id] || null,
+    /* Every path is relative to `brackets/assets/games/<id>/`. Leave a value
+       null and the drawn artwork is used; fill one in and it takes over with
+       no other change. Read the README section "Official game artwork" first
+       — the terms matter, and they are not this file's call. */
+    assets: emptyAssets(),
+  }]),
+);
 
 export const themeFor = (gameId) => GAME_THEMES[gameId] || null;
 
@@ -135,6 +209,18 @@ export const themeFor = (gameId) => GAME_THEMES[gameId] || null;
    then the explicit dark attribute so the toggle wins in both directions.
    -------------------------------------------------------------------------- */
 
+/* PRIMARY only. Secondary is deliberately left as the app's own.
+
+   Mapping secondary onto the game ramp as well was the first attempt and it
+   was too much: secondary-container carries the nav pill, the bulk-action bar,
+   the demo banner and every neutral chip, so theming it made a whole page one
+   loud colour and — worse — painted app chrome as though it belonged to the
+   game. M3's secondary is meant to be a muted companion to primary, not a
+   second copy of it.
+
+   Leaving it alone means the game accent marks what is emphatic (the primary
+   button, the selected card, the focus ring, the app-bar rule) while the
+   surrounding furniture stays recognisably the same app. */
 function roles(ramp, mode) {
   return mode === 'dark'
     ? {
@@ -142,8 +228,6 @@ function roles(ramp, mode) {
       '--md-on-primary': ramp[20],
       '--md-primary-container': ramp[30],
       '--md-on-primary-container': ramp[90],
-      '--md-secondary-container': ramp[30],
-      '--md-on-secondary-container': ramp[90],
       '--md-inverse-primary': ramp[40],
       '--game-accent': ramp[80],
       '--game-ink': ramp[95],
@@ -154,8 +238,6 @@ function roles(ramp, mode) {
       '--md-on-primary': '#ffffff',
       '--md-primary-container': ramp[90],
       '--md-on-primary-container': ramp[10],
-      '--md-secondary-container': ramp[90],
-      '--md-on-secondary-container': ramp[10],
       '--md-inverse-primary': ramp[80],
       '--game-accent': ramp[40],
       '--game-ink': ramp[20],
@@ -258,13 +340,42 @@ function platformsArt(uid) {
         fill="none" stroke="currentColor" stroke-width="3" opacity="${0.4 - i * 0.1}"/>`).join('')}`;
 }
 
+/* `generic` — the placeholder. Two opposed wedges meeting at a seam, which is
+   what every one of these games is a picture of, plus the same halftone the
+   bespoke motifs use so a placeholder does not look like a different product.
+
+   It is deliberately not neutral-looking. A grey box would read as broken; a
+   motif in the game's own colour reads as "this game, not yet illustrated",
+   which is the true statement. When a game graduates to a drawn identity, its
+   entry in BESPOKE gains a motif name and nothing else changes. */
+function genericArt(uid) {
+  const wedges = `
+    <path d="M0 0 H300 L210 240 H0 Z" fill="currentColor" opacity="0.16"/>
+    <path d="M330 0 H720 V240 H420 Z" fill="currentColor" opacity="0.10"/>
+    <path d="M300 0 L210 240" stroke="currentColor" stroke-width="4" opacity="0.85" fill="none"/>
+    <path d="M330 0 L240 240" stroke="currentColor" stroke-width="2.5" opacity="0.45" fill="none"/>`;
+
+  /* The seam, dotted, so the halftone appears somewhere it reads clearly. */
+  const seam = `<path d="M300 0 L210 240 L280 240 L370 0 Z" fill="url(#ht-${uid})" opacity="0.5"/>`;
+
+  /* Three impact marks on the right, echoing the speed lines on the Tokon
+     motif without pretending to be a character. */
+  const marks = [0, 1, 2].map((i) => `<rect x="${500 + i * 54}" y="${64 + i * 46}"
+      width="${84 - i * 18}" height="5" rx="2.5" fill="currentColor"
+      opacity="${0.45 - i * 0.11}" transform="skewX(-12)"/>`).join('');
+
+  return `${wedges}${seam}${marks}`;
+}
+
+const MOTIFS = { lineup: lineupArt, platforms: platformsArt, generic: genericArt };
+
 /* A wide banner for the top of a themed page. `variant` trades height for
    context: 'hero' for the wizard and the event page, 'strip' for a list row. */
 export function gameArt(gameId, { variant = 'hero', label = '' } = {}) {
   const theme = themeFor(gameId);
   if (!theme) return '';
   const uid = `${gameId}-${variant}`;
-  const art = theme.motif === 'platforms' ? platformsArt(uid) : lineupArt(uid);
+  const art = (MOTIFS[theme.motif] || genericArt)(uid);
   const height = variant === 'strip' ? 84 : 240;
 
   return `<svg class="game-art game-art-${variant}" viewBox="0 0 720 240"

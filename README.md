@@ -25,6 +25,7 @@ walkthrough and a reset button. See [Try it](#try-it).
 - [Accessibility](#accessibility)
 - [Official game artwork](#official-game-artwork)
 - [Holes in the original plan](#holes-in-the-original-plan)
+- [The games](#the-games)
 - [Marvel Tokon](#marvel-tokon)
 - [The player side](#the-player-side)
 - [Architecture](#architecture)
@@ -343,6 +344,106 @@ trusted, and at some size that needs to move server-side.
 
 ---
 
+## The games
+
+Twenty-one titles: every game from **Evo 2025 and Evo 2026** — both years, main
+stage and extended — plus MARVEL Tōkon and Smash Ultimate.
+
+Evo is the right list to seed from because it is the closest thing the scene
+has to a canon: if a game is on that stage, somebody is running a local for it.
+Each entry records where it appeared, and the wizard shows it, so a TO picking
+a game can see they are not alone in running it. Tōkon and Smash are on neither
+lineup — Tōkon launched after Evo 2026 — and are here because people run them
+anyway, which is rather the point.
+
+| | Evo 2026 main | Evo 2025 main | Evo 2025 extended |
+|---|---|---|---|
+| Street Fighter 6 | ● | ● | |
+| Tekken 8 | ● | ● | |
+| Guilty Gear -Strive- | ● | ● | |
+| Granblue Fantasy Versus: Rising | ● | ● | |
+| Fatal Fury: City of the Wolves | ● | ● | |
+| Under Night In-Birth II Sys:Celes | ● | ● | |
+| 2XKO | ● | | |
+| Invincible VS | ● | | |
+| Vampire Savior | ● | | |
+| Rivals of Aether II | ● | | ● |
+| BlazBlue: Central Fiction | ● | | ● |
+| Virtua Fighter 5 R.E.V.O. | ● | | ● |
+| Mortal Kombat 1 | | ● | |
+| Marvel vs. Capcom 2 | | ● | |
+| The King of Fighters XV | | | ● |
+| Samurai Shodown | | | ● |
+| Guilty Gear Xrd REV 2 | | | ● |
+| Capcom vs. SNK 2 | | | ● |
+| Killer Instinct | | | ● |
+
+### Adding one is a few lines
+
+The settings are assembled from builders in `data/rulesets.js`, because "set
+format" is the same four fields in every fighting game ever made and writing
+them out twenty-one times means twenty-one places to fix when one turns out to
+be wrong. A game supplies only what is genuinely its own:
+
+```js
+{
+  id: 'sf6', name: 'Street Fighter 6', short: 'Street Fighter 6', mark: 'SF6',
+  releaseYear: 2023, platforms: plats('ps5', 'pc', 'xbox'),
+  evo: { 2025: 'main', 2026: 'main' },
+  rules: {
+    match: { rounds: 2, timer: '99' },
+    controls: { simplified: { label: 'Modern controls', help: '…' } },
+  },
+  preset: ['FT2 pools, FT3 top cut, 2 rounds, 99 seconds, Modern controls legal.', '…'],
+}
+```
+
+An entry should be as long as the game is unusual, and no longer. Most are
+about a dozen lines. Tōkon is the longest because a 4v4 tag game with a shared
+health bar genuinely has more to say.
+
+Three ruleset shapes cover everything so far — round-based 1v1, team (assist or
+sequential), and platform fighter — and the games that need one odd field get
+it spliced into an existing group rather than a group of one. Mortal Kombat's
+Kameo and CvS2's Groove are the two that do.
+
+### What is settled and what is a guess
+
+Mechanical facts — platforms, team sizes, whether a game ships a simplified
+control scheme — are checkable and were checked. Competitive **conventions**
+are different. Where a ruleset is settled, the preset says so. Where it is not
+— 2XKO, Invincible VS, Tōkon — it is marked `provisional` and the flag reaches
+the TO at setup and the player on the rules sheet.
+
+### Identity: one done, nineteen placeholders
+
+Tōkon and Smash have drawn artwork. The other nineteen have a real generated
+palette, a mark, a tagline and a generic motif, and are marked
+`identity: 'placeholder'` in `data/themes.js` — in the data rather than in a
+note, so the list of what is left cannot drift out of date.
+
+Colours are each game's own brand, and they **cluster**. Street Fighter 6 and
+Fatal Fury are both orange; four more are the same gold. Two attempts to spread
+them are recorded in `test/theme.test.mjs` because the instinct to try again
+will come back: rotating hues to hit a comfortable separation turned Street
+Fighter pink and Mortal Kombat mauve, and capping the rotation at "still
+recognisably that colour" could not reach the target at all. Twenty-one
+mutually distinguishable hues do not exist — a categorical palette starts
+confusing neighbours around eight to twelve.
+
+So the **mark** carries the identity and the colour reinforces it. "SF6" in
+orange and "FF" in orange are not hard to tell apart, because they say SF6 and
+FF. That is why the mark is two or three letters rather than the coloured dot a
+first draft reaches for. The test checks contrast strictly (lowest 7.98:1) and
+distinctness only strictly enough to catch a duplicated seed.
+
+Theming touches **primary only**. Mapping secondary onto the game ramp as well
+was the first attempt and it was too much: secondary-container carries the nav
+pill, the bulk-action bar and the demo banner, so it made a whole page one loud
+colour and painted app chrome as though it belonged to the game.
+
+---
+
 ## Marvel Tokon
 
 MARVEL Tōkon: Fighting Souls is a 4v4 tag fighter from Arc System Works with a
@@ -595,7 +696,8 @@ brackets/
   app.js              boot, hash router, chrome
 
   data/
-    games.js          the game registry — every field, preset and default
+    games.js          the game registry — 21 titles, mostly a dozen lines each
+    rulesets.js       composable setting groups the registry assembles from
     themes.js         per-game palettes, original artwork, official-asset slot
     demo.js           a working event, seeded only when there is no backend
 
@@ -695,7 +797,7 @@ Tests:
 
 ```
 node brackets/test/bracket.test.mjs   # 112 assertions, mostly double elim
-node brackets/test/theme.test.mjs     # 30 contrast and distinctness checks
+node brackets/test/theme.test.mjs     # 736 contrast, distinctness and mark checks
 ```
 
 To connect a backend: run `sql/001_schema.sql` against the `battydevsite`

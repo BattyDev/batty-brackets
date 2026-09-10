@@ -23,7 +23,7 @@
 import { html, raw, list, icon, esc, on, snack, dialog } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
-import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, formatValue } from '../data/games.js';
+import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, formatValue, evoLabel } from '../data/games.js';
 import { gameArt, gameHero, themeFor } from '../data/themes.js';
 
 /* Wizard state. Module-level rather than in the store: a half-finished event
@@ -50,6 +50,7 @@ function freshDraft() {
     documents: [{ id: 'doc_coc', title: 'Code of conduct', required: true, version: 1 }],
     poolsEnabled: false,
     poolCount: 4,
+    gameSearch: '',
   };
 }
 
@@ -98,10 +99,19 @@ export function view(ctx) {
 function stepGame() {
   return html`
     <h2 class="headline-small" style="margin-bottom:4px">What are you running?</h2>
-    <p class="body-medium dim" style="margin-bottom:20px">The game decides which settings exist. You can change everything later, including after the bracket is made.</p>
+    <p class="body-medium dim" style="margin-bottom:16px">
+      The game decides which settings exist. You can change everything later, including after the bracket is made.
+    </p>
+    <div class="row" style="gap:8px;margin-bottom:16px">
+      <label class="field spacer" style="max-width:320px">
+        <input type="search" placeholder="Search ${GAMES.length} games" value="${draft.gameSearch || ''}"
+               data-act-input="wizard-game-search" data-focus-key="game-search"
+               style="min-height:44px;padding:10px 12px" aria-label="Search games">
+      </label>
+    </div>
 
     <div class="grid-cards">
-      ${list(GAMES.map((game) => html`
+      ${list(visibleGames().map((game) => html`
         <button class="card card-outlined game-card" data-act="wizard-game" data-game="${game.id}"
                 aria-pressed="${draft.gameId === game.id}">
           <span class="game-card-art">${raw(gameArt(game.id, { variant: 'hero' }))}</span>
@@ -109,30 +119,49 @@ function stepGame() {
             <span class="avatar game-mark">${game.mark}</span>
             <div class="spacer">
               <b class="title-medium">${game.short}</b>
-              <div class="body-small dim">${game.name}</div>
+              <!-- Only when it says something the short name did not. Half these
+                   games are known by their full title, and printing
+                   "Tekken 8 / Tekken 8" reads as a bug. -->
+              ${game.name !== game.short ? html`<div class="body-small dim">${game.name}</div>` : ''}
               ${themeFor(game.id)?.tagline ? html`<div class="body-small" style="color:var(--md-primary)">${themeFor(game.id).tagline}</div>` : ''}
             </div>
           </div>
-          <p class="body-small dim" style="margin:12px 0 0">
-            ${game.presets.length} ruleset${game.presets.length === 1 ? '' : 's'} ·
-            ${allFields(game).length} settings ·
-            ${game.platforms.map((p) => p.label).join(', ')}
+          ${evoLabel(game) ? html`
+            <p class="body-small" style="margin:10px 0 0;color:var(--md-primary)">
+              ${raw(icon('trophy', 'icon-sm'))} ${evoLabel(game)}
+            </p>` : ''}
+          <p class="body-small dim" style="margin:8px 0 0">
+            ${allFields(game).length} settings · ${game.platforms.map((p) => p.label).join(', ')}
           </p>
           ${game.presets.some((p) => p.provisional) ? html`
             <p class="body-small" style="margin:8px 0 0;color:var(--md-tertiary)">
-              ${raw(icon('alert', 'icon-sm'))} Rulesets are provisional — the scene has not settled them yet.
+              ${raw(icon('alert', 'icon-sm'))} Ruleset is provisional — the scene has not settled it yet.
             </p>` : ''}
         </button>`))}
     </div>
+    ${visibleGames().length === 0 ? html`
+      <div class="empty">${raw(icon('search'))}
+        <p class="body-medium">Nothing matches “${draft.gameSearch}”.</p>
+      </div>` : ''}
 
     <div class="card card-filled" style="margin-top:20px">
       <b class="title-small">Not here?</b>
       <p class="body-small dim" style="margin:4px 0 0">
-        A game is a data file — the settings, the presets and the character list, nothing else.
-        Adding one does not touch the bracket engine or the organiser tools.
-        See <span class="code">brackets/data/games.js</span>.
+        This is every title from Evo 2025 and Evo 2026, plus Tokon and Smash Ultimate.
+        A game is data — a few lines naming its platforms and which ruleset shape it uses,
+        with the shared settings assembled from <span class="code">data/rulesets.js</span>.
+        Adding one touches neither the bracket engine nor the organiser tools.
       </p>
     </div>`;
+}
+
+/* Search over name, short name and mark, so "kof", "King of Fighters" and
+   "KOF XV" all find the same thing. With twenty-one games the list is past
+   the point where scanning it is pleasant. */
+function visibleGames() {
+  const q = (draft.gameSearch || '').trim().toLowerCase();
+  if (!q) return GAMES;
+  return GAMES.filter((g) => `${g.name} ${g.short} ${g.mark}`.toLowerCase().includes(q));
 }
 
 /* --------------------------------------------------------------------------
@@ -539,6 +568,8 @@ on('wizard-game', ({ game }) => {
 });
 
 on('wizard-field', ({ field }, el) => { draft[field] = el.value; });
+
+on('wizard-game-search', (d, el) => { draft.gameSearch = el.value; rerender(); });
 
 on('wizard-set', ({ field, value }) => { draft[field] = value; rerender(); });
 
