@@ -1337,3 +1337,300 @@ body:has(.tour) .pane { padding-bottom: 340px; }
 @media (prefers-reduced-motion: reduce) {
   .tour { animation: none; }
 }
+
+/* ---- sortable table headers ---------------------------------------------
+   The whole header cell is the control. A small arrow glyph as the only hit
+   target is a 12px tap area, which fails the minimum target size and is
+   miserable on a phone regardless. */
+table.data th button.th-sort {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; min-height: 32px; padding: 0;
+  border: 0; background: none; cursor: pointer;
+  color: inherit; font: inherit; text-align: left;
+  border-radius: var(--shape-xs);
+}
+table.data th button.th-sort:hover { color: var(--md-on-surface); }
+table.data th .th-arrow { opacity: .45; display: inline-flex; }
+table.data th[aria-sort]:not([aria-sort='none']) { color: var(--md-primary); }
+table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
+
+/* ===========================================================================
+   10. THE VENUE DISPLAY
+   ---------------------------------------------------------------------------
+   Read from four metres, not forty centimetres. Everything is sized in `vmin`
+   so one stylesheet serves a 24" monitor on a table and a projector on a wall,
+   and the layout carries far fewer things than the organiser's run view
+   because at that distance you can hold about five.
+   =========================================================================== */
+
+.tv {
+  position: relative;
+  min-height: 100dvh;
+  display: flex; flex-direction: column;
+  background: var(--game-deep, var(--md-surface-container-lowest));
+  color: var(--md-on-surface);
+  padding: clamp(16px, 2.2vmin, 40px);
+  gap: clamp(12px, 1.6vmin, 28px);
+  overflow: hidden;
+}
+
+/* ---- the control bar ---------------------------------------------------
+   For whoever is plugging the laptop in, not for the room. Fades away and
+   returns on pointer movement, the way a video player's controls do — same
+   problem, same solution. */
+.tv-controls {
+  position: absolute; z-index: 5; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--md-surface) 88%, transparent);
+  border-bottom: 1px solid var(--md-outline-variant);
+  opacity: 0; transform: translateY(-100%);
+  transition: opacity var(--dur-medium) var(--ease-standard),
+              transform var(--dur-medium) var(--ease-standard);
+}
+.tv:hover .tv-controls,
+.tv:focus-within .tv-controls { opacity: 1; transform: translateY(0); }
+
+/* ---- header ------------------------------------------------------------ */
+.tv-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 24px; flex: none;
+}
+.tv-eyebrow {
+  margin: 0; font-size: clamp(.7rem, 1.5vmin, 1.2rem);
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--md-primary); font-weight: 500;
+}
+.tv-title {
+  margin: 0; font-size: clamp(1.5rem, 4.2vmin, 3.4rem);
+  font-weight: 700; line-height: 1.05; letter-spacing: -.01em;
+}
+.tv-head-right { text-align: right; }
+.tv-join, .tv-count {
+  margin: 0; font-size: clamp(.85rem, 1.9vmin, 1.5rem);
+  color: var(--md-on-surface-variant);
+}
+.tv-join b { color: var(--md-primary); font-family: var(--font-mono); letter-spacing: .1em; }
+
+/* ---- body -------------------------------------------------------------- */
+.tv-body {
+  flex: 1; min-height: 0;
+  display: grid; gap: clamp(12px, 2vmin, 32px);
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+@media (min-width: 900px) {
+  .tv-body { grid-template-columns: 1.15fr 1fr; grid-template-rows: 1fr; }
+}
+.tv-section {
+  margin: 0 0 clamp(6px, 1vmin, 14px);
+  font-size: clamp(.75rem, 1.6vmin, 1.25rem);
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--md-on-surface-variant); font-weight: 500;
+}
+
+/* ---- on now ------------------------------------------------------------ */
+.tv-stations { display: grid; gap: clamp(8px, 1.2vmin, 18px); }
+.tv-station {
+  padding: clamp(10px, 1.6vmin, 24px);
+  border-radius: var(--shape-lg);
+  background: var(--md-surface-container-low);
+  box-shadow: inset 0 0 0 2px var(--md-outline-variant);
+}
+.tv-station.busy { box-shadow: inset 0 0 0 3px var(--md-primary); }
+/* De-emphasised with colour, not opacity — the same mistake as the bye
+   matches earlier in this sheet. Fading a container fades its text against
+   the page too, and a 0.62-opacity station name measured below 4.5:1. */
+.tv-station.free {
+  background: var(--md-surface);
+  box-shadow: inset 0 0 0 2px var(--md-outline-variant);
+}
+.tv-station.free .tv-station-name,
+.tv-station.free .tv-free { color: var(--md-on-surface-variant); }
+.tv-station.over { box-shadow: inset 0 0 0 3px var(--md-error); }
+.tv-station-name {
+  margin: 0 0 4px; font-size: clamp(.7rem, 1.5vmin, 1.15rem);
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--md-on-surface-variant);
+}
+.tv-vs { margin: 0; display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap; }
+.tv-player {
+  font-size: clamp(1.1rem, 3.1vmin, 2.6rem);
+  font-weight: 700; line-height: 1.1;
+}
+.tv-vs-mark {
+  font-size: clamp(.7rem, 1.5vmin, 1.15rem);
+  color: var(--md-on-surface-variant); text-transform: uppercase; letter-spacing: .08em;
+}
+.tv-round {
+  margin: 4px 0 0; font-size: clamp(.75rem, 1.6vmin, 1.25rem);
+  color: var(--md-on-surface-variant);
+}
+.tv-station.over .tv-round { color: var(--md-error); font-weight: 600; }
+.tv-free {
+  margin: 0; font-size: clamp(.9rem, 1.9vmin, 1.5rem);
+  color: var(--md-on-surface-variant);
+}
+
+/* ---- up next ----------------------------------------------------------- */
+.tv-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(4px, .8vmin, 12px); }
+.tv-queue-row {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: clamp(8px, 1.2vmin, 18px);
+  padding: clamp(6px, 1vmin, 14px) clamp(8px, 1.2vmin, 18px);
+  border-radius: var(--shape-md);
+  background: var(--md-surface-container-low);
+}
+/* The next one out is the one people are looking for. */
+.tv-queue-row.first { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.tv-queue-num {
+  font-size: clamp(.75rem, 1.5vmin, 1.15rem);
+  color: var(--md-on-surface-variant); font-variant-numeric: tabular-nums;
+}
+.tv-queue-row.first .tv-queue-num { color: inherit; }
+.tv-queue-names {
+  font-size: clamp(.95rem, 2.2vmin, 1.85rem); font-weight: 600; line-height: 1.15;
+}
+.tv-queue-round {
+  font-size: clamp(.7rem, 1.4vmin, 1.05rem);
+  color: var(--md-on-surface-variant); white-space: nowrap;
+}
+.tv-queue-row.first .tv-queue-round { color: inherit; opacity: .85; }
+.tv-queue-more {
+  margin: clamp(6px, 1vmin, 12px) 0 0;
+  font-size: clamp(.75rem, 1.5vmin, 1.15rem); color: var(--md-on-surface-variant);
+}
+
+/* ---- bracket screen ----------------------------------------------------
+   The top cut plus recent results, not the whole tree — see the note in
+   views/tv.js. Sized to be read across a room, which is only possible because
+   there are at most seven columns of at most four matches. */
+.tv-body-bracket { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+.tv-cut { min-height: 0; display: flex; flex-direction: column; }
+.tv-section-note {
+  margin-left: .8em; font-size: .8em; letter-spacing: .04em;
+  text-transform: none; opacity: .7;
+}
+.tv-bracket {
+  flex: 1; display: flex; gap: clamp(10px, 1.4vmin, 26px);
+  align-items: stretch; min-height: 0;
+}
+.tv-round-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.tv-round-col > h3 {
+  flex: none; margin: 0 0 .4em;
+  font-size: clamp(.6rem, 1.3vmin, 1.05rem);
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--md-on-surface-variant); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tv-round-body {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: space-around; gap: clamp(6px, 1vmin, 16px);
+}
+.tv-match {
+  border-radius: var(--shape-sm); overflow: hidden;
+  background: var(--md-surface-container-low);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+}
+.tv-match.live { box-shadow: inset 0 0 0 2px var(--md-primary); }
+.tv-match.done { background: var(--md-surface-container); }
+.tv-match.bye { background: var(--md-surface); }
+.tv-side {
+  display: flex; align-items: center; gap: .5em;
+  padding: clamp(6px, .9vmin, 14px) clamp(8px, 1.2vmin, 18px);
+  font-size: clamp(.85rem, 1.9vmin, 1.6rem);
+  line-height: 1.25;
+}
+.tv-side + .tv-side { border-top: 1px solid var(--md-outline-variant); }
+.tv-side-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-side-score { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tv-side.won { background: color-mix(in srgb, var(--md-primary) 16%, transparent); font-weight: 700; }
+.tv-side.lost, .tv-side.tbd { color: var(--md-on-surface-variant); }
+.tv-note {
+  margin: 0 0 8px; font-size: clamp(.75rem, 1.5vmin, 1.1rem);
+  color: var(--md-on-surface-variant);
+}
+
+/* ---- empty + cycle progress -------------------------------------------- */
+.tv-empty {
+  grid-column: 1 / -1;
+  display: grid; place-content: center; text-align: center; gap: .4em;
+  font-size: clamp(1rem, 2.4vmin, 2rem); color: var(--md-on-surface-variant);
+}
+.tv-empty-lead { margin: 0; font-size: clamp(1.6rem, 5vmin, 4rem); font-weight: 700; color: var(--md-on-surface); }
+.tv-empty-code { margin: 0; }
+.tv-empty-code b { color: var(--md-primary); font-family: var(--font-mono); letter-spacing: .1em; }
+
+.tv-progress {
+  flex: none; height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--md-surface-container-high);
+}
+.tv-progress > i {
+  display: block; height: 100%; width: 0;
+  background: var(--md-primary);
+  transition: width .25s linear;
+}
+
+/* ---- recent results strip ----------------------------------------------
+   What fills the bracket screen usefully early in an event, when the top cut
+   is still empty and the tree would otherwise be a wall of dashes. */
+.tv-recent { flex: none; }
+.tv-recent-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: clamp(4px, .7vmin, 10px);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+.tv-recent-list li {
+  display: flex; align-items: baseline; gap: .55em;
+  padding: clamp(6px, .9vmin, 12px) clamp(8px, 1.2vmin, 16px);
+  border-radius: var(--shape-md);
+  background: var(--md-surface-container-low);
+  font-size: clamp(.8rem, 1.7vmin, 1.35rem);
+}
+.tv-recent-list b { font-weight: 700; }
+.tv-recent-score {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  color: var(--md-primary);
+}
+.tv-recent-loser { color: var(--md-on-surface-variant); }
+.tv-recent-round {
+  margin-left: auto; font-size: .8em; white-space: nowrap;
+  color: var(--md-on-surface-variant);
+}
+
+/* The control bar overlays the top of the display, so the content starts
+   below it. A fixed offset rather than a hover-driven one: shifting the whole
+   screen when the operator moves the mouse is worse than losing 52px. */
+.tv { padding-top: calc(clamp(16px, 2.2vmin, 40px) + 44px); }
+
+/* ---- the three-tour chooser ---------------------------------------------
+   Three people look at this demo and want different things: whoever is
+   running the event, whoever is watching the screen in the corner, and
+   whoever is playing. Offering one tour and hoping the other two extrapolate
+   is how a demo fails to land. */
+.demo-tours {
+  display: grid; gap: 8px; margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+}
+.demo-tour {
+  position: relative; isolation: isolate;
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; text-align: left;
+  border: 1px solid var(--md-outline-variant); border-radius: var(--shape-md);
+  background: var(--md-surface); color: inherit;
+  font: inherit; cursor: pointer;
+}
+.demo-tour::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; background: var(--md-on-surface); opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+.demo-tour:hover::before { opacity: var(--state-hover); }
+.demo-tour .icon { flex: none; margin-top: 2px; color: var(--md-primary); }
+.demo-tour > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.demo-tour b { font: var(--title-small); }
+.demo-tour .body-small { color: var(--md-on-surface-variant); }
+.demo-tour-count {
+  margin-left: auto; flex: none; align-self: center;
+  font: var(--label-small); color: var(--md-on-surface-variant); white-space: nowrap;
+}

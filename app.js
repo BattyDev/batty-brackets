@@ -22,13 +22,14 @@ import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
-import { render, bindDelegation, on, html, raw, list, icon, snack, esc } from './lib/ui.js';
+import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
 
 import * as home from './views/home.js';
 import * as setup from './views/setup.js';
 import * as admin from './views/admin.js';
 import * as player from './views/player.js';
 import * as publicEvent from './views/event.js';
+import * as tv from './views/tv.js';
 import * as authView from './views/auth.js';
 
 /* --------------------------------------------------------------------------
@@ -64,6 +65,9 @@ const ROUTES = [
   { pattern: /^\/new$/, view: setup, name: 'new' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
   { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, view: admin, name: 'admin', keys: ['eventId', 'tab'] },
+  /* Before the generic event route, which would otherwise match /tv as a tab
+     and render the event page with an unknown tab. */
+  { pattern: /^\/e\/([^/]+)\/tv$/, view: tv, name: 'tv', keys: ['eventId'] },
   { pattern: /^\/e\/([^/]+)(?:\/([^/]+))?$/, view: publicEvent, name: 'event', keys: ['eventId', 'tab'] },
   { pattern: /^\/me(?:\/([^/]+))?$/, view: player, name: 'me', keys: ['tab'] },
   { pattern: /^\/p\/([^/]+)$/, view: player, name: 'player', keys: ['playerId'] },
@@ -165,6 +169,15 @@ function syncChip() {
   return html`<span class="sync">${raw(icon('check', 'icon-sm'))} Saved</span>`;
 }
 
+/* A display fills the screen: no app bar, no navigation rail, no skip link to
+   a nav that is not there. It still gets the route announcement and the
+   focusable main, because somebody may still be driving it from a keyboard
+   while setting it up. */
+function chromelessShell(inner, gameId) {
+  const themed = gameId && themeFor(gameId) ? ` data-game="${gameId}"` : '';
+  return html`<main id="main" tabindex="-1"${raw(themed)}>${raw(inner)}</main>`;
+}
+
 function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
   const route = parseRoute();
   const me = auth.currentPlayer();
@@ -207,8 +220,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
         ${raw(tour.demoBanner())}
         ${raw(inner)}
       </main>
-    </div>
-    ${raw(tour.tourCard())}`;
+    </div>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -236,7 +248,10 @@ export function draw() {
       draw,
     };
     const out = route.view.view(ctx);
-    render(root, shell(out.body, out));
+    render(root, out.chromeless
+      ? chromelessShell(out.body, out.gameId)
+      : shell(out.body, out));
+    drawChrome();
     announceRoute(out.title);
     focusMainIfNavigated(route.path);
   } catch (err) {
@@ -254,6 +269,20 @@ export function draw() {
   } finally {
     drawing = false;
   }
+}
+
+/* The docked tour card, kept out of the routed render so it is not destroyed
+   and rebuilt underneath the person reading it. Only rewritten when its
+   content actually changes, which is once per tour step rather than once per
+   draw. */
+const chromeRoot = document.getElementById('chrome');
+let lastChrome = null;
+
+function drawChrome() {
+  const markup = String(tour.tourCard());
+  if (markup === lastChrome) return;
+  lastChrome = markup;
+  chromeRoot.innerHTML = markup;
 }
 
 /* --------------------------------------------------------------------------
@@ -283,7 +312,7 @@ on('copy-text', async ({ text }) => {
 /* ---- the guided demo ----
    All of these are plain store writes plus a route change, so the tour cannot
    get the app into a state you could not reach by clicking. */
-on('tour-start', () => { tour.start(); });
+on('tour-start', ({ tour: id }) => { tour.start(id || 'organiser'); });
 on('tour-next', () => { tour.next(); });
 on('tour-prev', () => { tour.previous(); });
 on('tour-stop', () => { tour.stop(); draw(); snack('Tour ended — everything still works. Reset when you are done.'); });
@@ -312,6 +341,7 @@ on('undo', () => {
   } catch { /* private mode */ }
 
   bindDelegation(root);
+  bindDelegation(chromeRoot);
   /* One <style> covering every game's colour roles, injected once. See
      data/themes.js -- putting data-game on any container re-themes everything
      inside it. */
@@ -363,13 +393,28 @@ on('undo', () => {
   auth.onAuth(() => draw());
   window.addEventListener('hashchange', draw);
 
-  /* The run view has live countdowns (DQ timers, how long a set has been out).
-     One shared tick rather than a timer per card, and only while a view that
-     needs it is on screen -- a 1Hz repaint of an idle page is exactly the kind
-     of thing that flattens a phone battery over a six-hour event. */
+  /* Live clocks: DQ timers and how long a set has been out.
+     ------------------------------------------------------------------------
+     This used to call draw() once a second on the admin routes, and that was
+     wrong in a way worth recording. Redrawing the page to move a clock throws
+     away scroll position and focus, and it destroyed and rebuilt the docked
+     tour card every second -- replaying its slide-in animation, so the panel
+     appeared to close and reopen continuously while somebody was trying to
+     read it.
+
+     A clock is text. `tickLiveClocks` rewrites the text of anything carrying
+     `data-live-since` and toggles the over-time class, which is a handful of
+     property writes against several hundred rebuilt nodes.
+
+     The guidance panel still needs periodic re-evaluation, because a
+     suggestion can fire purely because time passed -- but at 20 seconds, and
+     only when its content has actually changed, which `draw` already
+     guards against by comparing rendered output. */
+  setInterval(() => tickLiveClocks(), 1000);
+
   setInterval(() => {
-    if (parseRoute().name === 'admin') draw();
-  }, 1000);
+    if (parseRoute().name === 'admin' && parseRoute().params.tab === 'overview') draw();
+  }, 20000);
 
   draw();
 

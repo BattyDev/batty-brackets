@@ -58,6 +58,15 @@
   </div>
 </div>
 
+<!-- Docked chrome that must survive a re-render.
+
+     The guided-tour card lives here rather than inside #app because the router
+     replaces the whole of #app on every draw, and anything recreated that way
+     replays its entry animation and loses its scroll and focus. For a panel
+     that is on screen continuously while somebody reads it, that showed up as
+     the card flickering in and out once a second. -->
+<div id="chrome"></div>
+
 <!-- Where the current page name is announced after a navigation. It sits
      OUTSIDE #app on purpose: the router replaces the whole of #app on every
      draw, and a live region that is removed and re-added in the same tick is

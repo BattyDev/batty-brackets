@@ -55,7 +55,7 @@ const TAGS = [
 const ago = (days, hours = 0) => new Date(Date.now() - days * 864e5 - hours * 36e5).toISOString();
 const ahead = (mins) => new Date(Date.now() + mins * 60000).toISOString();
 
-export function seedDemoData({ apply, uid, inviteCode }) {
+export function seedDemoData({ apply, uid, inviteCode, setSession }) {
   const orgId = 'org_battymac';
   apply('orgs', orgId, {
     id: orgId,
@@ -233,7 +233,9 @@ export function seedDemoData({ apply, uid, inviteCode }) {
 
   /* Nobody is signed in yet -- the landing page is the first thing you should
      see, because it is the thing a stranger following a link sees. */
-  apply('session', 'session', null, { queueIt: false });
+  /* Nobody is signed in yet -- the landing page is the first thing you
+     should see, because it is what a stranger following a link sees. */
+  setSession(null);
 
   return { orgId, eventId, ssbuId, inviteCode: inviteCode() };
 }

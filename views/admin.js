@@ -21,7 +21,7 @@
 
 import {
   html, raw, list, icon, esc, on, snack, dialog, confirmDialog,
-  avatar, formatDateTime, relativeTime, countdown, initials,
+  avatar, formatDateTime, relativeTime, countdown, initials, elapsed,
 } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
@@ -49,9 +49,82 @@ const ui = {
   selected: new Set(),
   dismissed: new Set(),
   search: '',
+  /* Sort and filter are view state, not tournament state: two staff looking at
+     the same roster want their own sort, and neither wants the other's to
+     arrive over the network mid-scroll. */
   sortBy: 'seed',
+  sortDir: 'asc',
+  filters: new Set(),
   importPlan: null,
 };
+
+/* --------------------------------------------------------------------------
+   Sorting and filtering the roster
+   --------------------------------------------------------------------------
+   Every column sorts, because which one matters depends entirely on what the
+   TO is doing at that moment: seed while seeding, tag while looking somebody
+   up at the desk, team while checking a crew all arrived, paid while counting
+   the cash box.
+
+   Each column declares how to extract its value rather than being special-
+   cased in a comparator, so adding a column is one entry here and one <th>.
+   -------------------------------------------------------------------------- */
+const COLUMNS = [
+  { key: 'seed', label: 'Seed', get: (r) => r.entry.seed ?? Infinity, numeric: true },
+  { key: 'tag', label: 'Tag', get: (r) => (r.player?.tag || '').toLowerCase() },
+  { key: 'group', label: 'Team / venue', get: (r) => (r.entry.group || '~').toLowerCase() },
+  { key: 'checkedIn', label: 'In', get: (r) => (r.entry.checkedInAt ? 0 : 1), numeric: true },
+  { key: 'paid', label: 'Paid', get: (r) => (r.entry.paidAt ? 0 : 1), numeric: true, needsFee: true },
+  { key: 'signed', label: 'Signed', get: (r, event) => missingDocs(r.entry, event).length, numeric: true },
+  { key: 'contact', label: 'Contact', get: (r) => (r.player?.connections?.discord || r.player?.email || '~').toLowerCase() },
+];
+
+const missingDocs = (entry, event) => {
+  const required = (event.documents || []).filter((d) => d.required);
+  const signed = new Set(entry.signedDocuments || []);
+  return required.filter((d) => !signed.has(d.id));
+};
+
+/* Filters are named predicates rather than a query language. A TO wants the
+   four or five questions they actually ask -- "who is not here", "who owes me
+   money" -- as one tap, not an expression builder. */
+const FILTERS = [
+  { key: 'not-in', label: 'Not checked in', test: (r) => !r.entry.checkedInAt },
+  { key: 'in', label: 'Checked in', test: (r) => Boolean(r.entry.checkedInAt) },
+  { key: 'unpaid', label: 'Owes', needsFee: true, test: (r) => !r.entry.paidAt },
+  { key: 'unsigned', label: 'Not signed', test: (r, event) => missingDocs(r.entry, event).length > 0 },
+  { key: 'waitlist', label: 'Waitlist', test: (r) => Boolean(r.entry.waitlisted) },
+  { key: 'walkup', label: 'Walk-ups', test: (r) => Boolean(r.player?.claimable) },
+  { key: 'unseeded', label: 'No seed', test: (r) => r.entry.seed == null },
+];
+
+function applyView(rows, event) {
+  const search = ui.search.trim().toLowerCase();
+  let out = rows.filter(({ player, entry }) => !search
+    || (player?.tag || '').toLowerCase().includes(search)
+    || (player?.realName || '').toLowerCase().includes(search)
+    || (entry.group || '').toLowerCase().includes(search));
+
+  /* Multiple filters are AND, which is what "checked in" + "owes" has to mean
+     to be useful at the door. */
+  for (const key of ui.filters) {
+    const filter = FILTERS.find((f) => f.key === key);
+    if (filter) out = out.filter((r) => filter.test(r, event));
+  }
+
+  const column = COLUMNS.find((c) => c.key === ui.sortBy) || COLUMNS[0];
+  const dir = ui.sortDir === 'desc' ? -1 : 1;
+  return [...out].sort((a, b) => {
+    const av = column.get(a, event);
+    const bv = column.get(b, event);
+    if (av === bv) {
+      /* Stable secondary key so equal values do not shuffle between renders,
+         which is disorienting in a table somebody is reading down. */
+      return (a.entry.seed ?? Infinity) - (b.entry.seed ?? Infinity);
+    }
+    return (column.numeric ? av - bv : String(av).localeCompare(String(bv))) * dir;
+  });
+}
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
@@ -244,26 +317,47 @@ function statCard(label, value, sub, ic) {
 
 function entrantsTab(data) {
   const { event, rows } = data;
-  const search = ui.search.toLowerCase();
-  const visible = rows.filter(({ player, entry }) => !search
-    || (player?.tag || '').toLowerCase().includes(search)
-    || (player?.realName || '').toLowerCase().includes(search)
-    || (entry.group || '').toLowerCase().includes(search));
-
+  const visible = applyView(rows, event);
   const selected = visible.filter((r) => ui.selected.has(r.entry.id));
+  const filters = FILTERS.filter((f) => !f.needsFee || event.entryFee);
+  const columns = COLUMNS.filter((c) => !c.needsFee || event.entryFee);
+  const narrowed = ui.filters.size || ui.search.trim();
 
   return html`
     <div class="pane">
       <div class="row" style="margin-bottom:12px;gap:8px">
         <label class="field spacer" style="min-width:180px;max-width:340px">
-          <input type="text" placeholder="Search entrants" value="${ui.search}"
+          <input type="search" placeholder="Search entrants" value="${ui.search}"
                  data-act-input="entrant-search" data-focus-key="entrant-search"
-                 style="min-height:44px;padding:10px 12px">
+                 style="min-height:44px;padding:10px 12px" aria-label="Search entrants">
         </label>
         <button class="btn btn-tonal btn-sm" data-act="import-open">${raw(icon('upload', 'icon-sm'))} Import</button>
         <button class="btn btn-outlined btn-sm" data-act="export-entrants">${raw(icon('download', 'icon-sm'))} Export</button>
         <button class="btn btn-filled btn-sm" data-act="entrant-add">${raw(icon('plus', 'icon-sm'))} Add</button>
       </div>
+
+      <div class="row" style="margin-bottom:12px;gap:6px" role="group" aria-label="Filter entrants">
+        ${list(filters.map((f) => {
+          const on = ui.filters.has(f.key);
+          const count = rows.filter((r) => f.test(r, event)).length;
+          return html`
+            <button class="chip" data-act="entrant-filter" data-filter="${f.key}"
+                    aria-pressed="${on}">
+              ${on ? raw(icon('check', 'icon-sm')) : ''}${f.label}
+              <span class="dim" style="font-variant-numeric:tabular-nums">${count}</span>
+            </button>`;
+        }))}
+        ${narrowed ? html`
+          <button class="btn btn-text btn-sm" data-act="entrant-filter-clear">
+            ${raw(icon('close', 'icon-sm'))} Clear
+          </button>` : ''}
+      </div>
+
+      ${narrowed ? html`
+        <p class="body-small dim" style="margin:-4px 0 12px" role="status">
+          Showing ${visible.length} of ${rows.length}.
+          ${selected.length ? html`Bulk actions apply to the ${selected.length} selected, not the whole roster.` : ''}
+        </p>` : ''}
 
       ${selected.length ? html`
         <div class="bulk-bar" style="margin-bottom:12px">
@@ -290,13 +384,23 @@ function entrantsTab(data) {
                          ${raw(selected.length === visible.length && visible.length ? 'checked' : '')}>
                   <label class="sr-only" for="select-all">Select all entrants</label>
                 </th>
-                <th scope="col">Seed</th>
-                <th scope="col">Tag</th>
-                <th scope="col">Team / venue</th>
-                <th scope="col">In</th>
-                ${event.entryFee ? raw('<th scope="col">Paid</th>') : ''}
-                <th scope="col">Signed</th>
-                <th scope="col">Contact</th>
+                <!-- aria-sort on the header, not just an arrow glyph: it is
+                     what tells a screen-reader user which column the table is
+                     ordered by and in which direction. -->
+                ${list(columns.map((c) => html`
+                  <th scope="col" aria-sort="${raw(ui.sortBy === c.key
+                    ? (ui.sortDir === 'asc' ? 'ascending' : 'descending') : 'none')}">
+                    <button class="th-sort" data-act="entrant-sort" data-col="${c.key}">
+                      ${c.label}
+                      <span class="th-arrow" aria-hidden="true">${raw(ui.sortBy === c.key
+                        ? icon(ui.sortDir === 'asc' ? 'chevronDown' : 'chevronDown',
+                          ui.sortDir === 'asc' ? 'icon-sm flip' : 'icon-sm')
+                        : icon('sort', 'icon-sm'))}</span>
+                      <span class="sr-only">${ui.sortBy === c.key
+                        ? `sorted ${ui.sortDir === 'asc' ? 'ascending' : 'descending'}, activate to reverse`
+                        : 'activate to sort by this column'}</span>
+                    </button>
+                  </th>`))}
                 <th scope="col"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -347,6 +451,13 @@ function entrantsTab(data) {
               }))}
             </tbody>
           </table>
+        </div>`
+      : narrowed ? html`
+        <div class="empty">
+          ${raw(icon('search'))}
+          <p class="body-large">No entrants match.</p>
+          <p class="body-medium">${rows.length} on the roster, none of them fitting these filters.</p>
+          <button class="btn btn-tonal" data-act="entrant-filter-clear">Clear filters</button>
         </div>`
       : html`
         <div class="empty">
@@ -537,6 +648,13 @@ function runTab(data) {
 
   return html`
     <div class="pane">
+      <div class="row" style="margin-bottom:16px;gap:8px">
+        <a class="btn btn-tonal btn-sm" href="#/e/${event.id}/tv" target="_blank" rel="noopener">
+          ${raw(icon('station', 'icon-sm'))} Open the venue display
+        </a>
+        <span class="body-small dim">Opens in a new tab — put it on the TV.</span>
+      </div>
+
       <section style="margin-bottom:20px">
         <h2 class="title-large" style="margin-bottom:12px">Stations</h2>
         <div class="stations">
@@ -553,8 +671,10 @@ function runTab(data) {
                 ${match ? html`
                   <div class="body-medium"><b>${nameOf(match.slots[0].entrantId)}</b> v <b>${nameOf(match.slots[1].entrantId)}</b></div>
                   <div class="body-small dim">${match.name}</div>
-                  <div class="row" style="margin-top:8px;gap:6px">
-                    <span class="timer ${raw(over ? 'over' : '')}">${raw(icon('clock', 'icon-sm'))} ${relativeTime(match.calledAt).replace('ago', '')}</span>
+                  <div class="row" style="margin-top:8px;gap:6px" data-live-scope>
+                    <span class="timer ${raw(over ? 'over' : '')}">${raw(icon('clock', 'icon-sm'))}
+                      <span data-live-since="${match.calledAt}" data-live-over="${dq}">${elapsed(match.calledAt)}</span>
+                    </span>
                     <span class="spacer"></span>
                     <button class="btn btn-filled btn-sm" data-act="report-open" data-match="${match.id}">Report</button>
                   </div>
@@ -678,7 +798,8 @@ function matchCard(match, nameOf, called) {
         ${raw(side(a, b))}
         ${raw(side(b, a))}
         ${bye ? html`<span class="match-meta">bye</span>` : ''}
-        ${live ? html`<span class="match-meta">${raw(icon('clock', 'icon-sm'))} out ${relativeTime(match.calledAt).replace(' ago', '')}</span>` : ''}
+        ${live ? html`<span class="match-meta">${raw(icon('clock', 'icon-sm'))} out
+          <span data-live-since="${match.calledAt}">${elapsed(match.calledAt)}</span></span>` : ''}
       </span>
     </button>`;
 }
@@ -865,14 +986,50 @@ const currentEventId = () => (window.location.hash.match(/\/e\/([^/]+)/) || [])[
 
 on('entrant-search', (d, el) => { ui.search = el.value; rerender(); });
 
+on('entrant-sort', ({ col }) => {
+  /* Same column toggles direction; a new column starts ascending, because
+     that is what "sort by this" means for every column here except the two
+     boolean ones, where ascending puts the thing needing attention first. */
+  if (ui.sortBy === col) ui.sortDir = ui.sortDir === 'asc' ? 'desc' : 'asc';
+  else { ui.sortBy = col; ui.sortDir = 'asc'; }
+  rerender();
+});
+
+on('entrant-filter', ({ filter }) => {
+  if (ui.filters.has(filter)) ui.filters.delete(filter);
+  else {
+    /* "Checked in" and "Not checked in" together match nobody, which reads as
+       a bug rather than a filter. Selecting one clears its opposite. */
+    const opposites = { in: 'not-in', 'not-in': 'in' };
+    if (opposites[filter]) ui.filters.delete(opposites[filter]);
+    ui.filters.add(filter);
+  }
+  /* A selection made under one filter should not silently carry into a bulk
+     action taken under another -- the rows are no longer the ones that were
+     ticked. */
+  ui.selected.clear();
+  rerender();
+});
+
+on('entrant-filter-clear', () => {
+  ui.filters.clear();
+  ui.search = '';
+  ui.selected.clear();
+  rerender();
+});
+
 on('select-row', ({ id }, el) => {
   if (el.checked) ui.selected.add(id); else ui.selected.delete(id);
   rerender();
 });
 
 on('select-all', (d, el) => {
+  /* Selects what is ON SCREEN, not the whole roster. With filters applied
+     those are different sets, and "select all" meaning "including the 180 rows
+     you have filtered out" is how a bulk action goes badly wrong. */
   const data = contextFor(currentEventId());
-  if (el.checked) for (const row of data.rows) ui.selected.add(row.entry.id);
+  const visible = applyView(data.rows, data.event);
+  if (el.checked) for (const row of visible) ui.selected.add(row.entry.id);
   else ui.selected.clear();
   rerender();
 });

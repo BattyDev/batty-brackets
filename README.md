@@ -40,17 +40,28 @@ Open `battydev.com/brackets` and a demo weekly is already there — 28 entrants
 signed up, four of whom will not show, a duplicate registration, a walk-up
 entrant with a claim code, and a season of past results behind it.
 
-**Walk me through it** runs a nine-step tour: the player's view of the rules,
-the roster with its bulk tools, check-in with four no-shows, the seeding lab,
-the bracket with sets already played and DQ timers running, a player's
-cross-event record, and back out again.
+There are **three tours**, because three different people look at this and want
+different things:
 
-The tour is not a slideshow and not a video. Each step performs the same store
-writes an organiser would perform and then hands control back, so you can stop
-at any point, click something else entirely, and everything still works —
-because it is the real application, not a mock of it. That is only possible
-because of the local-first design: with no backend involved, "a demo
-tournament" is just a store you happen to own.
+| | |
+|---|---|
+| **Running it** | Nine steps through the organiser's night: the roster and its bulk tools, check-in with four no-shows, the seeding lab, a bracket with sets played and DQ timers running. |
+| **On the TV** | Four steps through the venue display — who is up, the top cut, and the rotation between them. |
+| **Playing in it** | Six steps from the seat of somebody who paid five dollars: check in, sign the code of conduct, see who you are against and your head-to-head, get called to a station, and watch the result land on your record. |
+
+Offering the organiser's tour to a player and hoping they extrapolate is how a
+demo fails to land.
+
+None of them is a slideshow or a video. Each step performs the same store writes
+a real user would and then hands control back, so you can stop at any point,
+click something else entirely, and everything still works — because it is the
+real application, not a mock of it. The player tour goes furthest: it *borrows*
+a demo entrant's identity rather than faking a player view, so those screens run
+exactly the queries a real account would. Ending the tour or resetting hands the
+identity back.
+
+That is only possible because of the local-first design: with no backend
+involved, "a demo tournament" is just a store you happen to own.
 
 **Reset** puts it back exactly as it started. It restores only rows carrying
 the demo flag, so an event you made yourself is never touched.
@@ -165,6 +176,19 @@ never trust again. One without an undo is worse. There is both.
 export, fix it in a spreadsheet where fixing things is easy, paste it back.
 Plus an in-app grid with multi-select and bulk operations — check in, mark paid,
 set team, re-seed a selection, remove — all undoable.
+
+Every column sorts, because which one matters depends entirely on what the TO is
+doing at that moment: seed while seeding, tag while looking somebody up at the
+desk, team while checking a crew all arrived, paid while counting the cash box.
+Filters cover the four or five questions actually asked — who is not here, who
+owes money, who has not signed, who is on the waitlist — as one tap rather than
+an expression builder, and they combine with AND, which is what "checked in" +
+"owes" has to mean at the door.
+
+One detail worth stating: **select-all selects what is on screen, not the whole
+roster.** With filters applied those are different sets, and "select all"
+quietly meaning "including the 180 rows you filtered out" is how a bulk action
+goes badly wrong.
 
 One deliberate subtlety: an import that omits the `paid` column must not un-pay
 everybody. Absence means "no opinion", not "false". Conflating those is how a
@@ -552,6 +576,38 @@ handle you could have typed.
 
 ---
 
+## The venue display
+
+`#/e/<id>/tv` — what goes on the television in the corner of the room, opened
+from a button in the run view.
+
+The most expensive failure at a local is somebody missing their set, and it is
+almost always because they did not hear their name. A TO shouting over two
+hundred people and eight consoles does not scale; it is the reason DQ timers
+exist. A screen that answers "am I up?" from across the room fixes most of it,
+and the venue already owns the television.
+
+Two screens, and a button to pick one or cycle both:
+
+- **Who is up** — the stations with names at a size you can read from four
+  metres, the next set out highlighted, and DQ timers running on screen.
+- **Bracket** — the **top cut**, not the whole tree, plus a strip of recent
+  results. The first version rendered every round and that was the wrong call:
+  a 32-entrant double elimination is fifteen columns and sixteen first-round
+  matches, which works out at about eleven pixels a name. It showed the bracket
+  and communicated nothing. Nobody across a room is reading winners round one.
+- **Cycle** — fifteen seconds each with a progress bar. Five felt responsive at
+  a desk and is far too fast in a room, where somebody has to find the screen,
+  work out which half matters, and then read down a list for their own tag.
+
+A display is not the app with bigger text. It has no controls (a television has
+no mouse — the settings hide themselves and are for whoever is plugging the
+laptop in), it is sized in `vmin` so one stylesheet serves a monitor and a
+projector, and it carries far fewer things per screen because at that distance
+you can hold about five.
+
+---
+
 ## Accessibility
 
 Audited with axe-core across every route, in light and dark, at desktop and
@@ -710,7 +766,8 @@ brackets/
     tour.js           the guest walkthrough and its reset
     ui.js             html templating, delegation, icons, dialogs
 
-  views/              home, setup wizard, admin console, event page, profile
+  views/              home, setup wizard, admin console, event page, profile,
+                      tv (the venue display)
   assets/games/<id>/  where licensed artwork goes, if you have any
   sql/001_schema.sql  the security model
   test/bracket.test.mjs
