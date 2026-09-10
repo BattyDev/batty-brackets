@@ -1514,6 +1514,10 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .tv-bracket {
   flex: 1; display: flex; gap: clamp(10px, 1.4vmin, 26px);
   align-items: stretch; min-height: 0;
+  /* --tv-scale is set per render from the widest column on screen, so a round
+     of eight matches shrinks to fit rather than overflowing the bottom of the
+     television and taking the recent-results strip with it. */
+  --tv-scale: 1;
 }
 .tv-round-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .tv-round-col > h3 {
@@ -1525,7 +1529,9 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 }
 .tv-round-body {
   flex: 1; display: flex; flex-direction: column;
-  justify-content: space-around; gap: clamp(6px, 1vmin, 16px);
+  justify-content: space-around;
+  gap: calc(var(--tv-scale) * clamp(6px, 1vmin, 16px));
+  min-height: 0;
 }
 .tv-match {
   border-radius: var(--shape-sm); overflow: hidden;
@@ -1537,8 +1543,9 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .tv-match.bye { background: var(--md-surface); }
 .tv-side {
   display: flex; align-items: center; gap: .5em;
-  padding: clamp(6px, .9vmin, 14px) clamp(8px, 1.2vmin, 18px);
-  font-size: clamp(.85rem, 1.9vmin, 1.6rem);
+  padding: calc(var(--tv-scale) * clamp(6px, .9vmin, 14px))
+           calc(var(--tv-scale) * clamp(8px, 1.2vmin, 18px));
+  font-size: calc(var(--tv-scale) * clamp(.85rem, 1.9vmin, 1.6rem));
   line-height: 1.25;
 }
 .tv-side + .tv-side { border-top: 1px solid var(--md-outline-variant); }

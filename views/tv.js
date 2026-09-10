@@ -37,7 +37,8 @@
 
      queue     who is on now, and who is up next. The default, and the one
                that earns the television.
-     bracket   the top cut and what just finished — see the note on that\n               screen for why it is not the whole tree.
+     bracket   the live rounds and what just finished — see the note on that
+               screen for why it is not the whole tree.
      cycle     alternates the two, with a progress bar so a viewer knows how
                long they have before it moves on.
    =========================================================================== */
@@ -289,10 +290,11 @@ function queueScreen({ event, bracket, stations, entries, players, nameOf, rules
 
    Nobody standing in a venue is reading winners round one of a 32-man. What
    they want from a bracket screen is where the event has got to: who is still
-   in on each side, and what just happened. So this shows the rounds that are
-   small enough to render at a readable size -- which is exactly the business
-   end -- plus a strip of the most recent results, which is what fills the
-   screen usefully early on when the top cut is still empty.
+   in on each side, and what just happened. So this shows a window of rounds
+   around wherever play has actually reached -- preferring the narrow ones,
+   because those draw big -- plus a strip of the most recent results, which is
+   what fills the screen usefully in the first half hour before anybody has
+   been knocked out.
 
    A small bracket shows entirely, because then it fits.
    -------------------------------------------------------------------------- */
@@ -325,22 +327,48 @@ function bracketRounds(bracket) {
   /* Prefer rounds somebody has actually reached. A column of dashes tells the
      room nothing, and early on the deepest rounds are all dashes. */
   const populated = (r) => r.matches.some((m) => m.slots.some((sl) => sl.entrantId));
-  /* A window that both starts where people currently are and runs to the
-     final, so the screen shows the path ahead rather than only the row
-     somebody is standing on. Showing only populated rounds was the previous
-     attempt and it collapsed the winners side to a single column, which loses
-     the one thing a bracket picture is for. */
-  const pick = (rounds) => {
-    const usable = narrow(rounds);
-    if (usable.length <= TV_ROUNDS_PER_SIDE) return usable;
-    const deepestLive = usable.map(populated).lastIndexOf(true);
-    if (deepestLive < 0) return usable.slice(-TV_ROUNDS_PER_SIDE);
-    return usable.length - deepestLive <= TV_ROUNDS_PER_SIDE
-      ? usable.slice(-TV_ROUNDS_PER_SIDE)
-      : usable.slice(deepestLive, deepestLive + TV_ROUNDS_PER_SIDE);
+  /* A window that starts where people currently are and runs forward, so the
+     screen shows the path ahead rather than only the row somebody is standing
+     on. Backs off the end so it still fills its columns near the final. */
+  const window = (list, n) => {
+    if (list.length <= n) return list;
+    const deepestLive = list.map(populated).lastIndexOf(true);
+    if (deepestLive < 0) return list.slice(-n);
+    const start = Math.max(0, Math.min(deepestLive, list.length - n));
+    return list.slice(start, start + n);
   };
 
-  const rounds = [...pick(bySide.W), ...pick(bySide.L), ...pick(bySide.GF)];
+  /* Prefer the narrow rounds, because those are the ones that draw big. But
+     an empty column is worth nothing at any size, so if nobody has reached
+     them yet, fall back to showing where people ACTUALLY are even though that
+     round is wider and the type comes out smaller.
+
+     This is the bug the demo surfaced, and it was not only a demo bug: for the
+     first third of every real event the later rounds are empty, so the bracket
+     screen showed eight columns of dashes while a fully populated round sat
+     one step earlier. That is the window when the most people are looking at
+     it. Something legible-but-small beats nothing legible-but-large. */
+  /* Keep exactly one empty round after the last populated one -- enough to
+     show where the winners go next, without spending half a television on
+     columns nobody can reach yet. Three rounds ahead is padding; one is
+     context. */
+  const trimTrailingEmpty = (rounds) => {
+    const lastLive = rounds.map(populated).lastIndexOf(true);
+    return lastLive < 0 ? rounds : rounds.slice(0, lastLive + 2);
+  };
+
+  const pick = (rounds) => {
+    const preferred = window(narrow(rounds), TV_ROUNDS_PER_SIDE);
+    if (preferred.some(populated)) return trimTrailingEmpty(preferred);
+    return trimTrailingEmpty(window(rounds, TV_ROUNDS_PER_SIDE));
+  };
+
+  /* Grand finals only once somebody is in them. For most of an event those
+     two columns are guaranteed empty, and spending a quarter of the screen on
+     a match that cannot happen yet is worse than not showing it -- the space
+     goes to rounds that have people in them instead. */
+  const gf = bySide.GF.some(populated) ? bySide.GF : [];
+  const rounds = [...pick(bySide.W), ...pick(bySide.L), ...gf];
   return { rounds, trimmed: rounds.length < all.length };
 }
 
@@ -361,17 +389,31 @@ function bracketScreen(bracket, nameOf) {
   const { rounds, trimmed } = bracketRounds(bracket);
   const recent = recentResults(bracket, nameOf);
 
+  /* Type scales PER COLUMN, from how many matches that column has to fit.
+     ------------------------------------------------------------------------
+     Height is the constraint nobody thinks about until it bites. A column of
+     eight matches at the size two matches want is taller than the television,
+     and the overflow silently ate the recent-results strip along the bottom.
+
+     Scaling everything to the widest column fixed the overflow and cost too
+     much: one eight-match losers round dragged the four-match quarter-final
+     down with it, and the names people actually want to read came out at
+     eleven pixels. Each column gets its own scale instead, so a narrow round
+     stays large next to a wide one. Earlier rounds rendering smaller than
+     later ones is what every bracket on a stream already does. */
+  const columnScale = (count) => Math.max(0.45, Math.min(1, 5 / Math.max(count, 1)));
+
   return html`
     <div class="tv-body tv-body-bracket">
       <section class="tv-cut">
         <h2 class="tv-section">
           ${trimmed ? 'How it stands' : 'Bracket'}
-          ${trimmed ? html`<span class="tv-section-note">earlier rounds are on the organiser view</span>` : ''}
+          ${trimmed ? html`<span class="tv-section-note">the full bracket is on the organiser view</span>` : ''}
         </h2>
         ${rounds.length ? html`
           <div class="tv-bracket">
             ${list(rounds.map((round) => html`
-              <div class="tv-round-col">
+              <div class="tv-round-col" style="--tv-scale:${columnScale(round.matches.length).toFixed(2)}">
                 <h3>${round.name}</h3>
                 <div class="tv-round-body">
                   ${list(round.matches.map((match) => {
@@ -397,7 +439,7 @@ function bracketScreen(bracket, nameOf) {
                 </div>
               </div>`))}
           </div>`
-        : html`<p class="tv-free">Nobody has reached the top cut yet.</p>`}
+        : html`<p class="tv-free">The bracket has not started yet.</p>`}
       </section>
 
       ${recent.length ? html`

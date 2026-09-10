@@ -46,7 +46,7 @@ different things:
 | | |
 |---|---|
 | **Running it** | Nine steps through the organiser's night: the roster and its bulk tools, check-in with four no-shows, the seeding lab, a bracket with sets played and DQ timers running. |
-| **On the TV** | Four steps through the venue display — who is up, the top cut, and the rotation between them. |
+| **On the TV** | Four steps through the venue display — who is up, where the bracket has got to, and the rotation between them. It plays the event forward far enough first that both screens have something real on them: a shallow bracket makes the second screen pointless, and a finished one empties the first. |
 | **Playing in it** | Six steps from the seat of somebody who paid five dollars: check in, sign the code of conduct, see who you are against and your head-to-head, get called to a station, and watch the result land on your record. |
 
 Offering the organiser's tour to a player and hoping they extrapolate is how a
@@ -591,11 +591,30 @@ Two screens, and a button to pick one or cycle both:
 
 - **Who is up** — the stations with names at a size you can read from four
   metres, the next set out highlighted, and DQ timers running on screen.
-- **Bracket** — the **top cut**, not the whole tree, plus a strip of recent
-  results. The first version rendered every round and that was the wrong call:
-  a 32-entrant double elimination is fifteen columns and sixteen first-round
-  matches, which works out at about eleven pixels a name. It showed the bracket
-  and communicated nothing. Nobody across a room is reading winners round one.
+- **Bracket** — the rounds that are actually live, not the whole tree, plus a
+  strip of recent results. The first version rendered every round and that was
+  the wrong call: a 32-entrant double elimination is fifteen columns and sixteen
+  first-round matches, which works out at about eleven pixels a name. It showed
+  the bracket and communicated nothing. Nobody across a room is reading winners
+  round one.
+
+  Trimming it took three goes to get right, and the failures are worth keeping:
+
+  - *Filter to rounds of four matches or fewer.* Readable, and empty. Mid-event
+    the deepest round with anybody in it is often the wide one — winners round
+    two with eight matches — so the filter kept only rounds nobody had reached
+    yet and the screen showed eight blank columns. That is the bug: an empty
+    column is worth nothing at any size, so the narrow window is now only a
+    *preference*. If nothing in it is populated, the display falls back to the
+    window around the deepest live round whatever its width.
+  - *Scale the type to fit the widest column.* One eight-match round dragged
+    every other column down to eleven pixels with it — the exact problem the
+    trimming existed to solve. Each column is scaled on its own count now, so
+    the two-match semi-final stays at full size next to a shrunken round of
+    eight.
+  - Grand finals stay hidden until somebody is in them, and exactly one empty
+    round is kept past the last live one — enough to show what a win leads to,
+    without a row of blanks.
 - **Cycle** — fifteen seconds each with a progress bar. Five felt responsive at
   a desk and is far too fast in a room, where somebody has to find the screen,
   work out which half matters, and then read down a list for their own tag.
