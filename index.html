@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Brackets · BattyDev</title>
+<meta name="description" content="Tournament brackets for fighting games — built for locals. Runs offline at the venue, bulk import and edit anything, and seeding you can check before you commit.">
+
+<!-- Theme colour is set for both schemes. The app bar is the surface colour,
+     so matching it here is what stops the phone's status bar being a bright
+     band above a dark page. -->
+<meta name="theme-color" content="#f8fafa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#101416" media="(prefers-color-scheme: dark)">
+
+<!-- Link preview. Page-level rather than per-event, and that is a real
+     limitation rather than an oversight: GitHub Pages serves static files, so
+     there is no server to render per-event meta tags, and Discord's crawler
+     does not run JavaScript. An event link therefore unfurls as the site.
+     See README, "What is not built". -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="BattyDev">
+<meta property="og:title" content="Brackets · BattyDev">
+<meta property="og:description" content="Tournament brackets for fighting games, built for the people running them. Works offline at the venue.">
+<meta property="og:url" content="https://battydev.com/brackets/">
+<meta name="twitter:card" content="summary">
+
+<!-- Inline SVG favicon as a data URI. One fewer request, and no 404 in the
+     console for a file that does not exist -- which matters more than it
+     sounds when the pitch is "this loads fast and cleanly". -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300a0b4' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 5h4v6h4M3 19h4v-6'/%3E%3Cpath d='M13 11h4V7h4M13 13h4v4h4'/%3E%3C/svg%3E">
+
+<link rel="stylesheet" href="brackets.css?v=1">
+</head>
+<body>
+
+<!-- The app renders into here. Everything before it is what a visitor sees if
+     JavaScript has not run yet -- which on venue wifi is a real, visible
+     moment, so it is not a spinner. It is the name of the thing and a line
+     saying what it is, replaced in place once the module loads. -->
+<div id="app">
+  <div style="min-height:100dvh;display:grid;place-items:center;padding:24px;text-align:center">
+    <div>
+      <p class="label-large" style="color:var(--md-primary);margin:0 0 8px">BattyDev</p>
+      <h1 class="headline-large" style="margin-bottom:8px">Brackets</h1>
+      <p class="body-medium dim">Loading…</p>
+      <noscript>
+        <div class="banner banner-warn" style="margin-top:24px;text-align:left;max-width:44ch">
+          <div>
+            <b>This needs JavaScript.</b>
+            <div class="body-small" style="margin-top:4px">
+              The whole point of it is that the bracket runs on your device rather than
+              on a server, which is not something a static page can do without it.
+            </div>
+          </div>
+        </div>
+      </noscript>
+    </div>
+  </div>
+</div>
+
+<!-- Connection settings, loaded as a classic script so it is a plain global
+     the module can read synchronously at boot. Blank by default: the app runs
+     entirely on-device until this names a project. -->
+<script src="config.js"></script>
+<script type="module" src="app.js"></script>
+
+</body>
+</html>

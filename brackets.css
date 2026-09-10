@@ -1,0 +1,1070 @@
+/* Brackets · Material 3
+   ===========================================================================
+   A hand-rolled Material 3 implementation rather than @material/web.
+
+   That is a deliberate trade and it is the same trade the whole product makes.
+   The component library is ~300kB of JavaScript before a single bracket is
+   drawn, it ships its own custom-element runtime, and every control becomes a
+   shadow-DOM boundary you cannot style around at 2am when a station card is
+   one pixel too tall on someone's phone. The complaint that started this
+   project was PERFORMANCE, and shipping a component framework to solve a
+   design-language problem would have been the first thing to break the pitch.
+
+   So: M3's tokens, type scale, state layers, elevation and shape are
+   implemented here in plain CSS -- 44kB as written, 11kB gzipped, and zero
+   JavaScript. What is NOT implemented is anything M3 specifies that this app
+   does not use. There is no date picker here because nothing needed one.
+
+   No webfont either, for the same reason. `Roboto` is named first so Android
+   and anyone with it installed gets the real thing; everyone else gets their
+   system UI face. M3's type scale is a set of sizes, weights and tracking
+   values, and those are what carry the language -- a 170kB font download on
+   venue wifi is not worth the last 5% of fidelity.
+
+   ---------------------------------------------------------------------------
+   ORGANISATION
+     1. Tonal palettes        — the raw tones, one per key colour
+     2. Colour roles          — light and dark schemes built from the tones
+     3. Type scale, shape, elevation, motion
+     4. Base and layout
+     5. Components            — buttons, fields, cards, chips, nav, dialogs…
+     6. App-specific          — bracket grid, station cards, entrant table
+   =========================================================================== */
+
+/* ===========================================================================
+   1. TONAL PALETTES
+   ---------------------------------------------------------------------------
+   M3 generates 13 tones per key colour from a seed. These are that generation
+   for a cyan-teal seed, chosen because BattyDev's existing pages are built
+   around #66edf1 and a sub-site should look like it belongs to the site.
+
+   Tertiary is a warm gold, and it is not decorative: in this app tertiary
+   means "the organiser needs to look at this". Keeping attention on its own
+   role -- rather than reaching for error red, which should mean something has
+   actually gone wrong -- is what lets the run view have three levels of
+   urgency without shouting.
+   =========================================================================== */
+:root {
+  /* primary — cyan-teal */
+  --p-0:#000000;   --p-10:#001f23; --p-20:#00363c; --p-25:#004147; --p-30:#004f57;
+  --p-40:#006874;  --p-50:#008394; --p-60:#00a0b4; --p-70:#22bcd3; --p-80:#4fd8f0;
+  --p-90:#a6eeff;  --p-95:#d5f6ff; --p-98:#f0fbff; --p-99:#f8fdff; --p-100:#ffffff;
+
+  /* secondary — the same hue, drained, for quieter surfaces */
+  --s-10:#051f23; --s-20:#1b3438; --s-25:#263f43; --s-30:#324a4f; --s-40:#496266;
+  --s-50:#617a7f; --s-60:#7a9499; --s-70:#94afb4; --s-80:#afcbd0; --s-90:#cbe8ed;
+  --s-95:#d9f6fb; --s-98:#f0fbff;
+
+  /* tertiary — warm gold. "Needs your attention", not "broken". */
+  --t-10:#251a00; --t-20:#3f2e00; --t-25:#4c3800; --t-30:#5a4300; --t-40:#785a00;
+  --t-50:#977200; --t-60:#b78c00; --t-70:#d8a600; --t-80:#efc048; --t-90:#ffdf9b;
+  --t-95:#ffefd5; --t-98:#fff8f2;
+
+  /* error — M3's reference error palette */
+  --e-10:#410002; --e-20:#690005; --e-25:#7e0007; --e-30:#93000a; --e-40:#ba1a1a;
+  --e-50:#de3730; --e-60:#ff5449; --e-70:#ff897d; --e-80:#ffb4ab; --e-90:#ffdad6;
+  --e-95:#ffedea; --e-98:#fff8f7;
+
+  /* neutral */
+  --n-0:#000000;  --n-4:#0b0f10;  --n-6:#101416;  --n-10:#191c1d; --n-12:#1d2021;
+  --n-17:#272a2b; --n-20:#2d3132; --n-22:#313436; --n-24:#353839; --n-30:#444748;
+  --n-40:#5c5f60; --n-50:#757779; --n-60:#8f9193; --n-70:#a9abad; --n-80:#c4c7c8;
+  --n-87:#d8dbdc; --n-90:#e1e3e4; --n-92:#e7e9ea; --n-94:#edefef; --n-95:#eff1f2;
+  --n-96:#f2f4f5; --n-98:#f8fafa; --n-99:#fbfcfd; --n-100:#ffffff;
+
+  /* neutral variant — outlines and the surface-variant family */
+  --nv-10:#131d20; --nv-20:#283134; --nv-30:#3e484a; --nv-40:#556061;
+  --nv-50:#6d797a; --nv-60:#879294; --nv-70:#a1adae; --nv-80:#bdc8ca;
+  --nv-90:#d9e4e6; --nv-95:#e7f2f4;
+}
+
+/* ===========================================================================
+   2. COLOUR ROLES
+   ---------------------------------------------------------------------------
+   Light is the bare :root so it is the fallback everywhere. Dark is applied
+   both by the OS preference and by an explicit [data-theme] on <html>, because
+   a venue is dark and a phone in a venue is usually on auto -- but a TO who
+   wants the bracket bright on a projector should be able to force it.
+   =========================================================================== */
+:root {
+  color-scheme: light;
+
+  --md-primary: var(--p-40);
+  --md-on-primary: var(--p-100);
+  --md-primary-container: var(--p-90);
+  --md-on-primary-container: var(--p-10);
+
+  --md-secondary: var(--s-40);
+  --md-on-secondary: var(--n-100);
+  --md-secondary-container: var(--s-90);
+  --md-on-secondary-container: var(--s-10);
+
+  --md-tertiary: var(--t-40);
+  --md-on-tertiary: var(--n-100);
+  --md-tertiary-container: var(--t-90);
+  --md-on-tertiary-container: var(--t-10);
+
+  --md-error: var(--e-40);
+  --md-on-error: var(--n-100);
+  --md-error-container: var(--e-90);
+  --md-on-error-container: var(--e-10);
+
+  --md-surface: var(--n-98);
+  --md-on-surface: var(--n-10);
+  --md-surface-variant: var(--nv-90);
+  --md-on-surface-variant: var(--nv-30);
+
+  --md-surface-container-lowest: var(--n-100);
+  --md-surface-container-low: var(--n-96);
+  --md-surface-container: var(--n-94);
+  --md-surface-container-high: var(--n-92);
+  --md-surface-container-highest: var(--n-90);
+
+  --md-outline: var(--nv-50);
+  --md-outline-variant: var(--nv-80);
+
+  --md-inverse-surface: var(--n-20);
+  --md-inverse-on-surface: var(--n-95);
+  --md-inverse-primary: var(--p-80);
+
+  --md-scrim: #000000;
+  --md-shadow: #000000;
+
+  /* Semantic aliases. Components below reference these rather than the raw
+     roles, so a state's colour is changed in one place -- and so that reading
+     the component CSS tells you what a colour MEANS. */
+  --ok: #2e6b41;
+  --ok-container: #b6f0c4;
+  --on-ok-container: #00210e;
+  --warn: var(--md-tertiary);
+  --warn-container: var(--md-tertiary-container);
+  --on-warn-container: var(--md-on-tertiary-container);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { color-scheme: dark; }
+}
+
+/* The dark scheme, written once and applied from both triggers. Duplicating
+   the block rather than using a shared class keeps it a pure token swap --
+   nothing downstream ever needs to know which theme is on. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --md-primary: var(--p-80);
+    --md-on-primary: var(--p-20);
+    --md-primary-container: var(--p-30);
+    --md-on-primary-container: var(--p-90);
+
+    --md-secondary: var(--s-80);
+    --md-on-secondary: var(--s-20);
+    --md-secondary-container: var(--s-30);
+    --md-on-secondary-container: var(--s-90);
+
+    --md-tertiary: var(--t-80);
+    --md-on-tertiary: var(--t-20);
+    --md-tertiary-container: var(--t-30);
+    --md-on-tertiary-container: var(--t-90);
+
+    --md-error: var(--e-80);
+    --md-on-error: var(--e-20);
+    --md-error-container: var(--e-30);
+    --md-on-error-container: var(--e-90);
+
+    --md-surface: var(--n-6);
+    --md-on-surface: var(--n-90);
+    --md-surface-variant: var(--nv-30);
+    --md-on-surface-variant: var(--nv-80);
+
+    --md-surface-container-lowest: var(--n-4);
+    --md-surface-container-low: var(--n-10);
+    --md-surface-container: var(--n-12);
+    --md-surface-container-high: var(--n-17);
+    --md-surface-container-highest: var(--n-22);
+
+    --md-outline: var(--nv-60);
+    --md-outline-variant: var(--nv-30);
+
+    --md-inverse-surface: var(--n-90);
+    --md-inverse-on-surface: var(--n-20);
+    --md-inverse-primary: var(--p-40);
+
+    --ok: #7fd79b;
+    --ok-container: #00522a;
+    --on-ok-container: #b6f0c4;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --md-primary: var(--p-80);
+  --md-on-primary: var(--p-20);
+  --md-primary-container: var(--p-30);
+  --md-on-primary-container: var(--p-90);
+  --md-secondary: var(--s-80);
+  --md-on-secondary: var(--s-20);
+  --md-secondary-container: var(--s-30);
+  --md-on-secondary-container: var(--s-90);
+  --md-tertiary: var(--t-80);
+  --md-on-tertiary: var(--t-20);
+  --md-tertiary-container: var(--t-30);
+  --md-on-tertiary-container: var(--t-90);
+  --md-error: var(--e-80);
+  --md-on-error: var(--e-20);
+  --md-error-container: var(--e-30);
+  --md-on-error-container: var(--e-90);
+  --md-surface: var(--n-6);
+  --md-on-surface: var(--n-90);
+  --md-surface-variant: var(--nv-30);
+  --md-on-surface-variant: var(--nv-80);
+  --md-surface-container-lowest: var(--n-4);
+  --md-surface-container-low: var(--n-10);
+  --md-surface-container: var(--n-12);
+  --md-surface-container-high: var(--n-17);
+  --md-surface-container-highest: var(--n-22);
+  --md-outline: var(--nv-60);
+  --md-outline-variant: var(--nv-30);
+  --md-inverse-surface: var(--n-90);
+  --md-inverse-on-surface: var(--n-20);
+  --md-inverse-primary: var(--p-40);
+  --ok: #7fd79b;
+  --ok-container: #00522a;
+  --on-ok-container: #b6f0c4;
+}
+
+/* ===========================================================================
+   3. TYPE, SHAPE, ELEVATION, MOTION
+   =========================================================================== */
+:root {
+  /* M3 type scale. Tracking (letter-spacing) is part of the spec, not a
+     flourish -- label-small at 0.5px is what stops a 11px chip label turning
+     into a smear on a low-DPI projector. */
+  --font: Roboto, 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --display-large: 700 clamp(2.5rem, 6vw, 3.562rem)/1.12 var(--font);
+  --display-medium: 700 clamp(2.1rem, 5vw, 2.812rem)/1.16 var(--font);
+  --headline-large: 400 2rem/1.25 var(--font);
+  --headline-medium: 400 1.75rem/1.29 var(--font);
+  --headline-small: 400 1.5rem/1.33 var(--font);
+  --title-large: 400 1.375rem/1.27 var(--font);
+  --title-medium: 500 1rem/1.5 var(--font);
+  --title-small: 500 0.875rem/1.43 var(--font);
+  --body-large: 400 1rem/1.5 var(--font);
+  --body-medium: 400 0.875rem/1.43 var(--font);
+  --body-small: 400 0.75rem/1.33 var(--font);
+  --label-large: 500 0.875rem/1.43 var(--font);
+  --label-medium: 500 0.75rem/1.33 var(--font);
+  --label-small: 500 0.6875rem/1.45 var(--font);
+
+  /* shape scale */
+  --shape-xs: 4px;
+  --shape-sm: 8px;
+  --shape-md: 12px;
+  --shape-lg: 16px;
+  --shape-xl: 28px;
+  --shape-full: 999px;
+
+  /* elevation — M3's two-shadow recipe (key light + ambient) */
+  --elev-0: none;
+  --elev-1: 0 1px 2px 0 rgb(0 0 0 / .3), 0 1px 3px 1px rgb(0 0 0 / .15);
+  --elev-2: 0 1px 2px 0 rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
+  --elev-3: 0 4px 8px 3px rgb(0 0 0 / .15), 0 1px 3px 0 rgb(0 0 0 / .3);
+  --elev-4: 0 6px 10px 4px rgb(0 0 0 / .15), 0 2px 3px 0 rgb(0 0 0 / .3);
+
+  /* motion — M3 expressive easing */
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-emphasised: cubic-bezier(.05, .7, .1, 1);
+  --dur-short: 150ms;
+  --dur-medium: 250ms;
+  --dur-long: 400ms;
+
+  /* state layer opacities */
+  --state-hover: .08;
+  --state-focus: .10;
+  --state-press: .10;
+}
+
+/* ===========================================================================
+   4. BASE
+   =========================================================================== */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font: var(--body-large);
+  -webkit-font-smoothing: antialiased;
+  /* iOS notch. The nav bar sits on the bottom edge on phones, so without this
+     the last nav item lands under the home indicator. */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+h1, h2, h3, h4 { margin: 0; font-weight: inherit; }
+p { margin: 0 0 1em; }
+a { color: var(--md-primary); }
+
+:focus-visible {
+  outline: 3px solid var(--md-primary);
+  outline-offset: 2px;
+  border-radius: var(--shape-xs);
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Icons are an inline SVG sprite in index.html — no icon font, no network
+   request, no flash of missing glyphs. currentColor means an icon inside a
+   button is automatically the button's text colour. */
+.icon {
+  width: 1.25rem; height: 1.25rem; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.icon-sm { width: 1rem; height: 1rem; }
+.icon-lg { width: 1.5rem; height: 1.5rem; }
+
+/* ---- type helpers ---- */
+.display-large { font: var(--display-large); letter-spacing: -.02em; }
+.display-medium { font: var(--display-medium); letter-spacing: -.015em; }
+.headline-large { font: var(--headline-large); }
+.headline-medium { font: var(--headline-medium); }
+.headline-small { font: var(--headline-small); }
+.title-large { font: var(--title-large); }
+.title-medium { font: var(--title-medium); letter-spacing: .009em; }
+.title-small { font: var(--title-small); letter-spacing: .006em; }
+.body-large { font: var(--body-large); letter-spacing: .009em; }
+.body-medium { font: var(--body-medium); letter-spacing: .016em; }
+.body-small { font: var(--body-small); letter-spacing: .025em; }
+.label-large { font: var(--label-large); letter-spacing: .006em; }
+.label-medium { font: var(--label-medium); letter-spacing: .036em; }
+.label-small { font: var(--label-small); letter-spacing: .045em; }
+.dim { color: var(--md-on-surface-variant); }
+
+/* ===========================================================================
+   5. LAYOUT
+   ---------------------------------------------------------------------------
+   The window-size classes are M3's: compact (<600), medium (600–839),
+   expanded (840+). Navigation moves from a bottom bar to a rail at `medium`,
+   which is the one breakpoint decision that matters -- a TO on a tablet at the
+   desk and a player on a phone are the two real form factors, and both have to
+   be first-class. This is where the competition falls down: the organiser
+   tools exist on desktop and the phone gets a viewer.
+   =========================================================================== */
+.app {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: 'bar' 'main' 'nav';
+  min-height: 100dvh;
+}
+
+@media (min-width: 600px) {
+  .app {
+    grid-template-columns: 88px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: 'nav bar' 'nav main';
+  }
+}
+
+.scaffold { grid-area: main; min-width: 0; }
+
+.pane {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 16px 16px 96px;
+}
+@media (min-width: 600px) { .pane { padding: 24px 24px 48px; } }
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row-tight { display: flex; align-items: center; gap: 8px; }
+.spacer { flex: 1 1 auto; }
+.grid-cards {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+/* ---- top app bar ---- */
+.top-bar {
+  grid-area: bar;
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 64px; padding: 8px 8px 8px 4px;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+}
+.top-bar.scrolled {
+  background: var(--md-surface-container);
+  box-shadow: var(--elev-1);
+}
+.top-bar h1 { font: var(--title-large); flex: 1 1 auto; min-width: 0; }
+.top-bar .sub { display: block; font: var(--body-small); color: var(--md-on-surface-variant); }
+
+/* ---- navigation ---- */
+/* Compact: bottom bar. Medium+: rail. Same markup, so a resize does not
+   re-render anything and a TO rotating a tablet does not lose their place. */
+.nav {
+  grid-area: nav;
+  display: flex;
+  background: var(--md-surface-container);
+}
+.nav-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 12px 0 16px;
+  border: 0; background: none; cursor: pointer;
+  color: var(--md-on-surface-variant);
+  font: var(--label-medium); text-decoration: none;
+}
+.nav-item .pill {
+  display: grid; place-items: center;
+  width: 64px; height: 32px; border-radius: var(--shape-full);
+  transition: background var(--dur-short) var(--ease-standard);
+}
+.nav-item[aria-current='page'] { color: var(--md-on-surface); }
+.nav-item[aria-current='page'] .pill {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+}
+.nav-item:hover .pill { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent); }
+.nav-item[aria-current='page']:hover .pill {
+  background: color-mix(in srgb, var(--md-on-secondary-container) 8%, var(--md-secondary-container));
+}
+
+@media (max-width: 599px) {
+  .nav {
+    position: sticky; bottom: 0; z-index: 20;
+    border-top: 1px solid var(--md-outline-variant);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+@media (min-width: 600px) {
+  .nav {
+    flex-direction: column; align-items: center;
+    gap: 4px; padding: 12px 0; width: 88px;
+    background: var(--md-surface);
+  }
+  .nav-item { flex: none; padding: 6px 0; width: 100%; }
+}
+
+/* ===========================================================================
+   6. COMPONENTS
+   =========================================================================== */
+
+/* ---- buttons -------------------------------------------------------------
+   One base, five variants. The state layer is a ::before at a token opacity
+   rather than a colour change, which is how M3 keeps hover/focus/press
+   consistent across every variant and every colour. */
+.btn {
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 40px; padding: 0 24px;
+  border: 0; border-radius: var(--shape-full);
+  font: var(--label-large); letter-spacing: .006em;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: box-shadow var(--dur-short) var(--ease-standard);
+}
+.btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; background: currentColor; opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+.btn:hover::before { opacity: var(--state-hover); }
+.btn:focus-visible::before { opacity: var(--state-focus); }
+.btn:active::before { opacity: var(--state-press); }
+.btn:disabled, .btn[aria-disabled='true'] {
+  cursor: not-allowed; box-shadow: none;
+  background: color-mix(in srgb, var(--md-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent);
+}
+.btn:disabled::before { opacity: 0; }
+
+.btn-filled { background: var(--md-primary); color: var(--md-on-primary); }
+.btn-filled:hover { box-shadow: var(--elev-1); }
+.btn-tonal { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+.btn-outlined {
+  background: transparent; color: var(--md-primary);
+  box-shadow: inset 0 0 0 1px var(--md-outline);
+}
+.btn-text { background: transparent; color: var(--md-primary); padding: 0 12px; }
+.btn-danger { background: var(--md-error); color: var(--md-on-error); }
+.btn-danger-text { background: transparent; color: var(--md-error); padding: 0 12px; }
+
+.btn-icon {
+  padding: 0; width: 40px; min-height: 40px;
+  background: transparent; color: var(--md-on-surface-variant);
+}
+.btn-sm { min-height: 32px; padding: 0 16px; font: var(--label-medium); }
+.btn-lg { min-height: 56px; padding: 0 32px; font: var(--title-medium); }
+.btn-block { width: 100%; }
+
+/* FAB — the primary action on compact screens, where it sits above the
+   bottom nav rather than competing with it. */
+.fab {
+  position: fixed; right: 16px; z-index: 21;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  display: inline-flex; align-items: center; gap: 12px;
+  min-height: 56px; padding: 0 20px;
+  border: 0; border-radius: var(--shape-lg);
+  background: var(--md-primary-container); color: var(--md-on-primary-container);
+  font: var(--label-large); cursor: pointer; box-shadow: var(--elev-3);
+}
+.fab:hover { box-shadow: var(--elev-4); }
+@media (min-width: 600px) { .fab { bottom: 24px; right: 24px; } }
+
+/* ---- cards --------------------------------------------------------------- */
+.card {
+  border-radius: var(--shape-md);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
+  padding: 16px;
+}
+.card-elevated { background: var(--md-surface-container-low); box-shadow: var(--elev-1); }
+.card-outlined { background: var(--md-surface); box-shadow: inset 0 0 0 1px var(--md-outline-variant); }
+.card-filled { background: var(--md-surface-container-highest); }
+.card-lg { border-radius: var(--shape-lg); padding: 24px; }
+
+/* An interactive card gets the same state layer as a button. */
+a.card, button.card {
+  display: block; width: 100%; text-align: left; border: 0; cursor: pointer;
+  position: relative; isolation: isolate; color: inherit; text-decoration: none;
+  font: inherit;
+  transition: box-shadow var(--dur-short) var(--ease-standard);
+}
+/* `a.card` is (0,1,1) and `.row` is (0,1,0), so on an element carrying both
+   the display:block above silently wins and every layout helper on that card
+   stops working -- the spacer does not push, and trailing content wraps to its
+   own line. Restating them at (0,2,0) is the fix; it is not redundant. */
+a.card.row, button.card.row,
+a.card.row-tight, button.card.row-tight { display: flex; }
+a.card.stack, button.card.stack { display: flex; flex-direction: column; }
+a.card::before, button.card::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; background: var(--md-on-surface); opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+a.card:hover::before, button.card:hover::before { opacity: var(--state-hover); }
+a.card:hover, button.card:hover { box-shadow: var(--elev-2); }
+
+/* ---- text fields --------------------------------------------------------- */
+/* Outlined variant. The label is a real <label> sitting in the notch rather
+   than a floating placeholder, so it is still announced when the field has a
+   value -- the floating-placeholder pattern is the single most common a11y
+   failure in Material implementations. */
+.field { position: relative; display: block; }
+.field > .field-label {
+  position: absolute; top: -8px; left: 12px; z-index: 1;
+  padding: 0 4px; background: var(--md-surface);
+  font: var(--body-small); color: var(--md-on-surface-variant);
+  pointer-events: none;
+}
+.field:focus-within > .field-label { color: var(--md-primary); }
+.field input, .field select, .field textarea {
+  width: 100%; min-height: 56px; padding: 16px;
+  border: 1px solid var(--md-outline); border-radius: var(--shape-xs);
+  background: transparent; color: var(--md-on-surface);
+  font: var(--body-large); font-family: var(--font);
+}
+.field textarea { min-height: 96px; resize: vertical; }
+.field select { appearance: none; cursor: pointer; padding-right: 44px; }
+.field .select-arrow {
+  position: absolute; right: 14px; top: 18px; pointer-events: none;
+  color: var(--md-on-surface-variant);
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--md-primary); border-width: 2px;
+  padding: 15px;
+}
+.field input:disabled, .field select:disabled {
+  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent);
+  border-color: color-mix(in srgb, var(--md-on-surface) 12%, transparent);
+}
+.field-help {
+  display: block; padding: 4px 16px 0;
+  font: var(--body-small); color: var(--md-on-surface-variant);
+}
+.field-error .field-help { color: var(--md-error); }
+.field-error input, .field-error select { border-color: var(--md-error); }
+
+/* Fields on a container background need the label notch to match it. */
+.card .field > .field-label { background: var(--md-surface-container-low); }
+.card-filled .field > .field-label { background: var(--md-surface-container-highest); }
+
+/* ---- switch -------------------------------------------------------------- */
+.switch { display: flex; align-items: center; gap: 16px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch .track {
+  position: relative; flex: none;
+  width: 52px; height: 32px; border-radius: var(--shape-full);
+  background: var(--md-surface-container-highest);
+  border: 2px solid var(--md-outline);
+  transition: background var(--dur-short) var(--ease-standard),
+              border-color var(--dur-short) var(--ease-standard);
+}
+.switch .thumb {
+  position: absolute; top: 50%; left: 6px;
+  width: 16px; height: 16px; border-radius: var(--shape-full);
+  background: var(--md-outline);
+  transform: translate(0, -50%);
+  transition: transform var(--dur-medium) var(--ease-emphasised),
+              width var(--dur-short) var(--ease-standard),
+              height var(--dur-short) var(--ease-standard),
+              background var(--dur-short) var(--ease-standard);
+}
+.switch input:checked + .track { background: var(--md-primary); border-color: var(--md-primary); }
+.switch input:checked + .track .thumb {
+  width: 24px; height: 24px; left: 2px;
+  transform: translate(22px, -50%);
+  background: var(--md-on-primary);
+}
+.switch input:focus-visible + .track { outline: 3px solid var(--md-primary); outline-offset: 2px; }
+
+/* ---- chips --------------------------------------------------------------- */
+.chip {
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 32px; padding: 0 16px;
+  border: 1px solid var(--md-outline); border-radius: var(--shape-sm);
+  background: transparent; color: var(--md-on-surface-variant);
+  font: var(--label-large); cursor: pointer; white-space: nowrap;
+}
+.chip::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; background: currentColor; opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+.chip:hover::before { opacity: var(--state-hover); }
+.chip[aria-pressed='true'], .chip.selected {
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-color: transparent;
+}
+.chip-static { cursor: default; }
+.chip-assist { border-color: var(--md-outline-variant); }
+
+/* Status chips carry meaning, so they are the one place a colour is fixed
+   rather than themed: green is done, gold is waiting on the organiser, red is
+   wrong. Paired with text in every case -- colour is never the only signal. */
+.chip-ok { background: var(--ok-container); color: var(--on-ok-container); border-color: transparent; }
+.chip-warn { background: var(--warn-container); color: var(--on-warn-container); border-color: transparent; }
+.chip-error { background: var(--md-error-container); color: var(--md-on-error-container); border-color: transparent; }
+.chip-info { background: var(--md-primary-container); color: var(--md-on-primary-container); border-color: transparent; }
+
+/* ---- segmented button ---------------------------------------------------- */
+.segmented {
+  display: inline-flex; border-radius: var(--shape-full); overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--md-outline);
+}
+.segmented button {
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 0 16px; flex: 1;
+  border: 0; border-right: 1px solid var(--md-outline);
+  background: transparent; color: var(--md-on-surface);
+  font: var(--label-large); cursor: pointer; white-space: nowrap;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: currentColor; opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+.segmented button:hover::before { opacity: var(--state-hover); }
+.segmented button[aria-pressed='true'] {
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+}
+.segmented-block { display: flex; width: 100%; }
+
+/* ---- list ---------------------------------------------------------------- */
+.list { display: flex; flex-direction: column; }
+.list-item {
+  position: relative; isolation: isolate;
+  display: flex; align-items: center; gap: 16px;
+  min-height: 56px; padding: 8px 16px;
+  border: 0; background: transparent; color: inherit;
+  font: inherit; text-align: left; text-decoration: none; width: 100%;
+}
+button.list-item, a.list-item { cursor: pointer; }
+button.list-item::before, a.list-item::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: var(--md-on-surface); opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+button.list-item:hover::before, a.list-item:hover::before { opacity: var(--state-hover); }
+.list-item .headline { font: var(--body-large); }
+.list-item .supporting { font: var(--body-medium); color: var(--md-on-surface-variant); }
+.list-divider { height: 1px; background: var(--md-outline-variant); margin: 0 16px; }
+
+/* ---- avatar -------------------------------------------------------------- */
+.avatar {
+  display: grid; place-items: center; flex: none;
+  width: 40px; height: 40px; border-radius: var(--shape-full);
+  background: var(--md-primary-container); color: var(--md-on-primary-container);
+  font: var(--title-medium); overflow: hidden;
+}
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-sm { width: 32px; height: 32px; font: var(--label-medium); }
+.avatar-lg { width: 72px; height: 72px; font: var(--headline-small); }
+
+/* ---- dialog -------------------------------------------------------------- */
+dialog.m3 {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(80dvh, 720px);
+  padding: 0; border: 0; border-radius: var(--shape-xl);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  box-shadow: var(--elev-3);
+}
+dialog.m3::backdrop { background: color-mix(in srgb, var(--md-scrim) 40%, transparent); }
+dialog.m3 .dialog-head { padding: 24px 24px 16px; }
+dialog.m3 .dialog-head h2 { font: var(--headline-small); }
+dialog.m3 .dialog-body { padding: 0 24px; overflow-y: auto; max-height: 62dvh; }
+dialog.m3 .dialog-actions {
+  display: flex; justify-content: flex-end; gap: 8px; padding: 24px;
+  flex-wrap: wrap;
+}
+dialog.m3 .field > .field-label { background: var(--md-surface-container-high); }
+
+/* Full-screen dialog on compact — M3's own guidance, and the right call for
+   the import flow, which is a table the user needs room to read. */
+@media (max-width: 599px) {
+  dialog.m3.full {
+    width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh;
+    border-radius: 0; margin: 0;
+  }
+  dialog.m3.full .dialog-body { max-height: none; flex: 1; }
+}
+
+/* ---- snackbar ------------------------------------------------------------ */
+.snackbar {
+  position: fixed; z-index: 40; left: 16px; right: 16px;
+  bottom: calc(88px + env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 8px;
+  max-width: 560px; margin: 0 auto; padding: 14px 16px;
+  border-radius: var(--shape-xs);
+  background: var(--md-inverse-surface); color: var(--md-inverse-on-surface);
+  font: var(--body-medium); box-shadow: var(--elev-3);
+  animation: snack-in var(--dur-medium) var(--ease-emphasised);
+}
+.snackbar button {
+  border: 0; background: none; cursor: pointer; padding: 4px 8px;
+  color: var(--md-inverse-primary); font: var(--label-large);
+}
+@media (min-width: 600px) { .snackbar { bottom: 24px; left: 112px; right: auto; } }
+@keyframes snack-in { from { opacity: 0; transform: translateY(16px); } }
+
+/* ---- banner -------------------------------------------------------------- */
+.banner {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 16px; border-radius: var(--shape-md);
+  background: var(--md-surface-container-high);
+  font: var(--body-medium);
+}
+.banner-warn { background: var(--warn-container); color: var(--on-warn-container); }
+.banner-error { background: var(--md-error-container); color: var(--md-on-error-container); }
+.banner-info { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.banner .icon { margin-top: 2px; }
+
+/* ---- tabs ---------------------------------------------------------------- */
+.tabs {
+  display: flex; gap: 0; overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  position: relative; isolation: isolate;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 16px; flex: 0 0 auto;
+  border: 0; background: none; cursor: pointer;
+  color: var(--md-on-surface-variant); font: var(--title-small);
+  white-space: nowrap;
+}
+.tab::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: currentColor; opacity: 0;
+  transition: opacity var(--dur-short) var(--ease-standard);
+}
+.tab:hover::before { opacity: var(--state-hover); }
+.tab[aria-selected='true'] { color: var(--md-primary); }
+.tab[aria-selected='true']::after {
+  content: ''; position: absolute; left: 8px; right: 8px; bottom: 0;
+  height: 3px; border-radius: 3px 3px 0 0; background: var(--md-primary);
+}
+
+/* ---- progress ------------------------------------------------------------ */
+.progress {
+  height: 4px; border-radius: var(--shape-full); overflow: hidden;
+  background: var(--md-secondary-container);
+}
+.progress > i { display: block; height: 100%; background: var(--md-primary); border-radius: inherit; }
+
+/* ---- empty state --------------------------------------------------------- */
+.empty {
+  display: grid; place-items: center; gap: 12px;
+  padding: 48px 24px; text-align: center;
+  color: var(--md-on-surface-variant);
+}
+.empty .icon { width: 48px; height: 48px; opacity: .5; stroke-width: 1.5; }
+
+/* ===========================================================================
+   7. APP-SPECIFIC
+   =========================================================================== */
+
+/* ---- the bracket grid ----------------------------------------------------
+   CSS grid, one column per round, matches positioned by grid-row. No canvas,
+   no SVG connectors library, no virtualisation.
+
+   The connectors are ::after borders on the match itself. That is the trick
+   that keeps this fast: a 256-entrant bracket is ~500 DOM nodes and zero
+   layout passes beyond the initial one, where an SVG-connector approach needs
+   a measure pass per node and re-measures on every resize. On a mid-range
+   Android phone this is the difference between "instant" and "the tab
+   reloaded". */
+.bracket-scroll {
+  overflow: auto;
+  /* Its own scroll pane in both axes. Without a bounded height the round
+     headers cannot stick to anything and a 128-entrant bracket makes the page
+     itself thousands of pixels tall, which on a phone means you lose the tabs
+     and the app bar the moment you look at it. */
+  max-height: min(72dvh, 900px);
+  padding: 8px 4px 24px;
+  /* Momentum scrolling with snap to round boundaries -- on a phone you read a
+     bracket one round at a time, and free-scrolling loses your place. */
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+.bracket {
+  display: flex;
+  gap: 32px;
+  /* stretch, not start: every round column becomes as tall as the tallest, and
+     that free space is what the distribution below has to work with. With
+     `start` the columns are only as tall as their own content, so a round-two
+     match sits at the top instead of centred between the two round-one
+     matches that feed it -- which is what makes a bracket readable at a
+     glance. */
+  align-items: stretch;
+  min-width: min-content;
+}
+.bracket-round {
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+  min-width: 232px;
+}
+.bracket-round > h3 {
+  flex: none;
+  font: var(--label-large); color: var(--md-on-surface-variant);
+  padding: 0 4px 6px; position: sticky; top: 0;
+  background: var(--md-surface); z-index: 1;
+}
+/* The matches themselves, spread down the column so each one lands opposite
+   the midpoint of its feeders. */
+.round-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 8px;
+}
+
+.match {
+  position: relative;
+  border-radius: var(--shape-sm);
+  background: var(--md-surface-container-low);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  font: var(--body-medium);
+  overflow: hidden;
+}
+.match.ready { box-shadow: inset 0 0 0 2px var(--md-primary); }
+.match.live { box-shadow: inset 0 0 0 2px var(--warn); }
+.match.done { opacity: .82; }
+.match.bye { opacity: .5; }
+button.match { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; padding: 0; }
+
+.match-side {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; min-height: 40px;
+}
+.match-side + .match-side { border-top: 1px solid var(--md-outline-variant); }
+.match-side .seed {
+  flex: none; width: 22px; text-align: right;
+  font: var(--label-small); color: var(--md-on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+.match-side .who {
+  flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.match-side .score {
+  flex: none; font: var(--title-small); font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface-variant);
+}
+.match-side.won { background: color-mix(in srgb, var(--md-primary) 12%, transparent); }
+.match-side.won .who { font-weight: 600; }
+.match-side.won .score { color: var(--md-primary); }
+.match-side.lost .who, .match-side.lost .seed { color: var(--md-on-surface-variant); }
+.match-side.tbd .who { color: var(--md-on-surface-variant); font-style: italic; }
+.match-meta {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-top: 1px solid var(--md-outline-variant);
+  font: var(--label-small); color: var(--md-on-surface-variant);
+  background: var(--md-surface-container);
+}
+
+/* ---- station cards ------------------------------------------------------- */
+.stations { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.station {
+  border-radius: var(--shape-md); padding: 12px;
+  background: var(--md-surface-container-low);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+}
+.station.busy { box-shadow: inset 0 0 0 2px var(--warn); }
+.station.open { box-shadow: inset 0 0 0 2px var(--ok); }
+.station-head {
+  display: flex; align-items: center; gap: 8px;
+  font: var(--title-small); margin-bottom: 8px;
+}
+.station .timer { font: var(--label-medium); font-variant-numeric: tabular-nums; }
+.station .timer.over { color: var(--md-error); font-weight: 700; }
+
+/* ---- the entrant table ---------------------------------------------------
+   A real table, not a div grid, because a TO will select a range with shift,
+   copy it, and paste it into a spreadsheet -- and only a table survives that
+   round trip. Sticky header and first column so a 200-row roster stays
+   readable while scrolling. */
+.table-wrap {
+  overflow: auto; max-height: 70dvh;
+  border-radius: var(--shape-md);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+  background: var(--md-surface-container-lowest);
+}
+table.data { border-collapse: separate; border-spacing: 0; width: 100%; font: var(--body-medium); }
+table.data th, table.data td {
+  padding: 10px 12px; text-align: left;
+  border-bottom: 1px solid var(--md-outline-variant);
+  white-space: nowrap;
+}
+table.data thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--md-surface-container);
+  font: var(--title-small); color: var(--md-on-surface-variant);
+}
+table.data tbody tr:hover td { background: color-mix(in srgb, var(--md-on-surface) 4%, transparent); }
+table.data tbody tr.selected td { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.data td input {
+  width: 100%; min-width: 60px; padding: 4px 6px;
+  border: 1px solid transparent; border-radius: var(--shape-xs);
+  background: transparent; color: inherit; font: inherit;
+}
+table.data td input:hover { border-color: var(--md-outline-variant); }
+table.data td input:focus { outline: none; border-color: var(--md-primary); background: var(--md-surface); }
+table.data .check { width: 44px; }
+
+/* Bulk action bar — appears when rows are selected. Not a floating toolbar
+   that covers the rows you just picked; it takes the top of the table. */
+.bulk-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px; border-radius: var(--shape-md);
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+}
+
+/* ---- guidance ("next steps") --------------------------------------------- */
+.guide-list { display: flex; flex-direction: column; gap: 8px; }
+.guide {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px; border-radius: var(--shape-md);
+  background: var(--md-surface-container-low);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+}
+.guide.urgent { background: var(--md-error-container); color: var(--md-on-error-container); box-shadow: none; }
+.guide.attention { background: var(--warn-container); color: var(--on-warn-container); box-shadow: none; }
+.guide .guide-body { flex: 1 1 auto; min-width: 0; }
+.guide .guide-title { font: var(--title-small); }
+.guide .guide-why { font: var(--body-small); opacity: .85; margin-top: 2px; }
+.guide .guide-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+/* ---- seeding lab --------------------------------------------------------- */
+.seed-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px; border-radius: var(--shape-sm);
+  background: var(--md-surface-container-low);
+}
+.seed-row.moved { background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); }
+.seed-row .rank {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center;
+  border-radius: var(--shape-full); background: var(--md-surface-container-highest);
+  font: var(--label-large); font-variant-numeric: tabular-nums;
+}
+.seed-row .grip { cursor: grab; color: var(--md-on-surface-variant); touch-action: none; }
+.seed-row.dragging { opacity: .4; }
+.seed-row.drop-target { box-shadow: inset 0 2px 0 var(--md-primary); }
+
+/* ---- rules sheet --------------------------------------------------------- */
+.rules-group { margin-bottom: 24px; }
+.rules-group > h3 {
+  font: var(--title-medium); margin-bottom: 8px;
+  padding-bottom: 4px; border-bottom: 1px solid var(--md-outline-variant);
+}
+.rules-row {
+  display: flex; gap: 16px; align-items: baseline;
+  padding: 6px 0; font: var(--body-medium);
+}
+.rules-row dt { flex: 0 0 200px; color: var(--md-on-surface-variant); }
+.rules-row dd { margin: 0; flex: 1 1 auto; }
+.rules-row.overridden dd::after {
+  content: 'changed'; margin-left: 8px; padding: 1px 6px;
+  border-radius: var(--shape-full); font: var(--label-small);
+  background: var(--md-tertiary-container); color: var(--md-on-tertiary-container);
+}
+@media (max-width: 599px) { .rules-row { flex-direction: column; gap: 0; } .rules-row dt { flex: none; } }
+
+/* ---- offline / sync indicator -------------------------------------------- */
+/* The whole product promise in one control. It is in the app bar, always, and
+   it says what is actually true: how many writes are waiting and whether the
+   last sync worked. Hiding sync state is what makes people distrust an app
+   on bad wifi -- they tap report, nothing visibly happens, so they tap again. */
+.sync {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: var(--shape-full);
+  font: var(--label-medium); white-space: nowrap;
+  background: var(--md-surface-container-high); color: var(--md-on-surface-variant);
+}
+.sync.pending { background: var(--warn-container); color: var(--on-warn-container); }
+.sync.offline { background: var(--md-error-container); color: var(--md-on-error-container); }
+.sync .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.sync.pending .dot { animation: pulse 1.4s var(--ease-standard) infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* ---- misc ---------------------------------------------------------------- */
+.code {
+  font: var(--body-medium); font-family: var(--font-mono);
+  letter-spacing: .1em; padding: 2px 8px;
+  border-radius: var(--shape-xs); background: var(--md-surface-container-highest);
+}
+.invite-code {
+  font-family: var(--font-mono); font-size: clamp(1.5rem, 5vw, 2rem);
+  font-weight: 700; letter-spacing: .2em;
+}
+.divider { height: 1px; background: var(--md-outline-variant); border: 0; margin: 8px 0; }
+
+.h-scroll {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.h-scroll::-webkit-scrollbar { height: 4px; }
+.h-scroll::-webkit-scrollbar-thumb { background: var(--md-outline-variant); border-radius: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
