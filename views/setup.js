@@ -26,11 +26,46 @@ import * as auth from '../lib/auth.js';
 import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, formatValue, evoLabel } from '../data/games.js';
 import { gameArt, gameHero, themeFor } from '../data/themes.js';
 
-/* Wizard state. Module-level rather than in the store: a half-finished event
-   is not an event, and writing draft rows for every abandoned setup would
-   litter the database with them. It survives a re-render, not a reload —
-   which is the right lifetime for something you are in the middle of. */
+/* Wizard state.
+   --------------------------------------------------------------------------
+   Not a store row: a half-finished event is not an event, and writing draft
+   rows for every abandoned setup would litter the database with them.
+
+   It IS persisted to localStorage, though, which it was not at first. The
+   reason is the sign-in gate at the end: signing in with Discord leaves the
+   page entirely and comes back through an OAuth redirect, and a draft held
+   only in a module variable does not survive that. Somebody who has picked a
+   game, named the event, tuned four rules and set up sign-ups would come back
+   to an empty first step -- which is a good way to make sure they never sign
+   in again.
+
+   So the lifetime is "until you publish it or discard it", across reloads and
+   redirects, on this device. Still nothing on a server. */
+const DRAFT_KEY = 'battydev.brackets.draft';
 let draft = null;
+
+function saveDraft() {
+  try {
+    if (draft) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch { /* private mode: the draft is still fine in memory */ }
+}
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    /* Merge over a fresh draft rather than trusting the stored shape. A draft
+       saved before a field existed would otherwise arrive with it undefined
+       and take a view down with it. */
+    return { ...freshDraft(), ...JSON.parse(raw) };
+  } catch { return null; }
+}
+
+function discardDraft() {
+  draft = null;
+  saveDraft();
+}
 
 function freshDraft() {
   return {
@@ -48,6 +83,7 @@ function freshDraft() {
     presetId: null,
     overrides: {},
     documents: [{ id: 'doc_coc', title: 'Code of conduct', required: true, version: 1 }],
+    visibility: 'public',
     poolsEnabled: false,
     poolCount: 4,
     gameSearch: '',
@@ -67,7 +103,7 @@ function defaultStart() {
 const STEPS = ['Game', 'Shape', 'Rules', 'Sign-ups', 'Publish'];
 
 export function view(ctx) {
-  if (!draft) draft = freshDraft();
+  if (!draft) draft = loadDraft() || freshDraft();
   const game = draft.gameId ? gameById(draft.gameId) : null;
 
   return {
@@ -482,11 +518,33 @@ function stepSignups() {
       <div class="row-tight" style="margin-bottom:8px;color:var(--md-primary)">
         ${raw(icon('key'))}<b class="title-medium">How people find it</b>
       </div>
-      <p class="body-medium dim" style="margin:0">
+      <p class="body-medium dim" style="margin:0 0 16px">
         Publishing generates a short invite code and a link. The code is readable over a PA
         and has no 0, O, 1 or I in it. Anyone can enter with either; you can also add people
         yourself, in bulk, from a spreadsheet.
       </p>
+
+      <p class="label-large" style="margin-bottom:8px">Who can find it</p>
+      <div class="segmented segmented-block">
+        ${list([['public', 'Listed'], ['unlisted', 'Unlisted']].map(([value, label]) => html`
+          <button type="button" data-act="wizard-set" data-field="visibility" data-value="${value}"
+                  aria-pressed="${(draft.visibility || 'public') === value}">${label}</button>`))}
+      </div>
+      <p class="field-help" style="padding-left:0">
+        ${(draft.visibility || 'public') === 'unlisted'
+          ? 'Reachable only with the code or the link — it will not appear on the events list. Right for an invitational, a private house session, or an event you are still filling before you announce it.'
+          : 'Appears on the events list for anyone browsing the site. Right for a weekly you want people to turn up to.'}
+        You can change this at any time from the event\'s settings, including after it has started.
+      </p>
+      ${(draft.visibility || 'public') === 'unlisted' ? html`
+        <div class="banner banner-warn" style="margin-top:12px">
+          ${raw(icon('alert'))}
+          <div class="body-small">
+            <b>Unlisted is not secret.</b> Anyone who has the link or the code can open it and see
+            the entrant list, and anyone they pass it to can too. It hides the event from browsing;
+            it does not lock it.
+          </div>
+        </div>` : ''}
     </div>`;
 }
 
@@ -515,6 +573,7 @@ function stepPublish(ctx, game) {
         ${raw(summaryRow('Cap', draft.capacity ? `${draft.capacity} then waitlist` : 'No limit'))}
         ${raw(summaryRow('Ruleset', ruleset ? `${ruleset.presetName} v${ruleset.presetVersion}${Object.keys(draft.overrides).length ? ` · ${Object.keys(draft.overrides).length} changed` : ''}` : '—'))}
         ${raw(summaryRow('Signing', draft.documents.filter((d) => d.required).map((d) => d.title).join(', ') || 'Nothing required'))}
+        ${raw(summaryRow('Visible', draft.visibility === 'unlisted' ? 'Unlisted — code or link only' : 'Listed publicly'))}
       </dl>
     </div>
 
@@ -526,9 +585,18 @@ function stepPublish(ctx, game) {
         </ul></div>
       </div>` : ''}
 
+    ${auth.isSignedIn() ? '' : html`
+      <div class="banner banner-info" style="margin-bottom:16px">
+        ${raw(icon('person'))}
+        <div>
+          <b>You will be asked to sign in</b>
+          <p class="body-small" style="margin:4px 0 0">Everything above is saved on this device, so signing in will not lose any of it. An event has other people's names on it — it needs an organiser attached to it.</p>
+        </div>
+      </div>`}
+
     <button class="btn btn-filled btn-lg btn-block" data-act="wizard-publish"
             ${raw(problems.length ? 'disabled' : '')}>
-      ${raw(icon('check'))} Create the event
+      ${raw(icon('check'))} ${auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event'}
     </button>
     <p class="body-small dim" style="text-align:center;margin-top:12px">
       Nothing here is final — every setting stays editable while the event is running.
@@ -552,7 +620,10 @@ function validate(game) {
    Actions
    -------------------------------------------------------------------------- */
 
-const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+/* Every mutation goes through one of these two, so persistence is a single
+   line in each rather than a line at forty call sites waiting to be
+   forgotten. */
+const rerender = () => { saveDraft(); window.dispatchEvent(new HashChangeEvent('hashchange')); };
 
 on('wizard-step', ({ step }) => { draft.step = Number(step); rerender(); });
 
@@ -567,7 +638,7 @@ on('wizard-game', ({ game }) => {
   rerender();
 });
 
-on('wizard-field', ({ field }, el) => { draft[field] = el.value; });
+on('wizard-field', ({ field }, el) => { draft[field] = el.value; saveDraft(); });
 
 on('wizard-game-search', (d, el) => { draft.gameSearch = el.value; rerender(); });
 
@@ -625,11 +696,83 @@ on('wizard-doc-required', ({ index }) => {
   doc.required = !doc.required;
   rerender();
 });
-on('wizard-doc-title', ({ index }, el) => { draft.documents[Number(index)].title = el.value; });
+on('wizard-doc-title', ({ index }, el) => { draft.documents[Number(index)].title = el.value; saveDraft(); });
 
-on('wizard-publish', () => {
+/* --------------------------------------------------------------------------
+   The sign-in gate
+   --------------------------------------------------------------------------
+   You can walk this entire wizard as a guest. You cannot finish it as one.
+
+   That split is deliberate and it is the opposite of what most sites do,
+   which is to demand an account on the first screen before you know whether
+   the thing is any good. Nobody should have to sign up to find out what the
+   Tokon ruleset form looks like. But an event is a public artefact with other
+   people's names on it, and the moment it exists somebody has to be
+   accountable for it -- there is no way to ban a bad actor who is not anybody.
+
+   The important half is that the gate does not cost you anything: the draft
+   is on disk, so signing in mid-publish (including the Discord round trip,
+   which leaves the page entirely) comes back to a filled-in wizard and
+   carries straight on to the event that was about to be created.
+
+   With no backend configured the gate is a formality -- "signing in" mints a
+   profile on the device and nothing leaves it -- and it is deliberately not
+   skipped in that case. Same code path, so it is the path that actually gets
+   exercised, and a TO who later connects a backend meets no new step.
+   -------------------------------------------------------------------------- */
+
+on('wizard-publish', async () => {
   const game = gameById(draft.gameId);
   if (validate(game).length) return;
+
+  if (!auth.currentPlayer()) {
+    /* Mark the draft so a sign-in that leaves the page can find its way back.
+       The in-dialog paths (email, device account) come back through the
+       callback below and never need this; Discord's OAuth redirect reloads
+       the app, and `resumePendingPublish` picks it up on boot. */
+    draft.pendingPublish = true;
+    saveDraft();
+    const authView = await import('./auth.js');
+    authView.openSignIn(() => {
+      if (!auth.currentPlayer()) return;
+      delete draft.pendingPublish;
+      publish();
+    }, {
+      title: 'Sign in to create it',
+      why: 'Your event stays exactly as you have set it up — this is saved on your device. An event has other people\'s names on it, so it needs somebody accountable for it.',
+    });
+    return;
+  }
+
+  publish();
+});
+
+/* Called once on boot. Somebody who signed in with Discord from the publish
+   gate comes back on a fresh page load, at whatever route the OAuth redirect
+   named -- so without this they land on the events list with no idea their
+   draft survived.
+
+   It returns them to the wizard with everything filled in and does NOT create
+   the event for them. Creating a public artefact as a side effect of a page
+   load is the kind of thing that produces two events when somebody refreshes,
+   and the last press of that button should be a deliberate one. */
+export function resumePendingPublish() {
+  const pending = loadDraft();
+  if (!pending?.pendingPublish) return false;
+  delete pending.pendingPublish;
+  draft = pending;
+  saveDraft();
+  if (!auth.currentPlayer()) return false;   /* sign-in was abandoned; draft keeps */
+  draft.step = STEPS.length - 1;
+  saveDraft();
+  snack('Signed in — your event is still here. Create it when you are ready.');
+  window.location.hash = '#/new';
+  return true;
+}
+
+function publish() {
+  const game = gameById(draft.gameId);
+  if (!game || validate(game).length) return;
 
   const me = auth.currentPlayer();
   const id = store.uid('evt');
@@ -665,6 +808,7 @@ on('wizard-publish', () => {
     entryFee: draft.entryFee ? Number(draft.entryFee) : 0,
     currency: draft.currency,
     status: 'registration',
+    visibility: draft.visibility === 'unlisted' ? 'unlisted' : 'public',
     inviteCode: code,
     presetId: draft.presetId || game.presets[0].id,
     overrides: draft.overrides,
@@ -686,7 +830,7 @@ on('wizard-publish', () => {
   }
 
   const name = draft.name.trim();
-  draft = null;
+  discardDraft();
 
   dialog({
     title: 'Event created',
@@ -709,4 +853,4 @@ on('wizard-publish', () => {
   });
 
   window.location.hash = `#/e/${id}/admin`;
-});
+}

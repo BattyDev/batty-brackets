@@ -135,6 +135,74 @@ function focusMainIfNavigated(path) {
   if (first) return;
   const main = document.getElementById('main');
   if (main) main.focus({ preventScroll: true });
+  restoreScroll();
+}
+
+/* --------------------------------------------------------------------------
+   Scroll position
+   --------------------------------------------------------------------------
+   `focus({ preventScroll: true })` above is right -- moving focus must not
+   yank the page around -- but on its own it meant navigation did not move the
+   page at all. Scroll halfway down the events list, click "Start a new
+   event", and you land in the middle of the wizard with its first question
+   above you. Reported exactly that way.
+
+   The naive fix is `scrollTo(0, 0)` on every draw, which is wrong twice over:
+   a store change redraws too (check somebody in from the bottom of a 28-row
+   roster and you get thrown back to the top), and Back should return you to
+   where you were, not to the top of a list you have already scrolled.
+
+   So position is remembered per HISTORY ENTRY, not per path. A path is not
+   enough -- visiting the same event twice from two different places should
+   not inherit the first visit's scroll -- and the browser gives every history
+   entry a slot for exactly this. New entry: top. Returning to one we have
+   seen: back where you were.
+
+   `scrollRestoration = 'manual'` stops the browser doing its own version of
+   this a frame later and fighting us. Chrome and Safari disagree about
+   whether hash navigation restores scroll at all, so doing it ourselves is
+   also the only way to get one behaviour on both. */
+if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+
+let nextNavKey = 1;
+const scrollMemory = new Map();
+
+function navKey() {
+  /* An entry created by a plain <a href="#/..."> has null state, so stamp one
+     on first sight. replaceState keeps the entry -- pushing here would double
+     every Back press. */
+  if (window.history.state?.brkNav == null) {
+    const key = nextNavKey;
+    nextNavKey += 1;
+    try { window.history.replaceState({ ...window.history.state, brkNav: key }, ''); }
+    catch { return null; }  /* file:// in some browsers */
+    return key;
+  }
+  return window.history.state.brkNav;
+}
+
+/* Record continuously rather than on the way out. Most navigation in this app
+   is a plain link the router never sees before the hash has already changed,
+   so there is no reliable "about to leave" moment to hook. */
+let scrollTicking = false;
+window.addEventListener('scroll', () => {
+  if (scrollTicking) return;
+  scrollTicking = true;
+  requestAnimationFrame(() => {
+    scrollTicking = false;
+    const key = window.history.state?.brkNav;
+    if (key != null) scrollMemory.set(key, window.scrollY);
+  });
+}, { passive: true });
+
+function restoreScroll() {
+  const key = navKey();
+  const remembered = key == null ? 0 : scrollMemory.get(key);
+  /* A new entry has nothing remembered, and the top is where a new page
+     starts. `instant` because this is a page change, not a nudge -- smooth
+     scrolling a whole viewport on every navigation is motion nobody asked
+     for, and it would race the next render. */
+  window.scrollTo({ top: remembered || 0, left: 0, behavior: 'instant' });
 }
 
 /* --------------------------------------------------------------------------
@@ -196,7 +264,11 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
         <h1>${title}${subtitle ? html`<span class="sub">${subtitle}</span>` : ''}</h1>
         ${raw(actions)}
         ${raw(syncChip())}
-        <button class="btn btn-icon" data-act="theme" aria-label="Switch theme">${raw(icon('theme'))}</button>
+        <!-- The label names the destination, not the control. "Switch theme"
+             tells a screen reader user nothing about which way it goes; the
+             sighted cue is the icon and they do not have it. -->
+        <button class="btn btn-icon" data-act="theme"
+                aria-label="Switch to ${raw(resolvedTheme() === 'dark' ? 'light' : 'dark')} theme">${raw(icon('theme'))}</button>
       </header>
 
       <nav class="nav" aria-label="Sections">
@@ -292,13 +364,50 @@ function drawChrome() {
 on('go', ({ path }) => go(path));
 on('noop', () => {});
 
-on('theme', () => {
-  const current = document.documentElement.dataset.theme;
-  const next = current === 'dark' ? 'light' : current === 'light' ? '' : 'dark';
+/* The theme button toggles against what you can SEE, not against what is
+   stored.
+   --------------------------------------------------------------------------
+   This shipped as a three-way cycle -- dark, light, follow-system -- and it
+   was reported as "I have to click twice to switch to light mode". It was:
+
+     stored     rendered (system dark)   click sets   rendered
+     (none)     dark                     dark         dark      <- nothing happens
+     dark       dark                     light        light
+
+   With no preference stored the page follows the system, so on a system-dark
+   machine the FIRST click stored "dark" -- which the page already looked
+   like. A control that does nothing visible is a broken control, no matter
+   how defensible the state machine behind it is.
+
+   So it is a two-state switch on the RESOLVED appearance now: whatever you
+   are looking at, one click gives you the other one. Following the system is
+   still the default until you touch it, and still reachable -- but as an
+   offer in the snackbar rather than as a third of the cycle, because
+   "returns you to automatic" is a rare intention and does not deserve to sit
+   between the two common ones. */
+function resolvedTheme() {
+  const stored = document.documentElement.dataset.theme;
+  if (stored === 'dark' || stored === 'light') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function setTheme(next) {
   if (next) document.documentElement.dataset.theme = next;
   else delete document.documentElement.dataset.theme;
-  try { localStorage.setItem('battydev.brackets.theme', next); } catch { /* private mode */ }
-  snack(next ? `${next[0].toUpperCase()}${next.slice(1)} theme` : 'Following your system theme');
+  try {
+    if (next) localStorage.setItem('battydev.brackets.theme', next);
+    else localStorage.removeItem('battydev.brackets.theme');
+  } catch { /* private mode */ }
+  draw();
+}
+
+on('theme', () => {
+  const next = resolvedTheme() === 'dark' ? 'light' : 'dark';
+  setTheme(next);
+  snack(`${next[0].toUpperCase()}${next.slice(1)} theme`, {
+    action: 'Use system',
+    onAction: () => { setTheme(''); snack('Following your system theme'); },
+  });
 });
 
 on('sign-in', () => authView.openSignIn(draw));
@@ -416,7 +525,19 @@ on('undo', () => {
     if (parseRoute().name === 'admin' && parseRoute().params.tab === 'overview') draw();
   }, 20000);
 
+  /* Stamp the entry the page loaded on before anything scrolls. Without this
+     the FIRST page you look at is the one page whose position is never
+     recorded, so Back to it lands at the top -- which is the most likely Back
+     in the app. */
+  navKey();
+
   draw();
+
+  /* Somebody who hit the wizard's sign-in gate and chose Discord left the page
+     entirely and has just come back on a fresh load. Their draft is on disk;
+     this puts them back in front of it. */
+  const setup = await import('./views/setup.js');
+  setup.resumePendingPublish();
 
   /* Sets up the "brackets" search param -> invite code shortcut, so a QR code
      on a flyer can be battydev.com/brackets/?join=TKN14B and land straight on

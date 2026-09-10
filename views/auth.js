@@ -14,9 +14,16 @@ import * as auth from '../lib/auth.js';
 import { dialog, html, raw, esc, icon, snack } from '../lib/ui.js';
 
 let redraw = () => {};
+/* Set when sign-in was demanded by something rather than chosen: the wizard's
+   publish gate passes its own heading and reason so the dialog explains why
+   it appeared, instead of showing the same generic "Sign in" that a user who
+   clicked "Sign in" would get. Being interrupted by a modal that does not say
+   why is the thing that makes people close the tab. */
+let context = null;
 
-export function openSignIn(onDone) {
+export function openSignIn(onDone, why = null) {
   redraw = onDone || (() => {});
+  context = why;
   chooseStep();
 }
 
@@ -25,14 +32,33 @@ export function openSignIn(onDone) {
    -------------------------------------------------------------------------- */
 
 function chooseStep() {
+  const local = !auth.isRemote();
   const el = dialog({
-    title: 'Sign in',
+    title: context?.title || 'Sign in',
     body: html`
-      <p class="body-medium dim">Your profile, your match history and every event you have ever entered live on one account — whichever way you sign in to it.</p>
+      <p class="body-medium dim">${context?.why
+        || 'Your profile, your match history and every event you have ever entered live on one account — whichever way you sign in to it.'}</p>
+      ${local ? html`
+        <div class="banner banner-info" style="margin-top:16px">
+          ${raw(icon('station'))}
+          <div>
+            <b>No server is connected yet</b>
+            <p class="body-small" style="margin:4px 0 0">Discord sign-in needs one. For now an account is created on this device — it works completely, it just does not sync anywhere or reach another phone.</p>
+          </div>
+        </div>` : ''}
       <div class="stack" style="margin:20px 0 8px">
-        <button class="btn btn-filled btn-lg btn-block" id="sign-discord">
-          ${raw(icon('discord'))} Continue with Discord
-        </button>
+        ${local ? html`
+          <button class="btn btn-filled btn-lg btn-block" id="sign-local">
+            ${raw(icon('person'))} Continue on this device
+          </button>
+          <button class="btn btn-outlined btn-block" id="sign-discord" disabled
+                  title="Discord sign-in needs a server, which is not connected yet.">
+            ${raw(icon('discord'))} Continue with Discord — not available yet
+          </button>`
+        : html`
+          <button class="btn btn-filled btn-lg btn-block" id="sign-discord">
+            ${raw(icon('discord'))} Continue with Discord
+          </button>`}
         <button class="btn btn-outlined btn-block" id="sign-email">
           ${raw(icon('mail'))} Use an email address
         </button>
@@ -47,7 +73,7 @@ function chooseStep() {
     actions: [{ label: 'Cancel', kind: 'text' }],
   });
 
-  el.querySelector('#sign-discord').addEventListener('click', async () => {
+  el.querySelector('#sign-discord')?.addEventListener('click', async () => {
     try {
       await auth.signInWithDiscord();
       el.close();
@@ -56,6 +82,7 @@ function chooseStep() {
       snack(err.message || 'Discord sign-in failed. Try email instead.');
     }
   });
+  el.querySelector('#sign-local')?.addEventListener('click', () => { el.close(); localStep(); });
   el.querySelector('#sign-email').addEventListener('click', () => { el.close(); emailStep(); });
   el.querySelector('#sign-claim').addEventListener('click', () => { el.close(); claimStep(); });
 }
@@ -233,6 +260,53 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
 /* --------------------------------------------------------------------------
    Claim
    -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   Local mode — an account on this device
+   --------------------------------------------------------------------------
+   With no backend configured there is no Discord to redirect to and no server
+   to hold an account, so this is what "sign in" honestly means: pick a tag,
+   get a profile, keep it on this device.
+
+   It used to be hidden behind the Discord button, which silently created a
+   local profile called "Local TO" and returned as though OAuth had worked.
+   That is why Discord sign-in was reported as broken -- it was not broken, it
+   was pretending. A button that does something other than what it says is
+   worse than a button that says it cannot help yet.
+   -------------------------------------------------------------------------- */
+
+function localStep() {
+  const el = dialog({
+    title: 'What should we call you?',
+    body: html`
+      <p class="body-medium dim">Your tag is what other people see on a bracket. You can change it later.</p>
+      <label class="field" style="margin-top:16px">
+        <span class="field-label">Tag</span>
+        <input type="text" id="tag" autocomplete="nickname" spellcheck="false" maxlength="24" placeholder="Kira">
+      </label>
+      <p class="field-help" id="tag-note">Saved on this device. Nothing is sent anywhere — there is no server connected.</p>`,
+    actions: [
+      { label: 'Cancel', kind: 'text' },
+      {
+        label: 'Continue',
+        kind: 'filled',
+        onClick: (dlg) => {
+          const tag = dlg.querySelector('#tag').value.trim();
+          if (!tag) {
+            dlg.querySelector('#tag-note').textContent = 'Pick something — even one letter.';
+            return false;
+          }
+          auth.signInLocal({ tag });
+          dlg.close();
+          snack(`Signed in as ${tag} — on this device`);
+          redraw();
+          return true;
+        },
+      },
+    ],
+  });
+  el.querySelector('#tag').focus();
+}
 
 function claimStep() {
   dialog({

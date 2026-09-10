@@ -576,6 +576,57 @@ handle you could have typed.
 
 ---
 
+## Signing in, and who can see an event
+
+Two rules, and the second exists because of the first.
+
+**You can walk the whole setup wizard as a guest. You cannot finish it as
+one.** That is the opposite of the usual arrangement, where an account is
+demanded on the first screen before you know whether the thing is any good.
+Nobody should have to sign up to find out what the Tokon ruleset form looks
+like. But a published event is a public artefact with other people's names on
+it, and the moment it exists somebody has to be accountable for it — there is
+no way to ban a bad actor who is not anybody.
+
+The gate is only defensible if it is free, so the draft is written to
+`localStorage` on every change and survives the whole round trip — including
+Discord's OAuth redirect, which leaves the page entirely and comes back on a
+fresh load. Coming back that way returns you to the wizard, filled in, on the
+publish step. It deliberately does *not* create the event for you: making a
+public artefact as a side effect of a page load is how you end up with two of
+them when somebody refreshes.
+
+**Events are listed or unlisted.** Unlisted means reachable with the code or
+the link and absent from every listing — an invitational, a private house
+session, or a weekly you are still filling before you announce it. It is
+settable in the wizard and changeable afterwards from settings, mid-event
+included.
+
+The UI says, in those words, that **unlisted is not secret**. Anyone with the
+link can open it and pass it on. Being precise about that is the difference
+between a discoverability setting and a promise you cannot keep.
+
+Against a backend it is enforced rather than merely filtered, which most
+bracket sites do not bother with: the read policy on `bkt_events` returns an
+unlisted row only to its staff or to somebody already entered, so the event
+list cannot be scraped for private sessions. Redeeming a code goes through
+`bkt_event_by_code`, a `SECURITY DEFINER` function that returns exactly one
+row for an exact code — the code is the capability. It requires a signed-in
+caller, and it has no rate limit yet, which is a real gap and is written down
+as one.
+
+### What Discord sign-in does with no server
+
+Nothing, now, and it says so. It used to quietly create a device-local profile
+named "Local TO" and return as though OAuth had succeeded, which got reported
+as "Discord sign in doesn't work" — accurate, even though nothing errored. A
+button that does something other than what it says is worse than one that
+admits it cannot help yet. With no project configured the dialog explains that
+no server is connected, disables the Discord option, and offers an explicit
+"continue on this device" instead.
+
+---
+
 ## The venue display
 
 `#/e/<id>/tv` — what goes on the television in the corner of the room, opened
@@ -857,6 +908,9 @@ Expect to fix things on first connection.
 **Not built:** start.gg import; Discord notifications; player self-reporting and
 disputes; pools → top cut in the UI; payments; per-player privacy controls;
 stream tooling; per-event link previews.
+
+Everything outstanding, with reasoning and rough order, is in
+[ROADMAP.md](ROADMAP.md).
 
 ---
 

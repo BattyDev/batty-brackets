@@ -232,6 +232,17 @@ create table if not exists public.bkt_events (
   -- right bracket.
   invite_code  text unique not null,
 
+  -- 'public'   listed: turns up for anyone browsing.
+  -- 'unlisted' reachable with the code or the link, and nowhere else.
+  --
+  -- Unlisted is a real read policy below and not merely a client-side filter,
+  -- because a filter applied in the browser is not a filter at all against
+  -- anyone willing to call PostgREST directly. What it is NOT is secrecy: an
+  -- unlisted event is readable by anyone holding the code, and codes get
+  -- forwarded. See bkt_event_by_code.
+  visibility   text not null default 'public'
+               check (visibility in ('public', 'unlisted')),
+
   -- The ruleset, stored as a COPY rather than a reference. A preset that
   -- changes next month must not silently rewrite the rules of an event that
   -- already ran; see the note in ../data/games.js.
@@ -245,7 +256,10 @@ create table if not exists public.bkt_events (
 );
 
 create index if not exists bkt_events_org_idx on public.bkt_events (org_id);
-create index if not exists bkt_events_status_idx on public.bkt_events (status, starts_at desc);
+-- The browsing index carries visibility because the browsing query filters on
+-- it, and a partial index on the listed rows is smaller than the whole table.
+create index if not exists bkt_events_status_idx on public.bkt_events (status, starts_at desc)
+  where visibility = 'public';
 
 -- ---------------------------------------------------------------------------
 -- bkt_entries -- a player IN an event
@@ -498,10 +512,76 @@ create policy bkt_staff_write on public.bkt_org_staff
   );
 
 -- ---- events --------------------------------------------------------------
--- Public, except drafts. A draft is a TO thinking out loud.
+-- Listed and not a draft, or it is yours, or you are in it.
+--
+-- Three clauses, one per reason somebody legitimately sees an event:
+--   * it is listed and published -- a draft is a TO thinking out loud
+--   * you are staff for the org that owns it
+--   * you are entered in it, which is how an unlisted event stays usable for
+--     the people it was made for after they have joined by code
+--
+-- An unlisted event that nobody has joined yet is reachable ONLY through
+-- bkt_event_by_code below, which is the point: without the code there is no
+-- query that returns it, so the event list cannot be scraped for private
+-- sessions. That is a genuinely different guarantee from filtering in the
+-- browser, which is what "unlisted" means on most bracket sites.
 drop policy if exists bkt_events_read on public.bkt_events;
 create policy bkt_events_read on public.bkt_events
-  for select using (status <> 'draft' or public.bkt_is_staff(org_id));
+  for select using (
+    (status <> 'draft' and visibility = 'public')
+    or public.bkt_is_staff(org_id)
+    or exists (
+      select 1 from public.bkt_entries en
+      join public.bkt_players p on p.id = en.player_id
+      where en.event_id = bkt_events.id and p.auth_user_id = auth.uid()
+    )
+  );
+
+-- Redeeming a code.
+-- ---------------------------------------------------------------------------
+-- SECURITY DEFINER so it can see past the read policy above, which is the
+-- only way an unlisted event can be opened by somebody who has the link but
+-- has not entered yet.
+--
+-- It returns ONE event and only by exact code. That matters: the obvious
+-- alternative -- letting the client select on invite_code -- requires the row
+-- to be readable, which would defeat the policy entirely. Here the code is
+-- the capability, and holding it grants exactly one row.
+--
+-- Codes are short enough to guess given enough attempts, and there is NO rate
+-- limit here yet -- that is a real gap, recorded in ROADMAP.md, and the honest
+-- state of it is: requiring a signed-in caller is the only mitigation in
+-- place. It buys something (a guesser needs an account, and accounts can be
+-- banned) and it is not sufficient on its own. Public events do not need this
+-- function at all -- they are readable directly.
+create or replace function public.bkt_event_by_code(p_code text)
+returns public.bkt_events
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  ev public.bkt_events;
+begin
+  if auth.uid() is null then
+    raise exception 'sign in to open an event by code'
+      using errcode = '42501';
+  end if;
+
+  select * into ev
+  from public.bkt_events
+  where upper(invite_code) = upper(trim(p_code))
+    and status <> 'draft';
+
+  return ev;   -- null row when there is no match; the caller cannot tell
+                -- "wrong code" from "unlisted and wrong code", which is the
+                -- correct amount of information to give a guesser.
+end;
+$$;
+
+revoke all on function public.bkt_event_by_code(text) from public, anon;
+grant execute on function public.bkt_event_by_code(text) to authenticated;
 
 drop policy if exists bkt_events_write on public.bkt_events;
 create policy bkt_events_write on public.bkt_events

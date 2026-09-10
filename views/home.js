@@ -112,9 +112,14 @@ function landing(ctx) {
 
 function dashboard(ctx) {
   const { me } = ctx;
-  const events = store.listEvents();
   const myEntries = Object.values(ctx.state.entries).filter((e) => e.playerId === me.id);
   const entered = new Set(myEntries.map((e) => e.eventId));
+
+  /* Your own dashboard shows your unlisted events. Hiding an event from the
+     person running it, or from somebody already entered in it, is not privacy
+     -- it is just losing it. Everyone else sees only what is listed. */
+  const mine = (e) => e.ownerId === me.id || e.orgId === me.defaultOrgId || entered.has(e.id);
+  const events = store.listEvents({ all: true }).filter((e) => e.visibility !== 'unlisted' || mine(e));
 
   const running = events.filter((e) => ['checkin', 'seeding', 'running'].includes(e.status));
   const upcoming = events.filter((e) => e.status === 'registration' || e.status === 'draft');

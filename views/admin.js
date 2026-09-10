@@ -886,6 +886,21 @@ function settingsTab(data) {
               <input type="number" value="${event.entryFee ?? 0}" data-act-change="event-field" data-field="entryFee" data-type="number">
             </label>
           </div>
+
+          <div>
+            <p class="label-large" style="margin-bottom:8px">Who can find it</p>
+            <div class="segmented segmented-block">
+              ${list([['public', 'Listed'], ['unlisted', 'Unlisted']].map(([value, label]) => html`
+                <button type="button" data-act="event-visibility" data-value="${value}"
+                        aria-pressed="${(event.visibility || 'public') === value}">${label}</button>`))}
+            </div>
+            <p class="field-help" style="padding-left:0">
+              ${(event.visibility || 'public') === 'unlisted'
+                ? 'Hidden from the events list. Anyone with the code or the link can still open it — unlisted is not secret.'
+                : 'Listed for anyone browsing the site.'}
+              Changing this takes effect immediately; the invite code keeps working either way.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -1689,6 +1704,14 @@ on('event-status', ({ status }) => {
   }
   store.apply('events', eventId, patch);
   snack(`Moved to ${FLOW_LABEL[status]}`);
+  rerender();
+});
+
+on('event-visibility', ({ value }) => {
+  store.apply('events', currentEventId(), { visibility: value });
+  snack(value === 'unlisted'
+    ? 'Unlisted — it will not appear on the events list. The code still works.'
+    : 'Listed — anyone browsing the site can find it.');
   rerender();
 });
 
