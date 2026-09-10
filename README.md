@@ -455,8 +455,9 @@ handle you could have typed.
 
 Audited with axe-core across every route, in light and dark, at desktop and
 phone widths: **zero violations** at WCAG 2.1 AA plus axe's best-practice
-rules. Re-run it yourself against a local server with the script in the repo
-history, or point any axe tool at the routes.
+rules. The rest of the site was brought to **2.2 AA** separately, so this was
+checked against 2.2's additions too — target size, focus not obscured, and
+dragging movements — which are the three that actually bite an app like this.
 
 That is the floor, not the ceiling — axe catches perhaps 40% of real problems,
 so the rest was checked by driving the app:
@@ -476,9 +477,14 @@ so the rest was checked by driving the app:
 - **Motion.** `prefers-reduced-motion` suppresses every transition.
 - **Colour.** `test/theme.test.mjs` measures every pairing the app paints, in
   both schemes. Lowest is 9.3:1 against a 4.5:1 requirement.
+- **Target size (2.2).** Every control is at least 24×24. The roster table is
+  dense on purpose, but its inline editors were 13px tall — compact enough to
+  be genuinely hard to hit with a mouse, never mind a thumb.
+- **Dragging (2.2).** Nothing is drag-only. The seeding lab reorders with
+  explicit move buttons.
 
-Four bugs worth naming, because they are the kind that an automated pass alone
-would not have caught and they are easy to reintroduce:
+Six bugs worth naming, because they are the kind an automated pass alone would
+not have caught and they are easy to reintroduce:
 
 1. **Focusing `<main>` on first load made the skip link unreachable.** Moving
    focus after navigation is correct; doing it on the *initial* render puts the
@@ -495,6 +501,17 @@ would not have caught and they are easy to reintroduce:
    anchors now.
 4. **`aria-current="page"` was on "Events" for every route that was not the
    profile** — telling a screen reader the user is somewhere they are not.
+5. **The seeding lab advertised drag-to-reorder against an empty handler.** It
+   said "drag to reorder", set `draggable="true"`, and did nothing — so the
+   feature was both inaccessible and absent. It has real move buttons now,
+   which are keyboard-reachable and work one-handed on a phone, where seeding
+   actually gets adjusted.
+6. **The lab previewed one order while editing another.** The list showed the
+   post-separation proposal, but the move buttons edited the stored order, so
+   nudging somebody up re-ran separation over the new order and the row
+   appeared not to move. Everything displayed is the stored order now, and
+   separation is strictly a proposal you apply. A view that previews one thing
+   while editing another is unusable however good either half is.
 
 ---
 

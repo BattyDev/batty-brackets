@@ -377,8 +377,18 @@ function seedingTab(data) {
     seed: entry.seed,
   }));
 
+  /* `separate()` here is a PROPOSAL, not the order in effect. It is run so the
+     lab can offer its swaps and report the collisions that would remain --
+     applying it is a separate, explicit action.
+
+     Everything the lab DISPLAYS is the stored order. That distinction was got
+     wrong at first, and the bug it caused is instructive: the list showed the
+     post-separation preview while the move buttons edited the stored order, so
+     nudging somebody up re-ran separation over the new order and the row
+     appeared not to move at all. A view that previews one thing while editing
+     another is unusable no matter how good either half is. */
   const report = withNames.length >= 2 ? separate(withNames, { tolerance: 2 }) : null;
-  const projection = withNames.length >= 2 ? projectedMeetings(report ? report.seeds : withNames) : [];
+  const projection = withNames.length >= 2 ? projectedMeetings(withNames) : [];
 
   return html`
     <div class="pane">
@@ -428,29 +438,49 @@ function seedingTab(data) {
       <div class="row" style="align-items:flex-start;gap:24px">
         <section class="spacer" style="min-width:280px">
           <h2 class="title-large" style="margin-bottom:8px">Seed order</h2>
-          <p class="body-small dim" style="margin-bottom:12px">Drag to reorder, or type a seed in the entrants tab.</p>
-          <div class="stack-sm">
-            ${list((report ? report.seeds : withNames).map((entrant, i) => {
-              const moved = report?.moves.some((m) => m.a.id === entrant.id || m.b.id === entrant.id);
+          <p class="body-small dim" style="margin-bottom:12px">
+            Move anyone up or down, or type a seed directly in the entrants tab.
+          </p>
+          <!-- Explicit move buttons rather than drag-and-drop.
+               Three reasons, in order of how much they matter. It WORKS: the
+               previous version set draggable="true" and advertised "drag to
+               reorder" against a handler that did nothing at all. It is
+               reachable from a keyboard, which a drag gesture is not. And it
+               does not depend on a sustained pointer path, so it is usable
+               one-handed on a phone at a venue -- which is where seeding
+               actually gets adjusted. -->
+          <ol class="stack-sm" style="list-style:none;margin:0;padding:0">
+            ${list(withNames.map((entrant, i, arr) => {
+              /* Highlighted because separation PROPOSES moving them, not because
+                 anything has moved yet. */
+              const proposed = report?.moves.some((m) => m.a.id === entrant.id || m.b.id === entrant.id);
               return html`
-                <div class="seed-row ${raw(moved ? 'moved' : '')}" draggable="true"
-                     data-act="seed-drag" data-id="${entrant.entryId}" data-index="${i}">
-                  <span class="grip">${raw(icon('sort', 'icon-sm'))}</span>
-                  <span class="rank">${i + 1}</span>
+                <li class="seed-row ${raw(proposed ? 'moved' : '')}">
+                  <span class="rank" aria-hidden="true">${i + 1}</span>
                   <span class="spacer">
                     <b class="body-medium">${entrant.name}</b>
                     ${entrant.group ? html`<div class="body-small dim">${entrant.group}</div>` : ''}
                   </span>
-                  ${moved ? html`<span class="chip chip-static" style="min-height:22px;padding:0 8px;font:var(--label-small)">moved</span>` : ''}
-                </div>`;
+                  ${proposed ? html`<span class="chip chip-static" style="min-height:22px;padding:0 8px;font:var(--label-small)"
+                        title="Separation would move this entrant">would move</span>` : ''}
+                  <span class="seed-move">
+                    <button class="btn btn-icon" data-act="seed-move" data-id="${entrant.entryId}" data-dir="-1"
+                            ${raw(i === 0 ? 'disabled' : '')}
+                            aria-label="Move ${entrant.name} up to seed ${i}">${raw(icon('chevronDown', 'icon-sm flip'))}</button>
+                    <button class="btn btn-icon" data-act="seed-move" data-id="${entrant.entryId}" data-dir="1"
+                            ${raw(i === arr.length - 1 ? 'disabled' : '')}
+                            aria-label="Move ${entrant.name} down to seed ${i + 2}">${raw(icon('chevronDown', 'icon-sm'))}</button>
+                  </span>
+                </li>`;
             }))}
-          </div>
+          </ol>
         </section>
 
         <section class="spacer" style="min-width:280px">
           <h2 class="title-large" style="margin-bottom:8px">If nobody upsets</h2>
           <p class="body-small dim" style="margin-bottom:12px">
-            The single most useful check before you commit: does this match what you know about the room?
+            Built from the seed order on the left, so this is what you get if you generate now.
+            The single most useful check before committing: does it match what you know about the room?
           </p>
           ${list(projection.map((round) => html`
             <div class="card card-outlined" style="margin-bottom:8px">
@@ -1240,10 +1270,32 @@ on('apply-separation', () => {
   rerender();
 });
 
-/* Drag to reorder. Pointer events rather than HTML5 drag-and-drop, because
-   HTML5 DnD does not fire on touch at all -- and a TO reordering seeds on a
-   phone is the main way this gets used. */
-on('seed-drag', () => {});
+/* Swap an entrant with their neighbour. One checkpoint per move, so a run of
+   adjustments can be undone one at a time rather than all at once -- which is
+   how somebody nudging a seed order actually wants to back out of it. */
+on('seed-move', ({ id, dir }) => {
+  const data = contextFor(currentEventId());
+  const ordered = data.entries
+    .filter((e) => !e.waitlisted)
+    .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+
+  const at = ordered.findIndex((e) => e.id === id);
+  const to = at + Number(dir);
+  if (at < 0 || to < 0 || to >= ordered.length) return;
+
+  [ordered[at], ordered[to]] = [ordered[to], ordered[at]];
+
+  const moverName = data.players.get(ordered[to].playerId)?.tag || 'entrant';
+  store.checkpoint(`moved ${moverName}`, ordered.map((e) => ({ collection: 'entries', id: e.id })));
+  store.applyMany(ordered.map((entry, i) => ({ collection: 'entries', id: entry.id, patch: { seed: i + 1 } })));
+
+  /* Announce the new position: after a re-render the button that was
+     activated has moved, so a screen-reader user needs to be told where the
+     person ended up rather than being left to hunt for them. */
+  const name = data.players.get(ordered[at].playerId)?.tag || 'Entrant';
+  snack(`${name} is now seed ${at + 1}`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
+  rerender();
+});
 
 /* ---- bracket ---- */
 
