@@ -635,8 +635,14 @@ rules. The rest of the site was brought to **2.2 AA** separately, so this was
 checked against 2.2's additions too — target size, focus not obscured, and
 dragging movements — which are the three that actually bite an app like this.
 
+All of it is a committed test rather than a claim: `test/browser/a11y.test.mjs`
+and `test/browser/wcag22.test.mjs` run those sweeps on every commit, so this
+paragraph is checkable by anyone, which it was not when the scripts lived on my
+machine.
+
 That is the floor, not the ceiling — axe catches perhaps 40% of real problems,
-so the rest was checked by driving the app:
+so the rest was checked by driving the app, and those checks are committed too
+(`test/browser/keyboard.test.mjs`):
 
 - **Keyboard.** Skip link first in the tab order and visible when focused;
   every action reachable; dialogs keep focus off the page behind them and close
@@ -872,9 +878,22 @@ It seeds the demo the first time only, and never over real data.
 Tests:
 
 ```
-node brackets/test/bracket.test.mjs   # 112 assertions, mostly double elim
-node brackets/test/theme.test.mjs     # 736 contrast, distinctness and mark checks
+node brackets/test/run.mjs        # everything: 848 node assertions + 135 browser
+node brackets/test/run.mjs tv     # just one suite
 ```
+
+The Node half needs nothing installed. The browser half needs Playwright and
+axe-core (`cd brackets/test && npm install && npx playwright install chromium`)
+and is skipped with a note if they are missing, so the fast half always runs.
+
+Ten suites. Two cover the pure functions — the bracket engine and the colour
+palettes. The other eight drive a real browser, because every bug this project
+has actually shipped lived outside the reach of a unit test: a tour card that
+rebuilt itself once a second, `opacity` dimming text below contrast, a bracket
+pane you could not scroll without a mouse, a TV screen drawing eight perfectly
+sized empty columns. See `test/README.md` for the full list and for the rule
+they follow — assert rather than print, and prove each assertion can fail by
+putting the original bug back.
 
 To connect a backend: run `sql/001_schema.sql` against the `battydevsite`
 project, enable the Discord provider with redirect `https://battydev.com/brackets/`
