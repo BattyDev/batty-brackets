@@ -58,6 +58,13 @@
   </div>
 </div>
 
+<!-- Where the current page name is announced after a navigation. It sits
+     OUTSIDE #app on purpose: the router replaces the whole of #app on every
+     draw, and a live region that is removed and re-added in the same tick is
+     not reliably announced by any screen reader. Keeping one stable node and
+     only changing its text is what makes the announcement actually fire. -->
+<div id="route-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
 <!-- Connection settings, loaded as a classic script so it is a plain global
      the module can read synchronously at boot. Blank by default: the app runs
      entirely on-device until this names a project. -->

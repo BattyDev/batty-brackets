@@ -319,6 +319,29 @@ a { color: var(--md-primary); }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
+/* Skip link. The nav rail is up to nine stops before the content on every
+   page, and a keyboard user should not have to tab through it each time. */
+.skip-link {
+  position: absolute; z-index: 100; top: 8px; left: 8px;
+  padding: 12px 20px; border-radius: var(--shape-full);
+  background: var(--md-primary); color: var(--md-on-primary);
+  font: var(--label-large); text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--dur-short) var(--ease-standard);
+}
+.skip-link:focus { transform: translateY(0); }
+
+/* The scroll panes take focus so they can be scrolled from the keyboard; they
+   must not then draw a focus ring as though they were a control, so the ring
+   is drawn only for real keyboard focus. */
+[tabindex='0']:focus:not(:focus-visible) { outline: none; }
+
+/* <main> is focused programmatically after every navigation so a screen
+   reader lands on the new content. It is not interactive and must not look it
+   -- without this the whole page gets a primary-coloured ring down its left
+   edge on every route change. */
+[tabindex='-1']:focus { outline: none; }
+
 /* Icons are an inline SVG sprite in index.html — no icon font, no network
    request, no flash of missing glyphs. currentColor means an icon inside a
    button is automatically the button's text colour. */
@@ -792,8 +815,9 @@ dialog.m3 .field > .field-label { background: var(--md-surface-container-high); 
   transition: opacity var(--dur-short) var(--ease-standard);
 }
 .tab:hover::before { opacity: var(--state-hover); }
-.tab[aria-selected='true'] { color: var(--md-primary); }
-.tab[aria-selected='true']::after {
+.tab { text-decoration: none; }
+.tab[aria-current='page'] { color: var(--md-primary); }
+.tab[aria-current='page']::after {
   content: ''; position: absolute; left: 8px; right: 8px; bottom: 0;
   height: 3px; border-radius: 3px 3px 0 0; background: var(--md-primary);
 }
@@ -811,7 +835,7 @@ dialog.m3 .field > .field-label { background: var(--md-surface-container-high); 
   padding: 48px 24px; text-align: center;
   color: var(--md-on-surface-variant);
 }
-.empty .icon { width: 48px; height: 48px; opacity: .5; stroke-width: 1.5; }
+.empty .icon { width: 48px; height: 48px; color: var(--md-outline); stroke-width: 1.5; }
 
 /* ===========================================================================
    7. APP-SPECIFIC
@@ -884,10 +908,28 @@ dialog.m3 .field > .field-label { background: var(--md-surface-container-high); 
 }
 .match.ready { box-shadow: inset 0 0 0 2px var(--md-primary); }
 .match.live { box-shadow: inset 0 0 0 2px var(--warn); }
-.match.done { opacity: .82; }
-.match.bye { opacity: .5; }
+/* Completed and bye matches are de-emphasised with explicit colours, NOT with
+   opacity on the container.
+
+   Opacity was the obvious way to do it and it is the wrong one: it fades the
+   text against the page as well as the card, so a name inside a 0.5-opacity
+   bye card measured 2.4:1 against the surface behind it. Contrast is computed
+   on what is actually painted, so anything that dims a whole subtree dims it
+   below the threshold too. Muting the colour deliberately keeps the visual
+   hierarchy and stays measurable. */
+.match.done { background: var(--md-surface-container); }
+.match.bye {
+  background: var(--md-surface);
+  box-shadow: inset 0 0 0 1px var(--md-outline-variant);
+}
+.match.bye .match-side .who { color: var(--md-on-surface-variant); }
 button.match { display: block; width: 100%; text-align: left; border: 0; cursor: pointer; padding: 0; }
 
+/* Spans, not divs: they sit inside an aria-hidden wrapper span within a
+   <button>, and a <div> inside a <button> is invalid HTML that browsers
+   silently reparent -- which breaks the layout in the way that is hardest to
+   debug. display:flex makes them behave exactly as before. */
+.match > span { display: block; }
 .match-side {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; min-height: 40px;
@@ -910,11 +952,13 @@ button.match { display: block; width: 100%; text-align: left; border: 0; cursor:
 .match-side.won .who { font-weight: 600; }
 .match-side.won .score { color: var(--md-primary); }
 .match-side.lost .who, .match-side.lost .seed { color: var(--md-on-surface-variant); }
+/* `waiting` / `bye` placeholders. on-surface-variant is the M3 role for
+   secondary text and clears 4.5:1 against every surface token here. */
 .match-side.tbd .who { color: var(--md-on-surface-variant); font-style: italic; }
 .match-meta {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 10px; border-top: 1px solid var(--md-outline-variant);
-  font: var(--label-small); color: var(--md-on-surface-variant);
+  font: var(--label-medium); color: var(--md-on-surface-variant);
   background: var(--md-surface-container);
 }
 
@@ -988,7 +1032,10 @@ table.data .check { width: 44px; }
 .guide.attention { background: var(--warn-container); color: var(--on-warn-container); box-shadow: none; }
 .guide .guide-body { flex: 1 1 auto; min-width: 0; }
 .guide .guide-title { font: var(--title-small); }
-.guide .guide-why { font: var(--body-small); opacity: .85; margin-top: 2px; }
+/* Full opacity. This is the sentence that explains WHY the suggestion fired,
+   which is the part a TO has to be able to read -- fading it was decorative
+   and it cost contrast on the coloured urgent/attention backgrounds. */
+.guide .guide-why { font: var(--body-medium); margin-top: 2px; }
 .guide .guide-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
 /* ---- seeding lab --------------------------------------------------------- */
@@ -1067,4 +1114,210 @@ table.data .check { width: 44px; }
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ===========================================================================
+   8. GAME THEMING
+   ---------------------------------------------------------------------------
+   The colour side lives in data/themes.js, which injects one <style> of
+   [data-game="…"] rules that override M3's own colour roles. That is the whole
+   trick: because the override is on the ROLES rather than on bespoke classes,
+   every button, chip, tab, switch and focus ring inside a themed container
+   picks up the game with no component-level work at all.
+
+   What is below is only the structure the artwork needs.
+   =========================================================================== */
+
+/* ---- the mark ------------------------------------------------------------
+   Two-letter game badge. Its colours come from the theme rather than from a
+   single accent hex, because one accent cannot be legible on both a light and
+   a dark surface -- white-on-accent was the pairing that actually failed an
+   audit here. */
+.game-mark {
+  background: var(--game-mark-bg, var(--md-primary-container));
+  color: var(--game-mark-fg, var(--md-on-primary-container));
+  font: var(--label-large);
+  letter-spacing: .04em;
+}
+[data-game] .game-mark {
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+}
+
+/* ---- the hero banner ---------------------------------------------------- */
+.game-hero {
+  position: relative; isolation: isolate; overflow: hidden;
+  border-radius: var(--shape-lg);
+  background: var(--game-deep);
+  color: var(--game-ink);
+  min-height: 168px;
+  display: flex; align-items: flex-end;
+}
+.game-hero.compact { min-height: 96px; border-radius: var(--shape-md); }
+
+.game-hero-art {
+  position: absolute; inset: 0; z-index: -2;
+  display: flex; align-items: center; justify-content: flex-end;
+  color: var(--game-accent);
+  /* The drawn motif is a line drawing on a near-flat ground, so it needs more
+     presence than a photograph would; a real hero image dropped into the slot
+     is already busy and gets full strength from the scrim alone. */
+  opacity: .55;
+}
+.game-hero-art:has(img) { opacity: 1; }
+.game-hero-art img { width: 100%; height: 100%; object-fit: cover; }
+.game-hero-art .game-art { width: 100%; height: 100% !important; }
+
+/* Scrim. The art runs edge to edge behind the text, so the text needs its own
+   guaranteed contrast rather than relying on where the art happens to be
+   light -- doubly so once somebody drops a real screenshot in, which we cannot
+   see and cannot design around. */
+.game-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(90deg,
+    var(--game-deep) 0%,
+    color-mix(in srgb, var(--game-deep) 88%, transparent) 46%,
+    color-mix(in srgb, var(--game-deep) 30%, transparent) 100%);
+}
+
+.game-hero-body { padding: 20px; max-width: 34rem; }
+.game-hero.compact .game-hero-body { padding: 14px 16px; }
+.game-hero-eyebrow {
+  margin: 0 0 2px; font: var(--label-medium);
+  color: var(--md-primary); text-transform: uppercase; letter-spacing: .09em;
+}
+.game-hero-title { font: var(--headline-small); margin: 0; }
+.game-hero.compact .game-hero-title { font: var(--title-medium); }
+.game-hero-sub { margin: 4px 0 0; font: var(--body-medium); opacity: .92; }
+.game-hero-credit {
+  position: absolute; right: 10px; bottom: 8px; margin: 0;
+  font: var(--label-small); opacity: .7;
+}
+
+@media (max-width: 599px) {
+  .game-hero { min-height: 140px; }
+  .game-hero-body { padding: 16px; }
+}
+
+/* ---- the game-select card ----------------------------------------------- */
+/* The motif sits behind the card at low opacity, so the choice reads as the
+   game before you have read the words. */
+.game-card { position: relative; isolation: isolate; overflow: hidden; }
+.game-card .game-card-art {
+  position: absolute; right: -30px; top: -10px; bottom: -10px; z-index: -1;
+  width: 60%; color: var(--md-primary); opacity: .17;
+  display: flex; align-items: center; justify-content: flex-end;
+  pointer-events: none;
+}
+.game-card .game-card-art .game-art { height: 100% !important; width: auto; }
+.game-card[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--md-primary); }
+.game-card[aria-pressed='true'] .game-card-art { opacity: .3; }
+
+/* A themed page keeps its accent on the app bar, so the game is present even
+   when the banner has scrolled away. */
+.top-bar[data-game] { border-bottom: 3px solid var(--md-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .game-hero-art, .game-card-art { transition: none; }
+}
+
+/* ===========================================================================
+   9. THE GUIDED DEMO
+   ---------------------------------------------------------------------------
+   Docked, never floating over the content.
+
+   The spotlight-overlay style of product tour is the obvious alternative and
+   it is the wrong one here. It traps focus, it breaks the moment the layout it
+   was measured against changes, and — fatally for this demo — it stops you
+   clicking the thing it is pointing at. The whole pitch is "poke at it", so
+   the guidance takes its own space and leaves the entire app live underneath.
+   =========================================================================== */
+
+/* ---- the demo banner ---------------------------------------------------- */
+.demo-bar {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 16px;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
+  border-bottom: 1px solid var(--md-outline-variant);
+}
+.demo-bar .icon { margin-top: 2px; flex: none; }
+/* Without min-width:0 the text block's min-content width keeps it wider than
+   the row, so on a phone it wraps below the icon and the icon sits alone on a
+   line of its own. */
+.demo-bar .spacer { min-width: 0; }
+.demo-bar-actions { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.demo-bar-slim {
+  align-items: center; padding: 6px 16px;
+  background: var(--md-surface-container);
+  color: var(--md-on-surface-variant);
+}
+@media (max-width: 599px) {
+  .demo-bar { flex-wrap: wrap; }
+  .demo-bar-actions { width: 100%; }
+}
+
+/* ---- the tour card ------------------------------------------------------
+   Bottom sheet on a phone, docked panel on the right from `medium` up. Both
+   sit above the content and below the nav, and neither covers the middle of
+   the screen, which is where the thing being demonstrated is. */
+.tour {
+  position: fixed; z-index: 30;
+  left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface);
+  border-top: 1px solid var(--md-outline-variant);
+  box-shadow: var(--elev-3);
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: tour-in var(--dur-medium) var(--ease-emphasised);
+}
+@keyframes tour-in { from { transform: translateY(100%); } }
+
+@media (min-width: 900px) {
+  .tour {
+    left: auto; right: 24px; bottom: 24px;
+    width: 380px; border-radius: var(--shape-lg);
+    border: 1px solid var(--md-outline-variant);
+  }
+  @keyframes tour-in { from { transform: translateY(24px); opacity: 0; } }
+}
+
+/* On a phone the tour sheet would sit on top of the bottom nav, so the nav
+   moves out of the way rather than being covered by it. */
+@media (max-width: 899px) {
+  body:has(.tour) .nav { display: none; }
+}
+
+/* The sheet is docked, so it permanently covers whatever is under it. Give the
+   content enough trailing room to scroll clear -- otherwise the last few rows
+   of a queue are unreachable for as long as the tour is open, which on the
+   "try reporting one" step is the very thing being pointed at. */
+body:has(.tour) .pane { padding-bottom: 340px; }
+@media (min-width: 900px) {
+  body:has(.tour) .pane { padding-bottom: 96px; padding-right: 0; }
+  body:has(.tour) { --tour-gutter: 404px; }
+  body:has(.tour) .pane { max-width: min(1240px, calc(100vw - var(--tour-gutter))); margin-left: 0; }
+}
+
+.tour-progress { display: flex; gap: 4px; padding: 12px 16px 0; }
+.tour-pip {
+  height: 4px; flex: 1; border-radius: 2px;
+  background: var(--md-outline-variant);
+}
+.tour-pip.done { background: color-mix(in srgb, var(--md-primary) 55%, transparent); }
+.tour-pip.on { background: var(--md-primary); }
+
+.tour-body { padding: 12px 16px 4px; }
+.tour-count { color: var(--md-primary); margin: 0 0 2px; }
+.tour-title { font: var(--title-large); margin: 0 0 6px; }
+.tour-text { font: var(--body-medium); margin: 0; color: var(--md-on-surface-variant); }
+
+.tour-actions {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 12px 14px; flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour { animation: none; }
 }

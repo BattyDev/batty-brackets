@@ -22,6 +22,7 @@ import {
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { gameById, resolveRuleset, fieldVisible, formatValue } from '../data/games.js';
+import { gameHero, gameMark } from '../data/themes.js';
 import { standings, readyMatches } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
 import { readinessFor } from '../lib/auth.js';
@@ -53,23 +54,25 @@ export function view(ctx) {
     title: event.name,
     subtitle: `${game?.short || ''} · ${formatDateTime(event.startsAt)}`,
     back: '/',
+    gameId: event.gameId,
     body: html`
-      <div class="tabs" role="tablist">
+      <!-- Links in a <nav>, not an ARIA tab widget. See the note in admin.js. -->
+      <nav class="tabs" aria-label="Event sections">
         ${list([
           ['now', 'You', 'person'],
           ['bracket', 'Bracket', 'bracket'],
           ['entrants', 'Entrants', 'group'],
           ['rules', 'Rules', 'gavel'],
         ].map(([id, label, ic]) => html`
-          <button class="tab" role="tab" aria-selected="${id === tab}"
-                  data-act="go" data-path="/e/${event.id}/${id}">
+          <a class="tab" href="#/e/${event.id}/${id}"
+             ${raw(id === tab ? 'aria-current="page"' : '')}>
             ${raw(icon(ic, 'icon-sm'))}${label}
-          </button>`))}
+          </a>`))}
         ${isOrganiser ? html`
-          <button class="tab" data-act="go" data-path="/e/${event.id}/admin">
+          <a class="tab" href="#/e/${event.id}/admin">
             ${raw(icon('settings', 'icon-sm'))}Organise
-          </button>` : ''}
-      </div>
+          </a>` : ''}
+      </nav>
 
       ${raw({
         now: () => youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }),
@@ -242,16 +245,11 @@ function headToHeadLine(myPlayerId, entries, players, match, myEntry) {
 
 function eventHeader(event, game, entries) {
   return html`
-    <div class="card card-outlined">
-      <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
-        <span class="avatar" style="background:${raw(game?.accent || 'var(--md-primary)')};color:#fff">${game?.mark}</span>
-        <div class="spacer">
-          <b class="title-medium">${event.name}</b>
-          <div class="body-small dim">${game?.name}</div>
-          <div class="body-small dim">${formatDateTime(event.startsAt)}</div>
-          ${event.venue ? html`<div class="body-small dim">${event.venue}</div>` : ''}
-        </div>
-      </div>
+    ${raw(gameHero(game, {
+      title: event.name,
+      subtitle: [formatDateTime(event.startsAt), event.venue].filter(Boolean).join(' · '),
+    }))}
+    <div class="card card-outlined" style="margin-top:12px">
       <div class="row" style="margin-top:12px;gap:8px">
         <span class="chip chip-static chip-assist">${entries.length}${event.capacity ? `/${event.capacity}` : ''} entrants</span>
         <span class="chip chip-static chip-assist">${event.format === 'single' ? 'Single' : 'Double'} elim</span>
@@ -303,33 +301,53 @@ function bracketTab({ event, entries, players, bracket }) {
           </div>
         </section>` : ''}
 
-      <div class="bracket-scroll" data-keep-scroll="public-bracket">
+      <h2 class="title-large" style="margin-bottom:8px">Bracket</h2>
+      <!-- tabindex + role so the pane can be scrolled with the arrow keys. A
+           scroll container that only answers a wheel or a swipe is unreachable
+           from a keyboard, and the bracket is the widest thing on the site. -->
+      <div class="bracket-scroll" data-keep-scroll="public-bracket"
+           tabindex="0" role="region" aria-label="Bracket — scroll sideways for later rounds">
         <div class="bracket">
           ${list(rounds.map((round) => html`
-            <div class="bracket-round">
+            <div class="bracket-round" role="group" aria-label="${round.name}">
               <h3>${round.name}</h3>
               <div class="round-body">
               ${list(round.matches.map((match) => {
                 const done = match.state === 'complete';
                 const bye = match.state === 'bye';
+                /* A bracket is a genuinely visual artefact -- position on
+                   screen IS the information -- so the fix is not to describe
+                   the picture but to have each match state its own content as
+                   a sentence, with the visual rows hidden from the reader. */
+                const nameFor = (slot) => (slot.entrantId ? nameOf(slot.entrantId) : 'not decided yet');
+                const loserId = match.slots.find((sl) => sl.entrantId && sl.entrantId !== match.winnerId)?.entrantId;
+                const summary = bye
+                  ? `${nameFor(match.slots.find((sl) => sl.entrantId) || match.slots[0])} advances on a bye`
+                  : done
+                    ? `${nameOf(match.winnerId)} beat ${loserId ? nameOf(loserId) : 'their opponent'} `
+                      + `${Math.max(match.score?.a ?? 0, match.score?.b ?? 0)} to ${Math.min(match.score?.a ?? 0, match.score?.b ?? 0)}`
+                    : `${nameFor(match.slots[0])} versus ${nameFor(match.slots[1])}, not yet played`;
                 return html`
                   <div class="match ${raw(bye ? 'bye' : done ? 'done' : match.calledAt ? 'live' : '')}">
+                    <span class="sr-only">${summary}</span>
+                    <span aria-hidden="true">
                     ${list(match.slots.map((slot) => {
                       if (!slot.entrantId) {
-                        return html`<div class="match-side tbd"><span class="seed"></span><span class="who">waiting</span></div>`;
+                        return html`<span class="match-side tbd"><span class="seed"></span><span class="who">waiting</span></span>`;
                       }
                       const won = done && match.winnerId === slot.entrantId;
                       const score = done ? (won
                         ? Math.max(match.score?.a ?? 0, match.score?.b ?? 0)
                         : Math.min(match.score?.a ?? 0, match.score?.b ?? 0)) : '';
                       return html`
-                        <div class="match-side ${raw(won ? 'won' : done ? 'lost' : '')}">
+                        <span class="match-side ${raw(won ? 'won' : done ? 'lost' : '')}">
                           <span class="seed">${slot.seed ?? ''}</span>
                           <span class="who">${nameOf(slot.entrantId)}</span>
                           <span class="score">${score}</span>
-                        </div>`;
+                        </span>`;
                     }))}
-                    ${bye ? html`<div class="match-meta">bye</div>` : ''}
+                    ${bye ? html`<span class="match-meta">bye</span>` : ''}
+                    </span>
                   </div>`;
               }))}
               </div>
@@ -382,7 +400,7 @@ function rulesTab({ event, game, ruleset }) {
     <div class="pane" style="max-width:840px">
       <div class="card card-elevated" style="margin-bottom:20px">
         <div class="row-tight">
-          <b class="title-large spacer">${ruleset.presetName}</b>
+          <h2 class="title-large spacer" style="margin:0">${ruleset.presetName}</h2>
           <span class="chip chip-static chip-assist">v${ruleset.presetVersion}</span>
         </div>
         ${overridden.size ? html`

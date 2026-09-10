@@ -24,6 +24,7 @@ import { html, raw, list, icon, esc, on, snack, dialog } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, formatValue } from '../data/games.js';
+import { gameArt, gameHero, themeFor } from '../data/themes.js';
 
 /* Wizard state. Module-level rather than in the store: a half-finished event
    is not an event, and writing draft rows for every abandoned setup would
@@ -72,6 +73,7 @@ export function view(ctx) {
     title: 'New event',
     subtitle: STEPS[draft.step],
     back: draft.step === 0 ? '/' : null,
+    gameId: draft.gameId,
     body: html`
       <div class="pane" style="max-width:760px">
         <div class="row" style="margin-bottom:20px;gap:6px">
@@ -100,13 +102,15 @@ function stepGame() {
 
     <div class="grid-cards">
       ${list(GAMES.map((game) => html`
-        <button class="card card-outlined" data-act="wizard-game" data-game="${game.id}"
-                style="${raw(draft.gameId === game.id ? 'box-shadow:inset 0 0 0 2px var(--md-primary)' : '')}">
+        <button class="card card-outlined game-card" data-act="wizard-game" data-game="${game.id}"
+                aria-pressed="${draft.gameId === game.id}">
+          <span class="game-card-art">${raw(gameArt(game.id, { variant: 'hero' }))}</span>
           <div class="row" style="flex-wrap:nowrap">
-            <span class="avatar" style="background:${raw(game.accent)};color:#fff">${game.mark}</span>
+            <span class="avatar game-mark">${game.mark}</span>
             <div class="spacer">
               <b class="title-medium">${game.short}</b>
               <div class="body-small dim">${game.name}</div>
+              ${themeFor(game.id)?.tagline ? html`<div class="body-small" style="color:var(--md-primary)">${themeFor(game.id).tagline}</div>` : ''}
             </div>
           </div>
           <p class="body-small dim" style="margin:12px 0 0">
@@ -137,7 +141,8 @@ function stepGame() {
 
 function stepShape(ctx, game) {
   return html`
-    <h2 class="headline-small" style="margin-bottom:20px">The basics</h2>
+    ${raw(gameHero(game, { title: 'The basics', subtitle: 'Everything here stays editable later.' }))}
+    <h2 class="sr-only">The basics</h2>
 
     <div class="stack">
       <label class="field">
@@ -232,8 +237,8 @@ function stepRules(ctx, game) {
   const changed = Object.keys(draft.overrides).length;
 
   return html`
-    <h2 class="headline-small" style="margin-bottom:4px">Rules</h2>
-    <p class="body-medium dim" style="margin-bottom:20px">Pick a preset and move on. Everything below is optional.</p>
+    ${raw(gameHero(game, { title: 'Rules', subtitle: 'Pick a preset and move on — everything below is optional.' }))}
+    <h2 class="sr-only">Rules</h2>
 
     <div class="stack" style="margin-bottom:24px">
       ${list(game.presets.map((p) => html`
@@ -466,7 +471,8 @@ function stepPublish(ctx, game) {
   const problems = validate(game);
 
   return html`
-    <h2 class="headline-small" style="margin-bottom:20px">Ready?</h2>
+    ${raw(gameHero(game, { title: 'Ready?' }))}
+    <h2 class="sr-only">Ready to publish</h2>
 
     <div class="card card-elevated" style="margin-bottom:16px">
       <h3 class="title-large">${draft.name || `${game?.short} event`}</h3>

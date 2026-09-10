@@ -11,18 +11,50 @@ the sake of a demo: a TO running a 16-person weekly off one phone genuinely
 does not need a server, and the corner of the app bar says "On this device"
 rather than pretending otherwise.
 
+**Open it and there is a tournament already running.** No sign-in, no account:
+a 28-entrant Marvel Tōkon weekly seeded into your own browser, with a guided
+walkthrough and a reset button. See [Try it](#try-it).
+
 ---
 
 ## Contents
 
+- [Try it](#try-it)
 - [What is wrong with the existing sites](#what-is-wrong-with-the-existing-sites)
 - [What this does differently](#what-this-does-differently)
+- [Accessibility](#accessibility)
+- [Official game artwork](#official-game-artwork)
 - [Holes in the original plan](#holes-in-the-original-plan)
 - [Marvel Tokon](#marvel-tokon)
 - [The player side](#the-player-side)
 - [Architecture](#architecture)
 - [What is built and what is not](#what-is-built-and-what-is-not)
 - [Running it](#running-it)
+
+---
+
+## Try it
+
+Open `battydev.com/brackets` and a demo weekly is already there — 28 entrants
+signed up, four of whom will not show, a duplicate registration, a walk-up
+entrant with a claim code, and a season of past results behind it.
+
+**Walk me through it** runs a nine-step tour: the player's view of the rules,
+the roster with its bulk tools, check-in with four no-shows, the seeding lab,
+the bracket with sets already played and DQ timers running, a player's
+cross-event record, and back out again.
+
+The tour is not a slideshow and not a video. Each step performs the same store
+writes an organiser would perform and then hands control back, so you can stop
+at any point, click something else entirely, and everything still works —
+because it is the real application, not a mock of it. That is only possible
+because of the local-first design: with no backend involved, "a demo
+tournament" is just a store you happen to own.
+
+**Reset** puts it back exactly as it started. It restores only rows carrying
+the demo flag, so an event you made yourself is never touched.
+
+Nothing about the demo reaches a server. There is no server.
 
 ---
 
@@ -419,6 +451,123 @@ handle you could have typed.
 
 ---
 
+## Accessibility
+
+Audited with axe-core across every route, in light and dark, at desktop and
+phone widths: **zero violations** at WCAG 2.1 AA plus axe's best-practice
+rules. Re-run it yourself against a local server with the script in the repo
+history, or point any axe tool at the routes.
+
+That is the floor, not the ceiling — axe catches perhaps 40% of real problems,
+so the rest was checked by driving the app:
+
+- **Keyboard.** Skip link first in the tab order and visible when focused;
+  every action reachable; dialogs keep focus off the page behind them and close
+  on Escape; the bracket pane is focusable so it can be scrolled with the arrow
+  keys, which a mouse-only scroll container cannot be.
+- **Screen readers.** Navigation is announced — the router moves focus to
+  `<main>` and writes the page name into a live region that lives outside the
+  re-rendered subtree, because a live region removed and re-added in the same
+  tick is not reliably announced. Every match in a bracket states itself as a
+  sentence ("Kira beat Mook 2 to 0") with the visual rows hidden, because a
+  bracket's meaning is its layout and describing the picture would be useless.
+- **Zoom and reflow.** No horizontal scrolling at 200%; every organiser tool
+  works at 390px.
+- **Motion.** `prefers-reduced-motion` suppresses every transition.
+- **Colour.** `test/theme.test.mjs` measures every pairing the app paints, in
+  both schemes. Lowest is 9.3:1 against a 4.5:1 requirement.
+
+Four bugs worth naming, because they are the kind that an automated pass alone
+would not have caught and they are easy to reintroduce:
+
+1. **Focusing `<main>` on first load made the skip link unreachable.** Moving
+   focus after navigation is correct; doing it on the *initial* render puts the
+   skip link behind the focus position, so the first Tab lands inside the
+   content and the one feature that exists purely for keyboard users can never
+   be reached.
+2. **`opacity` on completed and bye matches dimmed their text below contrast.**
+   Contrast is computed on what is painted, so anything fading a whole subtree
+   fades it under the threshold too. De-emphasis has to be a colour choice.
+3. **The tabs were not tabs.** They had `role="tablist"` but changed the URL and
+   had no tabpanels. The ARIA tab pattern promises a panel, roving arrow-key
+   focus and no navigation; promising that and not delivering it is worse than
+   plain links, which people already know how to use. They are `<nav>` and
+   anchors now.
+4. **`aria-current="page"` was on "Events" for every route that was not the
+   profile** — telling a screen reader the user is somewhere they are not.
+
+---
+
+## Official game artwork
+
+Selecting a game re-themes the app: the palette shifts, the app bar takes the
+game's accent, the hero banner changes, and every button, chip and focus ring
+inside follows, because the override is on Material 3's own colour *roles*
+rather than on bespoke classes.
+
+**There is no Marvel artwork in this repository, and that is deliberate.**
+
+There is no official Marvel Tōkon fan kit or press kit. Marvel Games and
+PlayStation Studios publish screenshots and trailers through their own channels,
+but neither ships a downloadable asset pack with usage terms attached, and the
+community sites that index the game are explicit that they host no official
+artwork either. Marvel character art is Disney IP; a third-party tournament site
+redistributing it is a licensing question, not a fair-use one you can reason
+your way into — and not a call this repository should make on the site owner's
+behalf.
+
+So the theming is built from things nobody owns:
+
+- **A generated tonal palette per game.** Seed colour → OKLCH → even lightness
+  steps → chroma tapered at the extremes to stay in sRGB. Even steps are the
+  point: darkening a hex by percentages gives ramps whose perceived contrast
+  jumps around, so a tone that passes for one hue fails for another.
+- **Original artwork** evoking the *shape* of each game — four slanted slots
+  for Tōkon's tag lineup, with the point fighter lit and the three behind it
+  stepping back; floating platforms for Smash.
+- **Comic-printing texture** for Tōkon: Ben-Day halftone dots and speed lines.
+  A printing technique from the 1890s, out of copyright, and the strongest
+  "comic book" cue available that involves nobody's character.
+
+### Dropping real art in
+
+Every theme in `data/themes.js` has an `assets` block:
+
+```js
+assets: {
+  hero: null,        // 'hero.jpg'  — 1600x600 or wider
+  logo: null,        // 'logo.svg'  — transparent, light-on-dark
+  icon: null,        // 'icon.png'  — square, 128px+
+  characters: null,
+  credit: null,      // required whenever any of the above is set
+}
+```
+
+Fill in a filename, put the file in `brackets/assets/games/<game-id>/`, and it
+takes over — the drawn motif becomes the fallback. The hero already sits behind
+a scrim sized for a busy photograph, so nothing else changes.
+
+Before doing that, get the terms right. In rough order of how likely they are to
+be usable:
+
+1. **Ask Marvel Games / PlayStation Partners directly.** An event organiser
+   asking for promotional assets for a community tournament is an ordinary
+   request and is sometimes granted in writing. Written permission is the only
+   version of this that is actually safe.
+2. **Check whether a press kit has appeared since.** Publishers often add one
+   after launch. If it exists, read its terms — most permit editorial and
+   community use with attribution, some do not permit use on a site that takes
+   money, which a site charging entry fees may count as.
+3. **Commission or draw your own.** No permission needed, and it is what the
+   current artwork is.
+
+Set `credit` whenever you use somebody's asset; it renders in the corner of the
+hero. And note the licensing question is about *artwork*, not about naming the
+game — using a game's name to say which game a tournament is for is nominative
+use and is not what any of this is about.
+
+---
+
 ## Architecture
 
 ```
@@ -430,6 +579,7 @@ brackets/
 
   data/
     games.js          the game registry — every field, preset and default
+    themes.js         per-game palettes, original artwork, official-asset slot
     demo.js           a working event, seeded only when there is no backend
 
   lib/
@@ -438,11 +588,14 @@ brackets/
     auth.js           Discord + email fallback, claimable players, connections
     guidance.js       the "what do I do next" rules engine
     csv.js            import parsing, column mapping, dry run, export
+    tour.js           the guest walkthrough and its reset
     ui.js             html templating, delegation, icons, dialogs
 
   views/              home, setup wizard, admin console, event page, profile
+  assets/games/<id>/  where licensed artwork goes, if you have any
   sql/001_schema.sql  the security model
   test/bracket.test.mjs
+  test/theme.test.mjs
 ```
 
 Three decisions worth defending:
@@ -492,7 +645,8 @@ column mapping, dry-run diff and upsert; export; the seeding lab with separation
 and projection; single and double elimination with byes, progression, DQ and
 un-reporting; the station queue and DQ timers; the guidance engine; the player
 passport with head-to-head; claimable walk-up players; document signing;
-local-first storage with an offline write queue; light and dark themes.
+local-first storage with an offline write queue; light and dark themes;
+per-game theming; and the guest demo tour with reset.
 
 **Written but never run against a live server:** everything in `sql/`, and the
 Supabase paths in `store.js` and `auth.js`. There is no project configured, so
@@ -518,10 +672,13 @@ It seeds a demo event — 28 entrants, four no-shows, a duplicate, a walk-up wit
 a claim code, and a season of past results, chosen to exercise the awkward cases
 rather than to look good in a screenshot.
 
+It seeds the demo the first time only, and never over real data.
+
 Tests:
 
 ```
-node brackets/test/bracket.test.mjs
+node brackets/test/bracket.test.mjs   # 112 assertions, mostly double elim
+node brackets/test/theme.test.mjs     # 30 contrast and distinctness checks
 ```
 
 To connect a backend: run `sql/001_schema.sql` against the `battydevsite`

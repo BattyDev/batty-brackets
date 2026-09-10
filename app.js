@@ -20,6 +20,8 @@
 
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
+import { installThemes, themeFor, gameMark } from './data/themes.js';
+import * as tour from './lib/tour.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc } from './lib/ui.js';
 
 import * as home from './views/home.js';
@@ -87,6 +89,51 @@ export function go(path, { replace = false } = {}) {
 }
 
 /* --------------------------------------------------------------------------
+   Announcing navigation
+   --------------------------------------------------------------------------
+   In a single-page app the URL changes and the whole main region is replaced,
+   but nothing tells a screen reader that anything happened -- so a user who
+   activates "Seeding" hears silence and is left with focus on a link that no
+   longer exists.
+
+   Two things fix it, and both are needed: move focus to the top of the new
+   content, and announce the page name in a live region. Focus alone is not
+   enough (the heading is read, but the user does not know a navigation
+   occurred); the announcement alone is not enough (focus stays behind in the
+   old, now-detached DOM).
+   -------------------------------------------------------------------------- */
+let lastAnnounced = null;
+
+function announceRoute(title) {
+  const region = document.getElementById('route-announcer');
+  if (!region || title === lastAnnounced) return;
+  lastAnnounced = title;
+  region.textContent = title;
+}
+
+/* Focus is moved only on a real navigation, never on the re-renders caused by
+   a store change or the one-second timer -- stealing focus from a field
+   somebody is typing in would be far worse than the problem being solved.
+
+   `lastPath` starts undefined and is seeded by the FIRST draw without moving
+   focus. That is not a micro-optimisation, it is a fix for a real bug: moving
+   focus to <main> on initial load puts the skip link behind the focus
+   position, so the first Tab lands inside the content and the skip link can
+   never be reached at all -- which breaks the one feature that exists purely
+   for keyboard users. On a fresh page load the browser's own starting point
+   (the top of the document) is already the right one. */
+let lastPath;
+
+function focusMainIfNavigated(path) {
+  const first = lastPath === undefined;
+  if (path === lastPath) return;
+  lastPath = path;
+  if (first) return;
+  const main = document.getElementById('main');
+  if (main) main.focus({ preventScroll: true });
+}
+
+/* --------------------------------------------------------------------------
    Chrome
    -------------------------------------------------------------------------- */
 
@@ -94,6 +141,13 @@ const NAV = [
   { id: 'home', label: 'Events', icon: 'trophy', path: '/' },
   { id: 'me', label: 'Profile', icon: 'person', path: '/me' },
 ];
+
+/* "Events" covers the event routes as well as the list itself, because that is
+   the section a reader is in. It does NOT cover /new or /me. */
+function navIsCurrent(item, route) {
+  if (item.id === 'me') return route.name === 'me';
+  return ['home', 'join', 'event', 'admin'].includes(route.name);
+}
 
 function syncChip() {
   const s = store.syncState();
@@ -111,13 +165,18 @@ function syncChip() {
   return html`<span class="sync">${raw(icon('check', 'icon-sm'))} Saved</span>`;
 }
 
-function shell(inner, { title, subtitle, back, actions = '' }) {
+function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
   const route = parseRoute();
   const me = auth.currentPlayer();
+  /* `data-game` on the bar and on <main> puts the whole page inside the game's
+     colour roles -- so the accent, the chips, the focus rings and the primary
+     buttons all follow the game without a single component knowing about it. */
+  const themed = gameId && themeFor(gameId) ? ` data-game="${gameId}"` : '';
 
   return html`
+    <a class="skip-link" href="#main">Skip to main content</a>
     <div class="app">
-      <header class="top-bar">
+      <header class="top-bar"${raw(themed)}>
         ${back
           ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>`
           : html`<a class="btn btn-icon" href="../index.html" aria-label="BattyDev home">${raw(icon('home'))}</a>`}
@@ -128,9 +187,12 @@ function shell(inner, { title, subtitle, back, actions = '' }) {
       </header>
 
       <nav class="nav" aria-label="Sections">
+        <!-- aria-current only where it is true. It previously marked "Events"
+             on every route that was not the profile, which tells a screen
+             reader the user is on a page they are not on. -->
         ${list(NAV.map((item) => html`
           <a class="nav-item" href="#${item.path}"
-             ${raw(route.name === item.id || (item.id === 'home' && route.name !== 'me') ? 'aria-current="page"' : '')}>
+             ${raw(navIsCurrent(item, route) ? 'aria-current="page"' : '')}>
             <span class="pill">${raw(icon(item.icon))}</span>
             <span>${item.label}</span>
           </a>`))}
@@ -139,8 +201,14 @@ function shell(inner, { title, subtitle, back, actions = '' }) {
           : html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('key'))}</span><span>Sign in</span></button>`}
       </nav>
 
-      <main class="scaffold">${raw(inner)}</main>
-    </div>`;
+      <!-- tabindex="-1" so the skip link and the post-navigation focus move
+           below can put focus here; it is not in the tab order itself. -->
+      <main class="scaffold" id="main" tabindex="-1"${raw(themed)}>
+        ${raw(tour.demoBanner())}
+        ${raw(inner)}
+      </main>
+    </div>
+    ${raw(tour.tourCard())}`;
 }
 
 /* --------------------------------------------------------------------------
@@ -169,6 +237,8 @@ export function draw() {
     };
     const out = route.view.view(ctx);
     render(root, shell(out.body, out));
+    announceRoute(out.title);
+    focusMainIfNavigated(route.path);
   } catch (err) {
     /* A view that throws must not leave a blank page with no way out -- at a
        venue that is indistinguishable from the site being down. */
@@ -210,6 +280,21 @@ on('copy-text', async ({ text }) => {
   snack(await copy(text) ? 'Copied' : 'Could not copy — select it and copy by hand');
 });
 
+/* ---- the guided demo ----
+   All of these are plain store writes plus a route change, so the tour cannot
+   get the app into a state you could not reach by clicking. */
+on('tour-start', () => { tour.start(); });
+on('tour-next', () => { tour.next(); });
+on('tour-prev', () => { tour.previous(); });
+on('tour-stop', () => { tour.stop(); draw(); snack('Tour ended — everything still works. Reset when you are done.'); });
+on('tour-dismiss', () => { tour.dismiss(); draw(); });
+on('tour-reset', () => {
+  const restored = tour.reset();
+  snack(restored ? 'Demo reset to how it started.' : 'Nothing to reset.');
+  window.location.hash = `#/e/${tour.DEMO_EVENT}`;
+  draw();
+});
+
 on('undo', () => {
   const label = store.undo();
   snack(label ? `Undid: ${label}` : 'Nothing to undo');
@@ -227,21 +312,52 @@ on('undo', () => {
   } catch { /* private mode */ }
 
   bindDelegation(root);
+  /* One <style> covering every game's colour roles, injected once. See
+     data/themes.js -- putting data-game on any container re-themes everything
+     inside it. */
+  installThemes();
 
-  /* Demo data only when there is no backend. With a project configured, an
-     empty account should look empty -- seeding fiction into a real deployment
-     would be indefensible. */
+  /* ---- who gets the demo ----------------------------------------------
+     A guest does. That is the whole point of it: somebody following a link
+     with no account should land on a working tournament rather than an empty
+     state, and be able to walk through every screen without signing up.
+
+     The rule is therefore about the VISITOR, not about the deployment:
+
+       * no backend at all  -> demo (the local-only mode, and how this runs
+         today)
+       * backend, signed out -> demo, seeded locally only
+       * backend, signed in  -> no demo. A real account must look empty when it
+         is empty; seeding fiction into somebody's own event list would be
+         indefensible.
+
+     Seeding it for a signed-out visitor of a live deployment is safe because
+     every write in data/demo.js passes `queueIt: false`, so not one demo row
+     can reach the server. It exists in that browser and nowhere else.
+
+     Signing in later does not wipe it — the demo and the account's real events
+     simply coexist locally, and the demo rows are the ones carrying `demo:
+     true`, which is also what scopes the reset. */
   const cfg = window.BRACKETS_CONFIG || {};
-  store.boot({ demo: !cfg.url || !cfg.key });
+  const configured = Boolean(cfg.url && cfg.key);
+
+  store.boot({ demo: !configured });
 
   const client = await connect();
   if (client) {
     store.attach(client);
     await auth.initAuth(client);
+    /* Now that auth has resolved, a signed-out visitor gets the demo too. */
+    if (!auth.isSignedIn()) store.seedDemo();
     store.pull().then(draw);
   } else {
     await auth.initAuth(null);
   }
+
+  /* Capture the pristine demo before anything can touch it, so reset always
+     has something correct to restore. No-op once captured, and a no-op
+     entirely when the data is not the demo. */
+  tour.snapshot();
 
   store.subscribe(() => draw());
   auth.onAuth(() => draw());

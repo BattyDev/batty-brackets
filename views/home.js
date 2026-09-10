@@ -19,6 +19,7 @@ import { on } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { gameById, GAMES } from '../data/games.js';
+import { gameMark } from '../data/themes.js';
 import { formatMoney } from '../lib/guidance.js';
 
 const STATUS = {
@@ -70,7 +71,7 @@ function landing(ctx) {
       </section>
 
       <section style="margin-bottom:32px">
-        <h3 class="title-large" style="margin-bottom:12px">What is different</h3>
+        <h2 class="title-large" style="margin-bottom:12px">What is different</h2>
         <div class="grid-cards">
           ${list([
             ['station', 'It runs offline', 'Every screen is drawn from data already on your device. Report a set with no signal; it syncs when there is some. The chip in the corner always says how many writes are waiting.'],
@@ -91,7 +92,7 @@ function landing(ctx) {
 
       ${live.length ? html`
         <section>
-          <h3 class="title-large" style="margin-bottom:12px">Happening now</h3>
+          <h2 class="title-large" style="margin-bottom:12px">Happening now</h2>
           <div class="stack-sm">${list(live.slice(0, 5).map((e) => eventCard(e, ctx)))}</div>
         </section>` : ''}
 
@@ -135,13 +136,13 @@ function dashboard(ctx) {
 
       ${running.length ? html`
         <section style="margin-bottom:24px">
-          <h3 class="title-large" style="margin-bottom:12px">Live</h3>
+          <h2 class="title-large" style="margin-bottom:12px">Live</h2>
           <div class="stack-sm">${list(running.map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
         </section>` : ''}
 
       <section style="margin-bottom:24px">
         <div class="row" style="margin-bottom:12px">
-          <h3 class="title-large spacer">Upcoming</h3>
+          <h2 class="title-large spacer">Upcoming</h2>
           <button class="btn btn-text btn-sm" data-act="go" data-path="/join">${raw(icon('key'))} Join with a code</button>
         </div>
         ${upcoming.length
@@ -151,7 +152,7 @@ function dashboard(ctx) {
 
       ${past.length ? html`
         <section>
-          <h3 class="title-large" style="margin-bottom:12px">Finished</h3>
+          <h2 class="title-large" style="margin-bottom:12px">Finished</h2>
           <div class="stack-sm">${list(past.slice(0, 6).map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
         </section>` : ''}
     </div>
@@ -173,7 +174,7 @@ function eventCard(event, ctx, isEntered = false) {
   return html`
     <a class="card card-outlined" href="#/e/${event.id}">
       <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
-        <span class="avatar" style="background:${raw(game?.accent || 'var(--md-primary-container)')};color:#fff">${game?.mark || '?'}</span>
+        <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark || '?'}</span>
         <div class="spacer" style="min-width:0">
           <div class="row-tight" style="gap:8px">
             <b class="title-medium">${event.name}</b>
@@ -234,9 +235,9 @@ function joinView(ctx, code) {
         ${event ? html`
           <div class="card card-elevated" style="margin-top:20px">
             <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
-              <span class="avatar" style="background:${raw(game?.accent || 'var(--md-primary)')};color:#fff">${game?.mark}</span>
+              <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark}</span>
               <div class="spacer">
-                <h3 class="title-large">${event.name}</h3>
+                <h2 class="title-large">${event.name}</h2>
                 <div class="body-small dim">${game?.name} · ${formatDateTime(event.startsAt)}</div>
                 ${event.venue ? html`<div class="body-small dim">${event.venue}</div>` : ''}
               </div>

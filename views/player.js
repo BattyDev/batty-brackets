@@ -166,7 +166,7 @@ function profile(player, ctx, isMe) {
 
       ${upcoming.length ? html`
         <section style="margin-bottom:16px">
-          <h3 class="title-large" style="margin-bottom:8px">${isMe ? 'You are entered in' : 'Entered in'}</h3>
+          <h2 class="title-large" style="margin-bottom:8px">${isMe ? 'You are entered in' : 'Entered in'}</h2>
           <div class="stack-sm">
             ${list(upcoming.map(({ entry, event }) => html`
               <a class="card card-outlined row" href="#/e/${event.id}" style="flex-wrap:nowrap">
@@ -184,7 +184,7 @@ function profile(player, ctx, isMe) {
 
       ${rivals.length ? html`
         <section style="margin-bottom:16px">
-          <h3 class="title-large" style="margin-bottom:4px">Head to head</h3>
+          <h2 class="title-large" style="margin-bottom:4px">Head to head</h2>
           <p class="body-small dim" style="margin-bottom:12px">
             Everyone ${isMe ? 'you have' : `${player.tag} has`} played, at any event on this site.
           </p>
@@ -203,7 +203,7 @@ function profile(player, ctx, isMe) {
         </section>` : ''}
 
       <section>
-        <h3 class="title-large" style="margin-bottom:12px">Recent sets</h3>
+        <h2 class="title-large" style="margin-bottom:12px">Recent sets</h2>
         ${history.length ? html`
           <div class="stack-sm">
             ${list(history.slice(0, 25).map((result) => {

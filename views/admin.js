@@ -117,23 +117,32 @@ export function view(ctx) {
   const summary = guidanceSummary(suggestions);
 
   const body = html`
-    <div class="tabs" role="tablist">
+    <!-- Navigation, not a tab widget. These change the URL and each one is a
+         real, linkable page -- so they are anchors in a <nav> with
+         aria-current, not role="tab". The ARIA tab pattern promises a
+         tabpanel, arrow-key roving focus and no page change; promising that
+         and not delivering it is worse for a screen-reader user than plain
+         links, which they already know how to use. -->
+    <nav class="tabs" aria-label="Organiser sections">
       ${list(TABS.map((t) => html`
-        <button class="tab" role="tab" aria-selected="${t.id === tab}"
-                data-act="go" data-path="/e/${eventId}/admin/${t.id}">
+        <a class="tab" href="#/e/${eventId}/admin/${t.id}"
+           ${raw(t.id === tab ? 'aria-current="page"' : '')}>
           ${raw(icon(t.icon, 'icon-sm'))}${t.label}
           ${t.id === 'overview' && summary.level !== 'ok'
             ? html`<span class="chip chip-static ${raw(summary.level === 'urgent' ? 'chip-error' : 'chip-warn')}"
-                        style="min-height:20px;padding:0 6px;font:var(--label-small)">${suggestions.length}</span>`
+                        style="min-height:20px;padding:0 6px;font:var(--label-small)">
+                     ${suggestions.length}<span class="sr-only"> item${suggestions.length === 1 ? '' : 's'} need attention</span>
+                   </span>`
             : ''}
-        </button>`))}
-    </div>
+        </a>`))}
+    </nav>
     ${raw((TAB_VIEWS[tab] || TAB_VIEWS.overview)(data, suggestions, ctx))}`;
 
   return {
     title: data.event.name,
     subtitle: `${data.game?.short || ''} · ${data.entries.length} entrants`,
     back: `/e/${eventId}`,
+    gameId: data.event.gameId,
     body,
   };
 }
@@ -179,7 +188,7 @@ function overviewTab(data, suggestions, ctx) {
 
       <section style="margin-bottom:20px">
         <div class="row" style="gap:8px;margin-bottom:12px">
-          <h3 class="title-large spacer">Next steps</h3>
+          <h2 class="title-large spacer">Next steps</h2>
           ${store.canUndo() ? html`<button class="btn btn-text btn-sm" data-act="undo">${raw(icon('undo', 'icon-sm'))} Undo ${store.undoLabel()}</button>` : ''}
         </div>
         ${suggestions.length ? html`
@@ -204,7 +213,7 @@ function overviewTab(data, suggestions, ctx) {
       </section>
 
       <section>
-        <h3 class="title-large" style="margin-bottom:12px">Where things stand</h3>
+        <h2 class="title-large" style="margin-bottom:12px">Where things stand</h2>
         <div class="grid-cards">
           ${raw(statCard('Entrants', entries.length, event.capacity ? `of ${event.capacity} cap` : 'no cap', 'group'))}
           ${raw(statCard('Checked in', checkedIn, `${entries.length - checkedIn} still out`, 'check'))}
@@ -271,18 +280,24 @@ function entrantsTab(data) {
       ${rows.length ? html`
         <div class="table-wrap" data-keep-scroll="entrants">
           <table class="data">
+            <caption class="sr-only">
+              Entrants — ${visible.length} shown. Seed, tag and team are editable in place.
+            </caption>
             <thead>
               <tr>
-                <th class="check"><input type="checkbox" data-act-change="select-all"
-                    ${raw(selected.length === visible.length && visible.length ? 'checked' : '')} aria-label="Select all"></th>
-                <th>Seed</th>
-                <th>Tag</th>
-                <th>Team / venue</th>
-                <th>In</th>
-                ${event.entryFee ? raw('<th>Paid</th>') : ''}
-                <th>Signed</th>
-                <th>Contact</th>
-                <th></th>
+                <th class="check" scope="col">
+                  <input type="checkbox" id="select-all" data-act-change="select-all"
+                         ${raw(selected.length === visible.length && visible.length ? 'checked' : '')}>
+                  <label class="sr-only" for="select-all">Select all entrants</label>
+                </th>
+                <th scope="col">Seed</th>
+                <th scope="col">Tag</th>
+                <th scope="col">Team / venue</th>
+                <th scope="col">In</th>
+                ${event.entryFee ? raw('<th scope="col">Paid</th>') : ''}
+                <th scope="col">Signed</th>
+                <th scope="col">Contact</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -292,8 +307,11 @@ function entrantsTab(data) {
                 const missing = required.filter((d) => !signed.has(d.id));
                 return html`
                 <tr class="${raw(ui.selected.has(entry.id) ? 'selected' : '')}">
-                  <td class="check"><input type="checkbox" data-act-change="select-row" data-id="${entry.id}"
-                      ${raw(ui.selected.has(entry.id) ? 'checked' : '')} aria-label="Select ${player?.tag}"></td>
+                  <td class="check">
+                    <input type="checkbox" id="sel-${entry.id}" data-act-change="select-row" data-id="${entry.id}"
+                           ${raw(ui.selected.has(entry.id) ? 'checked' : '')}>
+                    <label class="sr-only" for="sel-${entry.id}">Select ${player?.tag || 'entrant'}</label>
+                  </td>
                   <td class="num" style="width:64px">
                     <input type="number" value="${entry.seed ?? ''}" data-act-change="entry-seed" data-id="${entry.id}"
                            data-focus-key="seed-${entry.id}" aria-label="Seed for ${player?.tag}">
@@ -302,18 +320,24 @@ function entrantsTab(data) {
                     <div class="row-tight" style="flex-wrap:nowrap">
                       ${raw(avatar(player, 'avatar-sm'))}
                       <input type="text" value="${player?.tag || ''}" data-act-change="player-tag" data-id="${entry.playerId}"
-                             data-focus-key="tag-${entry.id}" aria-label="Tag" style="min-width:120px">
+                             data-focus-key="tag-${entry.id}" style="min-width:120px"
+                             aria-label="Tag for ${player?.tag || 'entrant'}">
                       ${player?.claimable ? html`<span class="chip chip-static chip-warn" style="min-height:20px;padding:0 6px;font:var(--label-small)" title="Added by an organiser — not claimed by an account yet">walk-up</span>` : ''}
                       ${entry.waitlisted ? html`<span class="chip chip-static chip-assist" style="min-height:20px;padding:0 6px;font:var(--label-small)">waitlist</span>` : ''}
                     </div>
                   </td>
                   <td><input type="text" value="${entry.group || ''}" data-act-change="entry-group" data-id="${entry.id}"
-                             data-focus-key="group-${entry.id}" aria-label="Team" style="min-width:100px"></td>
+                             data-focus-key="group-${entry.id}" style="min-width:100px"
+                             aria-label="Team or venue for ${player?.tag || 'entrant'}"></td>
                   <td><button class="chip ${raw(entry.checkedInAt ? 'chip-ok' : '')}" data-act="toggle-checkin" data-id="${entry.id}"
-                      style="min-height:26px;padding:0 10px">${entry.checkedInAt ? 'In' : 'Out'}</button></td>
+                      style="min-height:26px;padding:0 10px" aria-pressed="${Boolean(entry.checkedInAt)}"
+                      aria-label="${player?.tag || 'Entrant'} is ${entry.checkedInAt ? 'checked in' : 'not checked in'} — activate to change"
+                      >${entry.checkedInAt ? 'In' : 'Out'}</button></td>
                   ${event.entryFee ? html`
                     <td><button class="chip ${raw(entry.paidAt ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
-                        style="min-height:26px;padding:0 10px">${entry.paidAt ? 'Paid' : 'Owes'}</button></td>` : ''}
+                        style="min-height:26px;padding:0 10px" aria-pressed="${Boolean(entry.paidAt)}"
+                        aria-label="${player?.tag || 'Entrant'} has ${entry.paidAt ? 'paid' : 'not paid'} — activate to change"
+                        >${entry.paidAt ? 'Paid' : 'Owes'}</button></td>` : ''}
                   <td>${missing.length
                     ? html`<span class="chip chip-static chip-error" style="min-height:22px;padding:0 8px;font:var(--label-small)" title="${missing.map((d) => d.title).join(', ')}">${missing.length} missing</span>`
                     : html`<span class="chip chip-static chip-ok" style="min-height:22px;padding:0 8px;font:var(--label-small)">ok</span>`}</td>
@@ -403,7 +427,7 @@ function seedingTab(data) {
 
       <div class="row" style="align-items:flex-start;gap:24px">
         <section class="spacer" style="min-width:280px">
-          <h3 class="title-large" style="margin-bottom:8px">Seed order</h3>
+          <h2 class="title-large" style="margin-bottom:8px">Seed order</h2>
           <p class="body-small dim" style="margin-bottom:12px">Drag to reorder, or type a seed in the entrants tab.</p>
           <div class="stack-sm">
             ${list((report ? report.seeds : withNames).map((entrant, i) => {
@@ -424,7 +448,7 @@ function seedingTab(data) {
         </section>
 
         <section class="spacer" style="min-width:280px">
-          <h3 class="title-large" style="margin-bottom:8px">If nobody upsets</h3>
+          <h2 class="title-large" style="margin-bottom:8px">If nobody upsets</h2>
           <p class="body-small dim" style="margin-bottom:12px">
             The single most useful check before you commit: does this match what you know about the room?
           </p>
@@ -484,7 +508,7 @@ function runTab(data) {
   return html`
     <div class="pane">
       <section style="margin-bottom:20px">
-        <h3 class="title-large" style="margin-bottom:12px">Stations</h3>
+        <h2 class="title-large" style="margin-bottom:12px">Stations</h2>
         <div class="stations">
           ${list(stations.map((station) => {
             const match = live.find((m) => m.id === station.matchId);
@@ -520,7 +544,7 @@ function runTab(data) {
 
       <section style="margin-bottom:20px">
         <div class="row" style="margin-bottom:12px">
-          <h3 class="title-large spacer">Queue</h3>
+          <h2 class="title-large spacer">Queue</h2>
           <span class="body-small dim">${queue.length} ready</span>
         </div>
         ${queue.length ? html`
@@ -539,13 +563,18 @@ function runTab(data) {
 
       <section>
         <div class="row" style="margin-bottom:8px">
-          <h3 class="title-large spacer">Bracket</h3>
+          <h2 class="title-large spacer">Bracket</h2>
           <span class="body-small dim">Tap a set to report it</span>
         </div>
-        <div class="bracket-scroll" data-keep-scroll="bracket">
+        <!-- tabindex + role so the pane can be scrolled with the arrow keys.
+             A scroll container that only responds to a mouse wheel or a swipe
+             is unreachable for anyone driving the page from a keyboard, and a
+             bracket is the widest thing on the site. -->
+        <div class="bracket-scroll" data-keep-scroll="bracket"
+             tabindex="0" role="region" aria-label="Bracket — scroll sideways for later rounds">
           <div class="bracket">
             ${list(rounds.map((round) => html`
-              <div class="bracket-round">
+              <div class="bracket-round" role="group" aria-label="${round.name}">
                 <h3>${round.name}</h3>
                 <div class="round-body">
                   ${list(round.matches.map((match) => matchCard(match, nameOf, called)))}
@@ -581,7 +610,7 @@ function matchCard(match, nameOf, called) {
 
   const side = (slot, other) => {
     if (!slot.entrantId) {
-      return html`<div class="match-side tbd"><span class="seed"></span><span class="who">${slot.kind === 'from' ? 'waiting' : 'bye'}</span></div>`;
+      return html`<span class="match-side tbd"><span class="seed"></span><span class="who">${slot.kind === 'from' ? 'waiting' : 'bye'}</span></span>`;
     }
     const won = done && match.winnerId === slot.entrantId;
     const lost = done && match.winnerId !== slot.entrantId;
@@ -589,20 +618,38 @@ function matchCard(match, nameOf, called) {
       ? Math.max(match.score?.a ?? 0, match.score?.b ?? 0)
       : Math.min(match.score?.a ?? 0, match.score?.b ?? 0)) : '';
     return html`
-      <div class="match-side ${raw(won ? 'won' : lost ? 'lost' : '')}">
+      <span class="match-side ${raw(won ? 'won' : lost ? 'lost' : '')}">
         <span class="seed">${slot.seed ?? ''}</span>
         <span class="who">${nameOf(slot.entrantId)}</span>
         <span class="score">${score}</span>
-      </div>`;
+      </span>`;
   };
+
+  /* The whole card is one control, so its accessible name has to carry
+     everything the sighted reader gets from position and colour: which round,
+     who is in it, what the score was, and what activating it will do. */
+  const nameFor = (slot) => (slot.entrantId ? nameOf(slot.entrantId) : 'not decided yet');
+  const label = bye
+    ? `${match.name}: ${nameFor(a.entrantId ? a : b)} advances on a bye`
+    : done
+      ? `${match.name}: ${nameOf(match.winnerId)} beat ${nameOf(match.loserId)} `
+        + `${Math.max(match.score?.a ?? 0, match.score?.b ?? 0)} to ${Math.min(match.score?.a ?? 0, match.score?.b ?? 0)}. `
+        + 'Activate to correct the result.'
+      : ready
+        ? `${match.name}: ${nameFor(a)} versus ${nameFor(b)}, not yet reported. Activate to report it.`
+        : `${match.name}: waiting for ${nameFor(a)} versus ${nameFor(b)}`;
 
   return html`
     <button class="match ${raw(bye ? 'bye' : done ? 'done' : live ? 'live' : ready ? 'ready' : '')}"
-            data-act="${raw(ready || done ? 'report-open' : 'noop')}" data-match="${match.id}">
-      ${raw(side(a, b))}
-      ${raw(side(b, a))}
-      ${bye ? html`<div class="match-meta">bye</div>` : ''}
-      ${live ? html`<div class="match-meta">${raw(icon('clock', 'icon-sm'))} out ${relativeTime(match.calledAt).replace(' ago', '')}</div>` : ''}
+            data-act="${raw(ready || done ? 'report-open' : 'noop')}" data-match="${match.id}"
+            ${raw(ready || done ? '' : 'aria-disabled="true"')}
+            aria-label="${label}">
+      <span aria-hidden="true">
+        ${raw(side(a, b))}
+        ${raw(side(b, a))}
+        ${bye ? html`<span class="match-meta">bye</span>` : ''}
+        ${live ? html`<span class="match-meta">${raw(icon('clock', 'icon-sm'))} out ${relativeTime(match.calledAt).replace(' ago', '')}</span>` : ''}
+      </span>
     </button>`;
 }
 
@@ -621,7 +668,7 @@ function rulesTab(data) {
     <div class="pane" style="max-width:840px">
       <div class="card card-elevated" style="margin-bottom:20px">
         <div class="row-tight">
-          <b class="title-large spacer">${ruleset.presetName}</b>
+          <h2 class="title-large spacer" style="margin:0">${ruleset.presetName}</h2>
           <span class="chip chip-static chip-assist">v${ruleset.presetVersion}</span>
         </div>
         ${overridden.size ? html`
