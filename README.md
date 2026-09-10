@@ -17,6 +17,8 @@ walkthrough and a reset button. See [Try it](#try-it).
 
 ---
 
+See [ROADMAP.md](ROADMAP.md) for what is outstanding and in what order.
+
 ## Contents
 
 - [Try it](#try-it)
