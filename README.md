@@ -908,8 +908,9 @@ the schema is unapplied and the sync code is untested against a real PostgREST.
 Expect to fix things on first connection.
 
 **Not built:** start.gg import; Discord notifications; player self-reporting and
-disputes; pools → top cut in the UI; payments; per-player privacy controls;
-stream tooling; per-event link previews.
+disputes; pools → top cut in the UI; printable brackets, check-in sheets and
+station signs; payments; per-player privacy controls; stream tooling; per-event
+link previews.
 
 Everything outstanding, with reasoning and rough order, is in
 [ROADMAP.md](ROADMAP.md).
