@@ -69,6 +69,18 @@ of Playwright.
 | `stability` | The tour card is the same DOM node six seconds later — **and** the live clock is still ticking, because a fix that stopped the flicker by stopping the clock would pass half a test and fail a user. |
 | `tours` | All three demos walked end to end, every step landing on a real route and no step repeating itself; the borrowed player identity handed back on reset. |
 | `tv` | Both screens have real content at **five different event depths**, no column scaled below the readable floor, the rotation rotating, and no timer left running after you leave. |
+| `local` | Both demo and real device-only events direct arrivals to the organiser instead of advertising a join link that cannot work on another device. |
+| `brand` | Publisher/creator identity, editorial typography, real setup action, 320/390px reflow in both schemes, and broadcast station rows with actual calls. Includes negative probes for lost typography and missing TV identity. |
+| `setup` | Local capacity/station creation, station bounds, provisional-rule acknowledgement, and truthful device-only setup controls. |
+| `recovery` | Immediate durable snapshots, reload/corruption/quota failures, validated portable backups, cleared undo history, and deliberate approval of imported server writes. |
+
+For optional design-review screenshots, set `BRACKETS_SCREENSHOTS` to a local
+output directory before running `node test/run.mjs brand`. The test captures
+desktop and phone landing pages and an active venue queue in both schemes.
+
+The local-event regression was checked by restoring the TV header's original
+unconditional join code: both demo and real-event assertions failed. Restoring
+the configuration/demo guard made all nine assertions pass.
 
 ### The rule these follow
 

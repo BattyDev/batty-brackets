@@ -31,6 +31,7 @@ import * as player from './views/player.js';
 import * as publicEvent from './views/event.js';
 import * as tv from './views/tv.js';
 import * as authView from './views/auth.js';
+import * as recovery from './views/recovery.js';
 
 /* --------------------------------------------------------------------------
    Supabase
@@ -63,6 +64,7 @@ async function connect() {
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
   { pattern: /^\/new$/, view: setup, name: 'new' },
+  { pattern: /^\/recovery$/, view: recovery, name: 'recovery' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
   { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, view: admin, name: 'admin', keys: ['eventId', 'tab'] },
   /* Before the generic event route, which would otherwise match /tv as a tab
@@ -223,18 +225,43 @@ function navIsCurrent(item, route) {
 
 function syncChip() {
   const s = store.syncState();
+  const local = s.storage || {};
+  if (local.error) {
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Backup and recovery: local save failed" title="${local.error}"
+      style="border:0;cursor:pointer;font:var(--label-medium)">
+      ${raw(icon('alert', 'icon-sm'))} Local save failed</button>`;
+  }
   if (!s.configured) {
-    return html`<span class="sync" title="No backend configured — everything is saved on this device only.">
-      ${raw(icon('station', 'icon-sm'))} On this device</span>`;
+    return html`<button type="button" class="sync" data-act="recovery-open"
+      aria-label="Backup and recovery: saved on this device"
+      title="No backend configured — everything is saved on this device only."
+      style="border:0;cursor:pointer;font:var(--label-medium)">
+      ${raw(icon('station', 'icon-sm'))} Saved on this device</button>`;
   }
   if (!s.online) {
-    return html`<span class="sync offline">${raw(icon('wifiOff', 'icon-sm'))}
-      Offline${s.pending ? html` · ${s.pending} waiting` : ''}</span>`;
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Backup and recovery: saved locally, offline"
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('wifiOff', 'icon-sm'))}
+      Saved locally · Offline${s.pending ? html` · ${s.pending} waiting` : ''}</button>`;
+  }
+  if (s.failed) {
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Backup and recovery: ${s.failed} server writes failed"
+      title="${s.lastServerError || 'Some server writes need attention.'}"
+      style="border:0;cursor:pointer;font:var(--label-medium)">
+      ${raw(icon('alert', 'icon-sm'))} Saved locally · ${s.failed} sync failed</button>`;
   }
   if (s.pending) {
-    return html`<span class="sync pending"><span class="dot"></span> Saving ${s.pending}</span>`;
+    return html`<button type="button" class="sync pending" data-act="recovery-open"
+      aria-label="Backup and recovery: saved locally, syncing ${s.pending} writes"
+      style="border:0;cursor:pointer;font:var(--label-medium)"><span class="dot"></span> Saved locally · Syncing ${s.pending}</button>`;
   }
-  return html`<span class="sync">${raw(icon('check', 'icon-sm'))} Saved</span>`;
+  return html`<button type="button" class="sync" data-act="recovery-open"
+    aria-label="Backup and recovery: saved locally, server synced"
+    title="The local copy is saved; the last server sync returned without an error."
+    style="border:0;cursor:pointer;font:var(--label-medium)">
+    ${raw(icon('check', 'icon-sm'))} Saved locally · Server synced</button>`;
 }
 
 /* A display fills the screen: no app bar, no navigation rail, no skip link to
@@ -256,12 +283,12 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
 
   return html`
     <a class="skip-link" href="#main">Skip to main content</a>
-    <div class="app">
+    <div class="app ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
       <header class="top-bar"${raw(themed)}>
         ${back
           ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>`
           : html`<a class="btn btn-icon" href="../index.html" aria-label="BattyDev home">${raw(icon('home'))}</a>`}
-        <h1>${title}${subtitle ? html`<span class="sub">${subtitle}</span>` : ''}</h1>
+        <h1><span class="brand-signature">Batty Brackets · By BattyDev</span>${title}${subtitle ? html`<span class="sub">${subtitle}</span>` : ''}</h1>
         ${raw(actions)}
         ${raw(syncChip())}
         <!-- The label names the destination, not the control. "Switch theme"
@@ -289,8 +316,9 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
       <!-- tabindex="-1" so the skip link and the post-navigation focus move
            below can put focus here; it is not in the tab order itself. -->
       <main class="scaffold" id="main" tabindex="-1"${raw(themed)}>
-        ${raw(tour.demoBanner())}
+        ${route.name !== 'home' || me ? raw(tour.demoBanner()) : ''}
         ${raw(inner)}
+        ${route.name === 'home' && !me ? raw(tour.demoBanner()) : ''}
       </main>
     </div>`;
 }
@@ -363,6 +391,7 @@ function drawChrome() {
 
 on('go', ({ path }) => go(path));
 on('noop', () => {});
+on('recovery-open', () => go('/recovery'));
 
 /* The theme button toggles against what you can SEE, not against what is
    stored.
@@ -500,6 +529,7 @@ on('undo', () => {
 
   store.subscribe(() => draw());
   auth.onAuth(() => draw());
+  window.addEventListener('brackets-recovery-change', draw);
   window.addEventListener('hashchange', draw);
 
   /* Live clocks: DQ timers and how long a set has been out.

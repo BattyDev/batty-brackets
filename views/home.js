@@ -19,7 +19,6 @@ import { on } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { gameById, GAMES } from '../data/games.js';
-import { gameMark } from '../data/themes.js';
 import { formatMoney } from '../lib/guidance.js';
 
 const STATUS = {
@@ -37,7 +36,7 @@ export function view(ctx) {
   if (ctx.route === 'join') return joinView(ctx, params.code);
 
   return {
-    title: 'Brackets',
+    title: 'Batty Brackets',
     subtitle: me ? `Signed in as ${me.tag}` : 'Tournaments for fighting games',
     body: me ? dashboard(ctx) : landing(ctx),
   };
@@ -47,62 +46,60 @@ export function view(ctx) {
    Signed out
    -------------------------------------------------------------------------- */
 
+/* The publication identity belongs to BattyDev, not to whichever game is
+   featured. Keep this page neutral; the game mark is a clearly labelled
+   sidebar rather than a theme applied to the entire product. */
 function landing(ctx) {
   const live = store.listEvents().filter((e) => ['registration', 'checkin', 'seeding', 'running'].includes(e.status));
-
+  const demo = store.getEvent('evt_demo_tokon')?.demo;
   return html`
-    <div class="pane">
-      <section style="padding:24px 0 32px">
-        <p class="label-large" style="color:var(--md-primary);margin:0 0 8px">BattyDev</p>
-        <h2 class="display-medium" style="margin-bottom:16px">Brackets that work<br>at the venue.</h2>
-        <p class="body-large dim" style="max-width:56ch">
-          Built for locals: the whole event lives on your phone, so reporting a set
-          does not wait on the wifi. Bulk import and edit anything. Seeding you can
-          see before you commit to it. And when eight people do not show, the app
-          tells you what your options are.
-        </p>
-        <div class="row" style="margin-top:24px">
-          <button class="btn btn-filled btn-lg" data-act="sign-in">${raw(icon('discord'))} Sign in with Discord</button>
-          <button class="btn btn-outlined btn-lg" data-act="go" data-path="/join">${raw(icon('key'))} Join with a code</button>
+    <div class="pane publication">
+      <header class="publication-masthead">
+        <div class="publication-edition"><span>The fighting game local</span><span>Independent tools · By BattyDev</span></div>
+        <h2 class="publication-wordmark">Batty Brackets<span>.</span></h2>
+        <nav class="publication-nav" aria-label="Get started">
+          <a href="#/new">Run a tournament ${raw(icon('plus'))}</a>
+          <a href="#/join">Join with a code ${raw(icon('key'))}</a>
+          <button data-act="sign-in">Sign in ${raw(icon('person'))}</button>
+        </nav>
+      </header>
+      <section class="publication-lead" aria-labelledby="local-title">
+        <div class="publication-story">
+          <p class="publication-kicker">From the first check-in to grand finals</p>
+          <h3 id="local-title">Good games.<br>Better locals.</h3>
+          <p class="publication-deck">Tournament tools with a place in your scene.
+            Clear seeding, quick results, and a screen the whole room can follow.</p>
+          <div class="local-actions">
+            <a class="btn btn-filled btn-lg" href="#/new">${raw(icon('plus'))} Set up an event</a>
+            ${demo ? html`<button class="btn btn-outlined btn-lg" data-act="tour-start" data-tour="organiser">${raw(icon('play'))} Try the Tōkon demo</button>` : ''}
+          </div>
+          <p class="publication-note">${store.syncState().configured
+            ? 'Explore the setup before signing in.'
+            : 'Runs on this device. Online registration and sharing are not connected yet.'}</p>
         </div>
-        <p class="body-small dim" style="margin-top:12px">
-          Email and password works too — and is worth adding either way, so a Discord outage never locks you out of your own event.
-        </p>
+        <aside class="publication-feature" aria-labelledby="featured-game-title">
+          <p class="publication-kicker">In the spotlight</p>
+          <div class="publication-four" aria-hidden="true">04<span>Fighters.<br>One team.</span></div>
+          <h3 id="featured-game-title">Marvel Tōkon:<br>Fighting Souls</h3>
+          <dl class="publication-facts"><div><dt>Built for</dt><dd>Your local</dd></div>
+            <div><dt>Rules</dt><dd>Organiser-reviewed presets</dd></div></dl>
+          ${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} See the venue display</button>` : ''}
+          <p class="publication-note">Community tournament tools. Not an official game service.</p>
+        </aside>
       </section>
-
-      <section style="margin-bottom:32px">
-        <h2 class="title-large" style="margin-bottom:12px">What is different</h2>
-        <div class="grid-cards">
-          ${list([
-            ['station', 'It runs offline', 'Every screen is drawn from data already on your device. Report a set with no signal; it syncs when there is some. The chip in the corner always says how many writes are waiting.'],
-            ['upload', 'Import, then re-import', 'Paste a spreadsheet — any columns, any size, no 50-row cap. Re-paste it after you fix a name and it updates those rows instead of making duplicates. Preview the diff before anything is written, and undo it after.'],
-            ['sort', 'Seeding you can check', 'See who meets whom in every round before you commit. Keep teammates apart automatically, and read exactly which swaps it made and why.'],
-            ['sparkle', 'It tells you what to do next', 'Eight no-shows at check-in? It works out what re-seeding would change and offers both options. DQ timers run themselves. Idle stations get noticed.'],
-            ['person', 'Your record follows you', 'One profile across every event and every venue. Head-to-head against anyone you have played. Run events at your store and enter the one down the road on the same account.'],
-            ['esports', 'It knows the game', 'Marvel Tokon knows what a 4v4 tag team is — whether the loser may reorder, whether simplified controls are legal. Not a generic bracket with the words swapped.'],
-          ].map(([ic, title, body]) => html`
-            <div class="card card-outlined">
-              <div class="row-tight" style="color:var(--md-primary);margin-bottom:8px">
-                ${raw(icon(ic))}<b class="title-medium">${title}</b>
-              </div>
-              <p class="body-medium dim" style="margin:0">${body}</p>
-            </div>`))}
-        </div>
+      ${live.length ? html`<section class="publication-events">
+        <div class="publication-section-heading"><h3>On the local circuit</h3><span>${store.syncState().configured ? 'Upcoming & running' : 'On this device'}</span></div>
+        <div class="stack-sm">${list(live.slice(0, 5).map((e) => eventCard(e, ctx)))}</div>
+      </section>` : ''}
+      <section class="publication-tools" aria-label="Tournament tools">
+        ${list([
+          ['01', 'Keep the room moving', 'Check in arrivals, call sets to stations, and show who is up next on the venue TV.'],
+          ['02', 'Make the seed make sense', 'Preview matchups and proposed teammate separation before committing the bracket.'],
+          ['03', 'Keep a copy you control', 'Import your roster, preview edits, and download a backup before the first set.'],
+        ].map(([number, title, body]) => html`<article><span class="publication-kicker">${number} / The toolkit</span><h3>${title}</h3><p>${body}</p></article>`))}
       </section>
-
-      ${live.length ? html`
-        <section>
-          <h2 class="title-large" style="margin-bottom:12px">Happening now</h2>
-          <div class="stack-sm">${list(live.slice(0, 5).map((e) => eventCard(e, ctx)))}</div>
-        </section>` : ''}
-
-      <section style="margin-top:32px">
-        <div class="card card-filled">
-          <h3 class="title-medium" style="margin-bottom:8px">Running something?</h3>
-          <p class="body-medium dim">You do not need an account to try it. Everything below works on this device alone — sign in when you want it to sync or to let players see it.</p>
-          <button class="btn btn-tonal" data-act="go" data-path="/new" style="margin-top:8px">${raw(icon('plus'))} Set up an event</button>
-        </div>
-      </section>
+      <div class="publication-start"><p>Make room for your next local.</p><button class="btn btn-outlined" data-act="go" data-path="/new">${raw(icon('plus'))} Set up an event</button></div>
+      <footer class="publication-footer"><a href="../index.html">A project by BattyDev.</a><span>Built around the people on both sides of the setup.</span></footer>
     </div>`;
 }
 
@@ -183,6 +180,7 @@ function eventCard(event, ctx, isEntered = false) {
         <div class="spacer" style="min-width:0">
           <div class="row-tight" style="gap:8px">
             <b class="title-medium">${event.name}</b>
+            ${event.demo ? html`<span class="body-small dim">Demo</span>` : ''}
             <span class="chip chip-static chip-sm ${raw(status.chip)}" style="min-height:22px;padding:0 8px;font:var(--label-small)">${status.label}</span>
             ${isEntered ? html`<span class="chip chip-static chip-info" style="min-height:22px;padding:0 8px;font:var(--label-small)">Entered</span>` : ''}
           </div>

@@ -8,6 +8,14 @@ being read.
 Status as of this writing: the app is built and tested, has never touched a
 server, and has never run an event.
 
+The first pilot targets a Marvel Tōkon local. The selected sports-publication
+identity and broadcast-style venue display are implemented locally, alongside
+reviewed setup, backup/recovery and TV-completion improvements. Creator identity
+is Batty Brackets, By BattyDev; game identity remains separate. Local/demo
+screens do not advertise cross-device joining. Follow LOCAL-REHEARSAL.md before
+the first event. This does not replace backend validation or the observed event
+below: online registration is still unconnected.
+
 ---
 
 ## Now — the two that block everything else

@@ -20,10 +20,10 @@
 
 'use strict';
 
-import { html, raw, list, icon, esc, on, snack, dialog } from '../lib/ui.js';
+import { html, raw, list, icon, on, snack, dialog } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
-import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, formatValue, evoLabel } from '../data/games.js';
+import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, evoLabel } from '../data/games.js';
 import { gameArt, gameHero, themeFor } from '../data/themes.js';
 
 /* Wizard state.
@@ -78,14 +78,14 @@ function freshDraft() {
     platforms: [],
     startsAt: defaultStart(),
     capacity: '',
+    stationCount: '',
     entryFee: '',
     currency: 'USD',
     presetId: null,
     overrides: {},
     documents: [{ id: 'doc_coc', title: 'Code of conduct', required: true, version: 1 }],
     visibility: 'public',
-    poolsEnabled: false,
-    poolCount: 4,
+    provisionalRulesReviewed: false,
     gameSearch: '',
   };
 }
@@ -273,20 +273,28 @@ function stepShape(ctx, game) {
 
       <div class="row" style="gap:16px;align-items:flex-start">
         <label class="field spacer" style="min-width:140px">
-          <span class="field-label">Cap (optional)</span>
+          <span class="field-label">Entrant capacity (optional)</span>
           <input type="number" min="2" data-act-input="wizard-field" data-field="capacity"
-                 value="${draft.capacity}" placeholder="No limit">
+                 value="${draft.capacity}" placeholder="No limit"
+                 aria-describedby="capacity-help">
         </label>
+        ${draft.venueType === 'offline' ? html`
+          <label class="field spacer" style="min-width:140px">
+            <span class="field-label">Stations available</span>
+            <input type="number" min="1" max="64" data-act-input="wizard-field" data-field="stationCount"
+                   value="${draft.stationCount}" placeholder="Enter actual count"
+                   aria-describedby="station-help">
+          </label>` : ''}
         <label class="field spacer" style="min-width:140px">
           <span class="field-label">Entry fee</span>
           <input type="number" min="0" data-act-input="wizard-field" data-field="entryFee"
                  value="${draft.entryFee}" placeholder="0">
         </label>
       </div>
-      <p class="field-help" style="margin-top:-8px">
-        Over the cap goes on a waitlist rather than being turned away — locals always get drop-outs,
-        and a waitlist is how you fill them without a Discord thread.
-      </p>
+      <div class="field-help" style="margin-top:-8px">
+        <p id="capacity-help" style="margin:0 0 4px">Over the capacity goes on a waitlist rather than being turned away — locals always get drop-outs.</p>
+        ${draft.venueType === 'offline' ? html`<p id="station-help" style="margin:0">Enter the number of stations you can actually run. Labels and platforms can be adjusted after creation.</p>` : ''}
+      </div>
     </div>`;
 }
 
@@ -514,38 +522,50 @@ function stepSignups() {
       </div>
     </div>
 
-    <div class="card card-outlined">
-      <div class="row-tight" style="margin-bottom:8px;color:var(--md-primary)">
-        ${raw(icon('key'))}<b class="title-medium">How people find it</b>
-      </div>
-      <p class="body-medium dim" style="margin:0 0 16px">
-        Publishing generates a short invite code and a link. The code is readable over a PA
-        and has no 0, O, 1 or I in it. Anyone can enter with either; you can also add people
-        yourself, in bulk, from a spreadsheet.
-      </p>
+    ${auth.isRemote() ? html`
+      <div class="card card-outlined">
+        <div class="row-tight" style="margin-bottom:8px;color:var(--md-primary)">
+          ${raw(icon('key'))}<b class="title-medium">How people find it</b>
+        </div>
+        <p class="body-medium dim" style="margin:0 0 16px">
+          Publishing generates a short invite code and a link. The code is readable over a PA
+          and has no 0, O, 1 or I in it. Anyone can enter with either; you can also add people
+          yourself, in bulk, from a spreadsheet.
+        </p>
 
-      <p class="label-large" style="margin-bottom:8px">Who can find it</p>
-      <div class="segmented segmented-block">
-        ${list([['public', 'Listed'], ['unlisted', 'Unlisted']].map(([value, label]) => html`
-          <button type="button" data-act="wizard-set" data-field="visibility" data-value="${value}"
-                  aria-pressed="${(draft.visibility || 'public') === value}">${label}</button>`))}
-      </div>
-      <p class="field-help" style="padding-left:0">
-        ${(draft.visibility || 'public') === 'unlisted'
-          ? 'Reachable only with the code or the link — it will not appear on the events list. Right for an invitational, a private house session, or an event you are still filling before you announce it.'
-          : 'Appears on the events list for anyone browsing the site. Right for a weekly you want people to turn up to.'}
-        You can change this at any time from the event\'s settings, including after it has started.
-      </p>
-      ${(draft.visibility || 'public') === 'unlisted' ? html`
-        <div class="banner banner-warn" style="margin-top:12px">
-          ${raw(icon('alert'))}
-          <div class="body-small">
-            <b>Unlisted is not secret.</b> Anyone who has the link or the code can open it and see
-            the entrant list, and anyone they pass it to can too. It hides the event from browsing;
-            it does not lock it.
-          </div>
-        </div>` : ''}
-    </div>`;
+        <p class="label-large" style="margin-bottom:8px">Who can find it</p>
+        <div class="segmented segmented-block">
+          ${list([['public', 'Listed'], ['unlisted', 'Unlisted']].map(([value, label]) => html`
+            <button type="button" data-act="wizard-set" data-field="visibility" data-value="${value}"
+                    aria-pressed="${(draft.visibility || 'public') === value}">${label}</button>`))}
+        </div>
+        <p class="field-help" style="padding-left:0">
+          ${(draft.visibility || 'public') === 'unlisted'
+            ? 'Reachable only with the code or the link — it will not appear on the events list. Right for an invitational, a private house session, or an event you are still filling before you announce it.'
+            : 'Appears on the events list for anyone browsing the site. Right for a weekly you want people to turn up to.'}
+          You can change this at any time from the event\'s settings, including after it has started.
+        </p>
+        ${(draft.visibility || 'public') === 'unlisted' ? html`
+          <div class="banner banner-warn" style="margin-top:12px">
+            ${raw(icon('alert'))}
+            <div class="body-small">
+              <b>Unlisted is not secret.</b> Anyone who has the link or the code can open it and see
+              the entrant list, and anyone they pass it to can too. It hides the event from browsing;
+              it does not lock it.
+            </div>
+          </div>` : ''}
+      </div>` : html`
+      <div class="banner banner-info local-device-note">
+        ${raw(icon('station'))}
+        <div>
+          <b>Device-only sign-ups</b>
+          <p class="body-small" style="margin:4px 0 0">
+            This event and its entrant list stay on this device until a backend is connected.
+            There is no working invite code or join link for another phone. Add people here,
+            then connect this computer to the venue TV if you want a room display.
+          </p>
+        </div>
+      </div>`}`;
 }
 
 /* --------------------------------------------------------------------------
@@ -555,6 +575,8 @@ function stepSignups() {
 function stepPublish(ctx, game) {
   const presetId = draft.presetId || game?.presets[0].id;
   const ruleset = game ? resolveRuleset(game, presetId, draft.overrides) : null;
+  const preset = game?.presets.find((p) => p.id === presetId);
+  const remote = auth.isRemote();
   const problems = validate(game);
 
   return html`
@@ -570,12 +592,30 @@ function stepPublish(ctx, game) {
         ${raw(summaryRow('Where', draft.venueType === 'online' ? 'Online' : draft.venue || 'A venue'))}
         ${raw(summaryRow('Starts', draft.startsAt.replace('T', ' ')))}
         ${raw(summaryRow('Entry', draft.entryFee ? `$${draft.entryFee}` : 'Free'))}
-        ${raw(summaryRow('Cap', draft.capacity ? `${draft.capacity} then waitlist` : 'No limit'))}
+        ${raw(summaryRow('Entrant capacity', draft.capacity ? `${draft.capacity} then waitlist` : 'No limit'))}
+        ${draft.venueType === 'offline' ? raw(summaryRow('Stations', draft.stationCount || '—')) : ''}
         ${raw(summaryRow('Ruleset', ruleset ? `${ruleset.presetName} v${ruleset.presetVersion}${Object.keys(draft.overrides).length ? ` · ${Object.keys(draft.overrides).length} changed` : ''}` : '—'))}
         ${raw(summaryRow('Signing', draft.documents.filter((d) => d.required).map((d) => d.title).join(', ') || 'Nothing required'))}
-        ${raw(summaryRow('Visible', draft.visibility === 'unlisted' ? 'Unlisted — code or link only' : 'Listed publicly'))}
+        ${remote ? raw(summaryRow('Visible', draft.visibility === 'unlisted' ? 'Unlisted — code or link only' : 'Listed publicly')) : ''}
       </dl>
     </div>
+
+    ${preset?.provisional ? html`
+      <section class="card card-outlined" style="margin-bottom:16px">
+        <div class="row-tight" style="margin-bottom:8px;color:var(--md-tertiary)">
+          ${raw(icon('alert'))}<b class="title-medium">Organizer review required</b>
+        </div>
+        <p class="body-medium" style="margin:0 0 12px">
+          This ${game.short} preset is provisional: the scene has not ratified these competitive
+          conventions. Open the Rules step, read the selected values and any changes, then confirm
+          what you will enforce. Players will see that the rules are provisional too.
+        </p>
+        <label class="row" style="gap:10px;align-items:flex-start">
+          <input type="checkbox" data-act-change="wizard-provisional-review"
+                 ${raw(draft.provisionalRulesReviewed ? 'checked' : '')}>
+          <span class="body-medium">I reviewed the provisional rules for this event and accept them as the organizer.</span>
+        </label>
+      </section>` : ''}
 
     ${problems.length ? html`
       <div class="banner banner-error" style="margin-bottom:16px">
@@ -613,6 +653,17 @@ function validate(game) {
   if (!draft.name.trim()) out.push('Give the event a name.');
   if (draft.venueType === 'offline' && !draft.venue.trim()) out.push('Say where it is.');
   if (draft.venueType === 'online' && !draft.platforms.length) out.push('Pick at least one platform — an online event needs to know what people are playing on.');
+  if (draft.capacity !== '' && (!Number.isInteger(Number(draft.capacity)) || Number(draft.capacity) < 2)) {
+    out.push('Entrant capacity must be a whole number of at least 2.');
+  }
+  if (draft.venueType === 'offline' && (!Number.isInteger(Number(draft.stationCount))
+    || Number(draft.stationCount) < 1 || Number(draft.stationCount) > 64)) {
+    out.push('Enter the actual number of stations you will run (1–64).');
+  }
+  const preset = game?.presets.find((p) => p.id === (draft.presetId || game.presets[0].id));
+  if (preset?.provisional && !draft.provisionalRulesReviewed) {
+    out.push('Review and confirm the provisional rules before creating the event.');
+  }
   return out;
 }
 
@@ -632,6 +683,7 @@ on('wizard-game', ({ game }) => {
   draft.gameId = game;
   draft.presetId = g.presets[0].id;
   draft.overrides = {};
+  draft.provisionalRulesReviewed = false;
   draft.platforms = g.platforms.length === 1 ? [g.platforms[0].value] : [];
   if (!draft.name) draft.name = `${g.short} Tuesdays #1`;
   draft.step = 1;
@@ -657,6 +709,7 @@ on('wizard-preset', ({ preset }) => {
      -- produces a ruleset that is neither preset and that the TO cannot
      reason about, and it is the sort of thing you only notice at the venue. */
   draft.overrides = {};
+  draft.provisionalRulesReviewed = false;
   rerender();
 });
 
@@ -681,6 +734,16 @@ on('wizard-setting', ({ field, type, value }, el) => {
   if (JSON.stringify(next) === JSON.stringify(base.values[field])) delete draft.overrides[field];
   else draft.overrides[field] = next;
 
+  /* A provisional review is about the complete final rules. Any edit after
+     confirming it invalidates that confirmation; otherwise a TO could change
+     a rule and still publish under the old acknowledgement. */
+  draft.provisionalRulesReviewed = false;
+
+  rerender();
+});
+
+on('wizard-provisional-review', (d, el) => {
+  draft.provisionalRulesReviewed = Boolean(el.checked);
   rerender();
 });
 
@@ -776,7 +839,7 @@ function publish() {
 
   const me = auth.currentPlayer();
   const id = store.uid('evt');
-  const code = store.inviteCode();
+  const code = auth.isRemote() ? store.inviteCode() : null;
 
   /* An org is created on first publish rather than being a separate onboarding
      step. A TO running their first weekly does not want to fill in a "create
@@ -816,11 +879,11 @@ function publish() {
     createdAt: new Date().toISOString(),
   });
 
-  /* Four stations by default for an offline event, because an offline event
-     has stations and a TO should not have to invent them before they can use
-     the queue. Renaming or deleting them is one tap in the run view. */
+  /* The station count is deliberately entered by the TO. A hard-coded four
+     looked convenient in a demo but created the wrong queue for a real room,
+     which is worse than asking for the one fact only the organiser knows. */
   if (draft.venueType === 'offline') {
-    for (let i = 1; i <= 4; i += 1) {
+    for (let i = 1; i <= Number(draft.stationCount); i += 1) {
       const stationId = store.uid('stn');
       store.apply('stations', stationId, {
         id: stationId, eventId: id, number: i, label: `Station ${i}`,
@@ -835,19 +898,26 @@ function publish() {
   dialog({
     title: 'Event created',
     body: html`
-      <p class="body-medium">${name} is live. Share this code — it works on the phone of anyone who opens the site.</p>
-      <div class="card card-filled" style="text-align:center;margin:16px 0">
-        <div class="invite-code">${code}</div>
-        <div class="body-small dim" style="margin-top:4px">battydev.com/brackets/?join=${code}</div>
-      </div>
+      ${auth.isRemote() ? html`
+        <p class="body-medium">${name} is live. Share this code with entrants who open the site.</p>
+        <div class="card card-filled" style="text-align:center;margin:16px 0">
+          <div class="invite-code">${code}</div>
+          <div class="body-small dim" style="margin-top:4px">battydev.com/brackets/?join=${code}</div>
+        </div>` : html`
+        <div class="banner banner-info local-device-note">
+          ${raw(icon('station'))}
+          <div class="body-medium"><b>${name} is ready on this device.</b>
+            <p class="body-small" style="margin:4px 0 0">Add entrants from this computer and connect it to the venue TV for the room display. Other devices cannot join this event yet.</p>
+          </div>
+        </div>`}
       <p class="body-small dim">Next: add entrants — one at a time, or paste a spreadsheet of them.</p>`,
     actions: [
-      { label: 'Copy the link', kind: 'text', onClick: async () => {
+      ...(auth.isRemote() ? [{ label: 'Copy the link', kind: 'text', onClick: async () => {
         const { copy } = await import('../lib/ui.js');
         await copy(`https://battydev.com/brackets/?join=${code}`);
         snack('Link copied');
         return false;
-      } },
+      } }] : []),
       { label: 'Add entrants', kind: 'filled', onClick: () => { window.location.hash = `#/e/${id}/admin/entrants`; } },
     ],
   });

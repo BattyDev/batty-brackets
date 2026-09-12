@@ -21,7 +21,6 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { serve } from './browser/harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const filters = process.argv.slice(2);
@@ -57,6 +56,9 @@ if (!havePlaywright) {
   console.log(`\nSkipping ${BROWSER_SUITES.length} browser suites — Playwright is not installed.`);
   console.log('  cd brackets/test && npm install && npx playwright install chromium');
 } else {
+  // The harness imports Playwright. Load it only after the optional dependency
+  // check, otherwise even the dependency-free bracket filter fails at startup.
+  const { serve } = await import('./browser/harness.mjs');
   const server = await serve();
   for (const suite of BROWSER_SUITES) {
     if (!wanted(suite)) continue;

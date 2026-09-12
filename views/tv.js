@@ -137,6 +137,7 @@ export function view(ctx) {
   const stations = store.stationsFor(event.id);
   const view$ = state();
   const showing = view$.screen === 'cycle' ? view$.showing : view$.screen;
+  const checkIn = checkInStats(entries);
 
   ensureCycleTimer(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
 
@@ -158,13 +159,17 @@ export function view(ctx) {
 
         <header class="tv-head">
           <div>
+            <p class="tv-brand">Batty Brackets<span>By BattyDev</span></p>
             <p class="tv-eyebrow">${game?.name || ''}</p>
             <h1 class="tv-title">${event.name}</h1>
           </div>
           <div class="tv-head-right">
-            ${event.inviteCode ? html`
-              <p class="tv-join">Join: <b>${event.inviteCode}</b></p>` : ''}
-            ${bracket ? html`<p class="tv-count">${countLeft(bracket)}</p>` : ''}
+            ${canJoinFromDisplay(event) ? html`
+              <p class="tv-join">Join code <b>${event.inviteCode}</b></p>` : html`
+              <p class="tv-join">${event.demo ? 'Demo event · local display' : 'Local event · check in with the organiser'}</p>`}
+            ${bracket ? html`<p class="tv-count ${raw(bracketComplete(bracket) ? 'complete' : '')}"
+              data-tv-status>${countLeft(bracket)}</p>` : html`
+              <p class="tv-count" data-tv-status>${checkIn.checkedIn} of ${checkIn.total} checked in</p>`}
           </div>
         </header>
 
@@ -183,6 +188,42 @@ const countLeft = (bracket) => {
   const done = bracket.matches.filter((m) => m.state).length;
   return total - done === 0 ? 'Complete' : `${total - done} sets left`;
 };
+
+const canJoinFromDisplay = (event) => Boolean(
+  event.inviteCode && store.syncState().configured && !event.demo,
+);
+
+const checkInStats = (entries) => {
+  const checkedIn = entries.filter((entry) => entry.checkedInAt).length;
+  return { checkedIn, total: entries.length, missing: entries.length - checkedIn };
+};
+
+const bracketComplete = (bracket) => {
+  const matches = bracket?.matches?.filter((match) => !match.cancelled) || [];
+  /* `every([])` is true. An empty/cancelled bracket is not a completed event,
+     and without the final-match check it would announce a champion that does
+     not exist. Keep the display in its ordinary empty-queue state instead. */
+  return matches.length > 0 && matches.every((match) => match.state) && Boolean(finalMatch(bracket));
+};
+
+/* The final match is not always GF-2: a double-elimination final can end on
+   GF-1, and a single-elimination bracket has no GF rows at all. Keeping this
+   selection here means the completion card can say who won without teaching
+   the display about the bracket engine's internal progression rules. */
+const finalMatch = (bracket) => {
+  const completed = bracket.matches.filter((match) => match.state && !match.cancelled);
+  const grandFinal = completed
+    .filter((match) => match.bracket === 'GF')
+    .sort((a, b) => b.round - a.round)[0];
+  if (grandFinal) return grandFinal;
+  return completed
+    .filter((match) => match.bracket === 'W')
+    .sort((a, b) => b.round - a.round)[0] || null;
+};
+
+const matchScore = (match) => match?.score
+  ? `${Math.max(match.score.a ?? 0, match.score.b ?? 0)}–${Math.min(match.score.a ?? 0, match.score.b ?? 0)}`
+  : '';
 
 /* --------------------------------------------------------------------------
    The control bar
@@ -216,15 +257,24 @@ function controlBar(event, view$) {
 
 function queueScreen({ event, bracket, stations, entries, players, nameOf, ruleset }) {
   if (!bracket) {
+    const checkIn = checkInStats(entries);
     return html`
       <div class="tv-body">
-        <div class="tv-empty">
-          <p class="tv-empty-lead">${entries.length} entered</p>
-          <p>The bracket has not been made yet.</p>
-          ${event.inviteCode ? html`<p class="tv-empty-code">Join with <b>${event.inviteCode}</b></p>` : ''}
+        <div class="tv-empty tv-checkin">
+          <p class="tv-empty-kicker">Check-in in progress</p>
+          <p class="tv-empty-lead">${checkIn.checkedIn} <span>of</span> ${checkIn.total} checked in</p>
+          <p class="tv-empty-supporting">${checkIn.missing
+            ? `${checkIn.missing} ${checkIn.missing === 1 ? 'entrant is' : 'entrants are'} still to arrive.`
+            : 'Everyone is here — the organiser can make the bracket.'}</p>
+          <p class="tv-empty-supporting">The bracket has not been made yet.</p>
+          <p class="tv-empty-code">${canJoinFromDisplay(event)
+            ? html`Join with <b>${event.inviteCode}</b>`
+            : 'Check in with the organiser. Match calls will appear here.'}</p>
         </div>
       </div>`;
   }
+
+  if (bracketComplete(bracket)) return completionScreen(bracket, nameOf);
 
   const called = new Set(bracket.matches.filter((m) => m.calledAt && !m.state).map((m) => m.id));
   const live = stations
@@ -238,20 +288,27 @@ function queueScreen({ event, bracket, stations, entries, players, nameOf, rules
       <section class="tv-now">
         <h2 class="tv-section">On now</h2>
         <div class="tv-stations">
-          ${list(live.map(({ station, match }) => html`
+          ${list(live.map(({ station, match }) => {
+            const first = match ? nameOf(match.slots[0].entrantId) : '';
+            const second = match ? nameOf(match.slots[1].entrantId) : '';
+            return html`
             <div class="tv-station ${raw(match ? 'busy' : 'free')}" data-live-scope>
-              <p class="tv-station-name">${station.label}</p>
+              <div class="tv-station-meta">
+                <p class="tv-station-name">${station.label}</p>
+                <span class="tv-station-state">${match ? 'Now playing' : 'Open'}</span>
+              </div>
               ${match ? html`
                 <p class="tv-vs">
-                  <span class="tv-player">${nameOf(match.slots[0].entrantId)}</span>
+                  <span class="tv-player" title="${first}">${first}</span>
                   <span class="tv-vs-mark">vs</span>
-                  <span class="tv-player">${nameOf(match.slots[1].entrantId)}</span>
+                  <span class="tv-player" title="${second}">${second}</span>
                 </p>
                 <p class="tv-round">${match.name}
                   ${match.calledAt ? html` · <span data-live-since="${match.calledAt}"
                     data-live-over="${dq}">${elapsed(match.calledAt)}</span>` : ''}</p>`
               : html`<p class="tv-free">Free</p>`}
-            </div>`))}
+            </div>`;
+          }))}
         </div>
       </section>
 
@@ -263,9 +320,9 @@ function queueScreen({ event, bracket, stations, entries, players, nameOf, rules
               <li class="tv-queue-row ${raw(i === 0 ? 'first' : '')}">
                 <span class="tv-queue-num">${i + 1}</span>
                 <span class="tv-queue-names">
-                  ${nameOf(match.slots[0].entrantId)}
+                  <span class="tv-queue-player" title="${nameOf(match.slots[0].entrantId)}">${nameOf(match.slots[0].entrantId)}</span>
                   <span class="tv-vs-mark">vs</span>
-                  ${nameOf(match.slots[1].entrantId)}
+                  <span class="tv-queue-player" title="${nameOf(match.slots[1].entrantId)}">${nameOf(match.slots[1].entrantId)}</span>
                 </span>
                 <span class="tv-queue-round">${match.name}</span>
               </li>`))}
@@ -273,6 +330,29 @@ function queueScreen({ event, bracket, stations, entries, players, nameOf, rules
           ${queue.length > 8 ? html`
             <p class="tv-queue-more">…and ${queue.length - 8} more</p>` : ''}`
         : html`<p class="tv-free">Nothing waiting — every playable set is out.</p>`}
+      </section>
+    </div>`;
+}
+
+function completionScreen(bracket, nameOf) {
+  const final = finalMatch(bracket);
+  if (!final?.winnerId) {
+    return html`<div class="tv-body"><p class="tv-free">Final results are not available yet.</p></div>`;
+  }
+  const champion = nameOf(final.winnerId);
+  const runnerUp = final?.slots?.find((slot) => slot.entrantId && slot.entrantId !== final.winnerId);
+  return html`
+    <div class="tv-body tv-body-complete">
+      <section class="tv-complete" aria-labelledby="tv-complete-title">
+        <p class="tv-complete-kicker">Tournament complete</p>
+        <h2 id="tv-complete-title">${champion}</h2>
+        <p class="tv-complete-label">Champion</p>
+        ${final ? html`<p class="tv-complete-final">${final.name}${matchScore(final) ? html` · ${matchScore(final)}` : ''}
+          ${runnerUp ? html`<span>over ${nameOf(runnerUp.entrantId)}</span>` : ''}</p>` : ''}
+      </section>
+      <section class="tv-next tv-complete-next">
+        <h2 class="tv-section">What’s next</h2>
+        <p class="tv-free">All sets are complete. Please check with the organiser for final standings and the next event.</p>
       </section>
     </div>`;
 }

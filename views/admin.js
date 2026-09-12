@@ -32,6 +32,7 @@ import {
 } from '../lib/bracket.js';
 import { suggestionsFor, guidanceSummary, formatMoney, normaliseTag } from '../lib/guidance.js';
 import * as csv from '../lib/csv.js';
+import { gameHero } from '../data/themes.js';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: 'sparkle' },
@@ -240,11 +241,21 @@ function overviewTab(data, suggestions, ctx) {
 
   return html`
     <div class="pane">
+      ${raw(gameHero(data.game, { title: event.name, subtitle: 'Your tournament, from check-in to the final set.' }))}
+      <nav class="local-actions local-console-links" aria-label="Tournament shortcuts">
+        <a class="btn btn-tonal" href="#/e/${event.id}/admin/entrants">${raw(icon('group'))} Check in players</a>
+        <a class="btn btn-tonal" href="#/e/${event.id}/admin/run">${raw(icon('play'))} Run matches</a>
+        <a class="btn btn-outlined" href="#/e/${event.id}/tv">${raw(icon('station'))} Venue display</a>
+      </nav>
+      ${!store.syncState().configured || event.demo ? html`
+        <p class="local-device-note">${event.demo ? 'Demo event' : 'On this device'} · Manage check-in here.
+          To show the room, connect this computer to the TV. Join links do not share this event to other devices.</p>` : ''}
       <section class="card card-outlined" style="margin-bottom:16px">
         <div class="row" style="margin-bottom:12px">
           <b class="title-medium spacer">${FLOW_LABEL[event.status]}</b>
-          <span class="code">${event.inviteCode}</span>
-          <button class="btn btn-icon" data-act="copy-text" data-text="https://battydev.com/brackets/?join=${event.inviteCode}" aria-label="Copy join link">${raw(icon('copy'))}</button>
+          ${store.syncState().configured && !event.demo ? html`
+            <span class="code">${event.inviteCode}</span>
+            <button class="btn btn-icon" data-act="copy-text" data-text="https://battydev.com/brackets/?join=${event.inviteCode}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
         </div>
         <div class="row" style="gap:4px;margin-bottom:12px">
           ${list(FLOW.map((s, i) => html`

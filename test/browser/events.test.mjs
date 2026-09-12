@@ -14,9 +14,10 @@
 
    ## Visibility
 
-   An unlisted event must be missing from the events list and present at its
-   own URL and by its code. Testing only the first half would pass with a
-   feature that simply deleted the event.
+   An unlisted event must be missing from a non-organiser's events list while
+   remaining present at its own URL and in the organiser's same-device list.
+   Testing only the first half would pass with a feature that simply deleted
+   the event.
 
    ## The Discord button
 
@@ -46,6 +47,7 @@ async function fillWizard(page, { name = 'Gate Test Weekly' } = {}) {
   await page.click('[data-act="wizard-step"][data-step="1"]');
   await page.waitForTimeout(250);
   await page.fill('input[data-field="venue"]', 'Batty Mac Arcade');
+  await page.fill('input[data-field="stationCount"]', '4');
   await page.waitForTimeout(200);
 }
 
@@ -94,6 +96,10 @@ async function signInLocally(page, tag = 'Cody') {
   report.ok('and so does a banner',
     await page.evaluate(() => /asked to sign in/i.test(document.querySelector('main')?.innerText || '')));
 
+  /* Tōkon's presets are provisional. A guest can still reach the gate, but
+     the organiser must explicitly acknowledge the final rules first. */
+  await page.check('[data-act-change="wizard-provisional-review"]');
+
   const before = await eventCount(page);
   await page.click('[data-act="wizard-publish"]');
   await page.waitForTimeout(500);
@@ -131,23 +137,20 @@ async function signInLocally(page, tag = 'Cody') {
   await ctx.close();
 }
 
-/* ---- visibility --------------------------------------------------------- */
+/* ---- local-only setup options ------------------------------------------- */
 {
   const errors = [];
   const { ctx, page } = await openApp(browser, { base, errors });
   await fillWizard(page, { name: 'Invitational' });
 
   await goToStep(page, 3);
-  report.ok('the sign-ups step offers a visibility choice',
-    await page.evaluate(() => Boolean(document.querySelector('[data-act="wizard-set"][data-field="visibility"]'))));
-  await page.click('[data-act="wizard-set"][data-field="visibility"][data-value="unlisted"]');
-  await page.waitForTimeout(300);
-  report.ok('choosing unlisted says plainly that it is not secrecy',
-    await page.evaluate(() => /not secret/i.test(document.querySelector('main')?.innerText || '')));
+  report.ok('local sign-ups hide the visibility choice that needs a backend',
+    await page.evaluate(() => !document.querySelector('[data-act="wizard-set"][data-field="visibility"]')));
+  report.ok('local sign-ups explain how to add people and use the TV',
+    await page.evaluate(() => /stay on this device|venue TV/i.test(document.querySelector('main')?.innerText || '')));
 
   await goToStep(page, 4);
-  report.ok('the summary states the visibility before you commit',
-    await page.evaluate(() => /unlisted/i.test(document.querySelector('main')?.innerText || '')));
+  await page.check('[data-act-change="wizard-provisional-review"]');
 
   await page.click('[data-act="wizard-publish"]');
   await page.waitForTimeout(400);
@@ -156,46 +159,57 @@ async function signInLocally(page, tag = 'Cody') {
 
   const hash = await page.evaluate(() => location.hash);
   const eventId = hash.match(/evt_[a-z0-9]+/)?.[0];
-  report.ok('the unlisted event was created', Boolean(eventId), hash);
+  report.ok('the local event was created', Boolean(eventId), hash);
 
   const state = await stored(page, 'battydev.brackets.state.v1');
   const created = state.events[eventId];
-  report.ok('it is stored as unlisted', created?.visibility === 'unlisted', created?.visibility);
-  const code = created?.inviteCode;
-  report.ok('it still has an invite code', Boolean(code), code);
+  report.ok('local creation has no cross-device invite code', created?.inviteCode === null, created?.inviteCode);
+  report.ok('local creation keeps the requested station count',
+    Object.values(state.stations).filter((station) => station.eventId === eventId).length === 4);
 
-  /* Present at its own address... */
+  /* Visibility remains an event setting for an organiser, even though the
+     local setup wizard hides it because local invite/listing controls do not
+     work across devices. Keep this coverage in the same state that contains
+     the event; a fresh context would silently pass against an empty list. */
+  await page.evaluate(async (id) => {
+    const store = await import('./lib/store.js');
+    store.apply('events', id, { visibility: 'unlisted' }, { queueIt: false });
+  }, eventId);
   await goTo(page, base, `#/e/${eventId}`);
-  report.ok('an unlisted event opens at its own link',
-    await page.evaluate((n) => document.body.innerText.includes(n), 'Invitational'));
-  /* ...and by its code, which is the whole point of unlisted rather than
-     deleted. */
-  await goTo(page, base, `#/join/${code}`);
-  report.ok('an unlisted event is reachable by its invite code',
-    await page.evaluate((n) => document.body.innerText.includes(n), 'Invitational'));
-
-  /* ...and absent from browsing, for somebody who is not its organiser. */
-  await page.evaluate(() => { try { localStorage.removeItem('battydev.brackets.state.v1'); } catch { /* */ } });
-  const guest = await openApp(browser, { base, errors });
-  const guestSees = await guest.page.evaluate(() => document.body.innerText);
-  report.ok('the events list does not show it to a guest', !guestSees.includes('Invitational'));
-  await guest.ctx.close();
-
-  /* Its organiser must still see it -- hiding an event from the person
-     running it is not privacy, it is losing it. */
+  report.ok('an unlisted local event still opens at its own address',
+    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
   await goTo(page, base, '#/');
-  report.ok('its organiser still sees it on their own dashboard',
-    await page.evaluate(() => document.body.innerText.includes('Invitational')));
+  report.ok('the organiser still sees the unlisted event in the same device list',
+    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
 
-  /* And it can be flipped back from settings without republishing. */
+  await page.evaluate(async () => {
+    const auth = await import('./lib/auth.js');
+    auth.signInLocal({ tag: 'Visitor' });
+  });
+  await goTo(page, base, '#/');
+  report.ok('a different local account does not see the unlisted event',
+    await page.evaluate((name) => !document.body.innerText.includes(name), 'Invitational'));
+
+  await page.evaluate(async () => {
+    const auth = await import('./lib/auth.js');
+    auth.signInLocal({ tag: 'Cody' });
+  });
   await goTo(page, base, `#/e/${eventId}/admin/settings`);
-  report.ok('settings offers the same control',
-    await page.evaluate(() => Boolean(document.querySelector('[data-act="event-visibility"]'))));
-  await page.click('[data-act="event-visibility"][data-value="public"]');
+  report.ok('the organiser can still change visibility from settings',
+    await page.locator('[data-act="event-visibility"]').count() === 2);
+  await page.locator('[data-act="event-visibility"][data-value="public"]').click();
   await page.waitForTimeout(400);
   const after = await stored(page, 'battydev.brackets.state.v1');
   report.ok('flipping it back to listed takes effect immediately',
     after.events[eventId]?.visibility === 'public', after.events[eventId]?.visibility);
+
+  await page.evaluate(async () => {
+    const auth = await import('./lib/auth.js');
+    auth.signInLocal({ tag: 'Visitor' });
+  });
+  await goTo(page, base, '#/');
+  report.ok('a listed event becomes visible to the other local account',
+    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
 
   report.noErrors(errors);
   await ctx.close();

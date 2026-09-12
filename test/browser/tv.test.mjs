@@ -34,6 +34,12 @@ const errors = [];
 /* A television, not a laptop. */
 const { ctx, page } = await openApp(browser, { base, width: 1920, height: 1080, errors });
 
+await goTo(page, base, `#/e/${DEMO_EVENT}/tv`);
+report.ok('pre-bracket TV shows the check-in count',
+  await page.locator('.tv-empty-lead').innerText().then((text) => /24 of 28 checked in/i.test(text)));
+report.ok('pre-bracket TV calls out people still to arrive',
+  await page.locator('.tv-empty-supporting').allTextContents().then((texts) => texts.some((text) => /4 entrants are still to arrive/i.test(text))));
+
 await generateBracket(page, base);
 const played = await playSets(page, 14);
 report.ok('the demo played far enough to have a mid-event bracket', played >= 8, `${played} sets`);
@@ -114,6 +120,117 @@ await goTo(page, base, `#/e/${DEMO_EVENT}/tv`);
 await readColumns(page);
 report.ok('recent results fill the space the trimmed rounds left',
   await page.evaluate(() => Boolean(document.querySelector('.tv-recent'))));
+
+/* ---- venue-sized layout, long tags, and the end of the night ------------ */
+const compactErrors = [];
+const compact = await openApp(browser, { base, width: 1280, height: 720, errors: compactErrors });
+await generateBracket(compact.page, base);
+await compact.page.evaluate(async () => {
+  const store = await import('./lib/store.js');
+  const players = Object.values(store.get().players);
+  players.forEach((player, i) => store.apply('players', player.id, {
+    tag: `Very Long Local Tag ${i + 1} With Sponsor Prefix`,
+  }, { queueIt: false }));
+});
+await goTo(compact.page, base, `#/e/${DEMO_EVENT}/tv`);
+report.ok('1280×720 keeps the TV on one viewport',
+  await compact.page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight <= 2));
+report.ok('station cards label their state for a quick glance',
+  await compact.page.locator('.tv-station-state').count() > 0
+  && (await compact.page.locator('.tv-station-state').allTextContents()).every((text) => /^(Open|Now playing)$/i.test(text.trim())));
+report.ok('long player tags do not widen the TV queue',
+  await compact.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth <= 2));
+report.noErrors(compactErrors);
+await compact.ctx.close();
+
+/* Drive real engine brackets to their finals. The old fixture marked every
+   match complete by hand, which could make the view display a winner from a
+   mutually exclusive GF state and never exercised GF-1 versus GF-2. */
+async function driveEngineBracket(page, format, finalMode = 'single') {
+  return page.evaluate(async ({ eventId, format, finalMode }) => {
+    const store = await import('./lib/store.js');
+    const engine = await import('./lib/bracket.js');
+    const entries = Object.values(store.get().entries)
+      .filter((entry) => entry.eventId === eventId).slice(0, 4);
+    const roster = entries.map((entry, i) => ({ id: entry.id, seed: i + 1 }));
+    const bracket = format === 'single'
+      ? engine.singleElimination(roster)
+      : engine.doubleElimination(roster);
+    let matches = bracket.matches;
+    let guard = 0;
+    const reportFirst = (match) => {
+      matches = engine.reportResult(matches, match.id, {
+        winnerId: match.slots[0].entrantId, scoreA: 2, scoreB: 0,
+      });
+    };
+
+    if (format === 'single') {
+      while (engine.readyMatches(matches).filter((match) => !match.cancelled).length && guard++ < 100) {
+        reportFirst(engine.readyMatches(matches).find((match) => !match.cancelled));
+      }
+    } else {
+      while (!engine.readyMatches(matches).some((match) => match.id === 'GF-1') && guard++ < 100) {
+        reportFirst(engine.readyMatches(matches).find((match) => !match.cancelled));
+      }
+      const gf1 = matches.find((match) => match.id === 'GF-1');
+      const gf1Winner = finalMode === 'gf1-winner' ? gf1.slots[0].entrantId : gf1.slots[1].entrantId;
+      matches = engine.reportResult(matches, 'GF-1', { winnerId: gf1Winner, scoreA: 2, scoreB: 0 });
+      while (engine.readyMatches(matches).filter((match) => !match.cancelled).length && guard++ < 100) {
+        const next = engine.readyMatches(matches).find((match) => !match.cancelled);
+        reportFirst(next);
+      }
+    }
+
+    store.apply('brackets', eventId, { ...bracket, matches }, { queueIt: false });
+    const final = matches.filter((match) => match.bracket === 'GF' && !match.cancelled && match.state === 'complete')
+      .sort((a, b) => b.round - a.round)[0]
+      || matches.filter((match) => match.bracket === 'W' && match.state === 'complete')
+        .sort((a, b) => b.round - a.round)[0];
+    const tagOf = (entrantId) => {
+      const entry = store.get().entries[entrantId];
+      return store.getPlayer(entry?.playerId)?.tag || '';
+    };
+    return {
+      champion: tagOf(final?.winnerId), runnerUp: tagOf(final?.loserId),
+      round: final?.name || '', score: '2–0',
+      unplayed: matches.filter((match) => !match.cancelled && !match.state).map((match) => match.id),
+    };
+  }, { eventId: DEMO_EVENT, format, finalMode });
+}
+
+async function assertEngineCompletion(label, format, finalMode) {
+  const errors = [];
+  const finished = await openApp(browser, { base, width: 1280, height: 720, errors });
+  const expected = await driveEngineBracket(finished.page, format, finalMode);
+  await goTo(finished.page, base, `#/e/${DEMO_EVENT}/tv`);
+  report.ok(`${label} drains every playable match`, expected.unplayed.length === 0, expected.unplayed.join(', '));
+  report.ok(`${label} names the exact champion`,
+    await finished.page.locator('.tv-complete h2').innerText() === expected.champion);
+  const finalText = await finished.page.locator('.tv-complete-final').innerText();
+  report.ok(`${label} names the exact final result`,
+    finalText.includes(`${expected.round} · ${expected.score}`) && finalText.includes(`over ${expected.runnerUp}`), finalText);
+  report.ok(`${label} fits at 1280×720`,
+    await finished.page.evaluate(() => document.documentElement.scrollHeight - document.documentElement.clientHeight <= 2));
+  report.noErrors(errors);
+  await finished.ctx.close();
+}
+
+await assertEngineCompletion('single-elimination completion', 'single');
+await assertEngineCompletion('double-elimination GF1 completion', 'double', 'gf1-winner');
+await assertEngineCompletion('double-elimination GF2 reset completion', 'double', 'gf2-winner');
+
+const emptyErrors = [];
+const empty = await openApp(browser, { base, width: 1280, height: 720, errors: emptyErrors });
+await empty.page.evaluate(async () => {
+  const store = await import('./lib/store.js');
+  store.apply('brackets', 'evt_demo_tokon', { matches: [] }, { queueIt: false });
+});
+await goTo(empty.page, base, `#/e/${DEMO_EVENT}/tv`);
+const emptyText = await empty.page.locator('.tv').innerText();
+report.ok('empty bracket does not announce a phantom champion',
+  !/Tournament complete|Champion decided|Champion\s*$/i.test(emptyText), emptyText);
+report.noErrors(emptyErrors);
+await empty.ctx.close();
 
 /* ---- cycle rotates, and stops when you leave ---------------------------- */
 await page.evaluate(() => document.querySelector('.tv')?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true })));

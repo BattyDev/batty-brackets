@@ -1,4 +1,4 @@
-# Brackets — battydev.com/brackets
+# Batty Brackets — battydev.com/brackets
 
 Tournament brackets for fighting games, built for the people running them.
 
@@ -18,6 +18,32 @@ walkthrough and a reset button. See [Try it](#try-it).
 ---
 
 See [ROADMAP.md](ROADMAP.md) for what is outstanding and in what order.
+
+## Identity and local-pilot update
+
+The selected identity is an independent sports publication: **Batty Brackets,
+By BattyDev**. The landing page uses a serif masthead, paper/ink surfaces,
+editorial columns and ruled event listings. Game identity stays in the feature
+and event views; the publisher is not renamed after the featured game. Tōkon
+is the first pilot, not a claim of official affiliation. No webfonts or new
+runtime assets are required.
+
+The venue display shares the publisher wordmark but uses broadcast-style
+station rows and a clear next-set hierarchy. Its tested bracket depth window,
+per-column type scaling, rotation timing and live clocks remain intact. Colour
+and creator identity must never outrank player names, station calls or warnings.
+
+The reviewed pilot changes are integrated locally: setup creates the requested
+station count (1–64) and capacity, provisional rules require acknowledgement,
+and local events do not advertise cross-device registration. Backup/recovery
+now writes synchronous combined snapshots, reports failed durability, validates
+imports before replacement, clears stale undo history and requires explicit
+approval before imported queued writes can reach a configured server. A device
+backup excludes session credentials. These tests are not a live-backend audit.
+
+Use [LOCAL-REHEARSAL.md](LOCAL-REHEARSAL.md) before a real local. A physical-TV
+readability check and an observed tournament remain necessary; browser tests
+cannot establish either. This update does not deploy the site.
 
 ## Contents
 
