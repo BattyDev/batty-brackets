@@ -49,7 +49,7 @@ import { html, raw, list, icon, esc, on, elapsed } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import { gameById, resolveRuleset } from '../data/games.js';
 import { readyMatches } from '../lib/bracket.js';
-import { themeFor } from '../data/themes.js';
+import { brandSignature } from '../lib/brand.js';
 
 /* Display state is per-device and never synced: the laptop driving the TV has
    its own idea of which screen is showing, and it is nobody else's business.
@@ -130,6 +130,7 @@ export function view(ctx) {
   }
 
   const game = gameById(event.gameId);
+  const org = store.getOrg(event.orgId);
   const ruleset = game ? resolveRuleset(game, event.presetId, event.overrides || {}) : null;
   const entries = store.entriesFor(event.id);
   const players = new Map(entries.map((e) => [e.playerId, store.getPlayer(e.playerId)]));
@@ -154,14 +155,14 @@ export function view(ctx) {
        navigation rail is showing 88px of nothing. */
     chromeless: true,
     body: html`
-      <div class="tv" data-game="${event.gameId}">
+      <div class="tv">
         ${raw(controlBar(event, view$))}
 
         <header class="tv-head">
           <div>
-            <p class="tv-brand">Batty Brackets<span>By BattyDev</span></p>
-            <p class="tv-eyebrow">${game?.name || ''}</p>
+            <p class="tv-brand">${raw(brandSignature())}</p>
             <h1 class="tv-title">${event.name}</h1>
+            <p class="tv-eyebrow">${org ? `Organized by ${org.name} · ` : ''}${game?.name || ''}</p>
           </div>
           <div class="tv-head-right">
             ${canJoinFromDisplay(event) ? html`

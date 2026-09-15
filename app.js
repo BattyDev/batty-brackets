@@ -20,6 +20,7 @@
 
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
+import { brandMark } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
@@ -63,6 +64,7 @@ async function connect() {
 
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
+  { pattern: /^\/host$/, view: home, name: 'host' },
   { pattern: /^\/new$/, view: setup, name: 'new' },
   { pattern: /^\/recovery$/, view: recovery, name: 'recovery' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
@@ -211,18 +213,6 @@ function restoreScroll() {
    Chrome
    -------------------------------------------------------------------------- */
 
-const NAV = [
-  { id: 'home', label: 'Events', icon: 'trophy', path: '/' },
-  { id: 'me', label: 'Profile', icon: 'person', path: '/me' },
-];
-
-/* "Events" covers the event routes as well as the list itself, because that is
-   the section a reader is in. It does NOT cover /new or /me. */
-function navIsCurrent(item, route) {
-  if (item.id === 'me') return route.name === 'me';
-  return ['home', 'join', 'event', 'admin'].includes(route.name);
-}
-
 function syncChip() {
   const s = store.syncState();
   const local = s.storage || {};
@@ -269,26 +259,38 @@ function syncChip() {
    focusable main, because somebody may still be driving it from a keyboard
    while setting it up. */
 function chromelessShell(inner, gameId) {
-  const themed = gameId && themeFor(gameId) ? ` data-game="${gameId}"` : '';
-  return html`<main id="main" tabindex="-1"${raw(themed)}>${raw(inner)}</main>`;
+  return html`<main id="main" tabindex="-1">${raw(inner)}</main>`;
 }
 
 function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
   const route = parseRoute();
   const me = auth.currentPlayer();
-  /* `data-game` on the bar and on <main> puts the whole page inside the game's
-     colour roles -- so the accent, the chips, the focus rings and the primary
-     buttons all follow the game without a single component knowing about it. */
-  const themed = gameId && themeFor(gameId) ? ` data-game="${gameId}"` : '';
+  // Mode is navigation, never authorization. Keep deep links and back/forward
+  // deterministic; visiting a player page must not leave host tools selected.
+  const host = ['host', 'admin', 'new', 'recovery'].includes(route.name);
+  const event = route.params.eventId && store.getEvent(route.params.eventId);
+  const canHost = !event || !auth.currentSession() || !event.ownerId || event.ownerId === me?.id;
+  const navigation = host ? [
+    { label: 'My events', icon: 'trophy', path: '/host', current: ['host', 'admin'].includes(route.name) },
+    { label: 'Create event', icon: 'plus', path: '/new', current: route.name === 'new' },
+    { label: 'Backups', icon: 'undo', path: '/recovery', current: route.name === 'recovery' },
+  ] : [
+    { label: 'Events', icon: 'trophy', path: '/', current: ['home', 'event'].includes(route.name) },
+    { label: 'Join event', icon: 'key', path: '/join', current: route.name === 'join' },
+    { label: 'My profile', icon: 'person', path: '/me', current: route.name === 'me' },
+  ];
+  /* Batty owns the navigation and working tools. Game accents belong to
+     explicitly bounded marks, cards and artwork, never the whole shell. */
 
   return html`
     <a class="skip-link" href="#main">Skip to main content</a>
-    <div class="app ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
-      <header class="top-bar"${raw(themed)}>
-        ${back
-          ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>`
-          : html`<a class="btn btn-icon" href="../index.html" aria-label="BattyDev home">${raw(icon('home'))}</a>`}
-        <h1><span class="brand-signature">Batty Brackets · By BattyDev</span>${title}${subtitle ? html`<span class="sub">${subtitle}</span>` : ''}</h1>
+    <div class="app ${raw(host ? 'experience-host' : 'experience-player')} ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
+      <header class="top-bar">
+        ${back ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>` : ''}
+        <nav class="experience-switch" aria-label="Experience">
+          <a href="#${event ? `/e/${event.id}` : '/'}" ${raw(!host ? 'aria-current="true"' : '')}>Player</a>
+          ${canHost ? html`<a href="#${event ? `/e/${event.id}/admin` : '/host'}" ${raw(host ? 'aria-current="true"' : '')}>Host</a>` : ''}
+        </nav>
         ${raw(actions)}
         ${raw(syncChip())}
         <!-- The label names the destination, not the control. "Switch theme"
@@ -299,26 +301,27 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
       </header>
 
       <nav class="nav" aria-label="Sections">
+        <div class="rail-identity"><div class="rail-logo">${raw(brandMark())}</div><span>${host ? 'HOST WORKSPACE' : 'PLAYER LOUNGE'}</span></div>
         <!-- aria-current only where it is true. It previously marked "Events"
              on every route that was not the profile, which tells a screen
              reader the user is on a page they are not on. -->
-        ${list(NAV.map((item) => html`
+        ${list(navigation.map((item) => html`
           <a class="nav-item" href="#${item.path}"
-             ${raw(navIsCurrent(item, route) ? 'aria-current="page"' : '')}>
+             ${raw(item.current ? 'aria-current="page"' : '')}>
             <span class="pill">${raw(icon(item.icon))}</span>
             <span>${item.label}</span>
           </a>`))}
-        ${me
-          ? html`<a class="nav-item" href="#/me"><span class="pill">${raw(icon('person'))}</span><span>${me.tag}</span></a>`
-          : html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('key'))}</span><span>Sign in</span></button>`}
+        ${!me ? html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('person'))}</span><span>Sign in</span></button>` : ''}
       </nav>
 
       <!-- tabindex="-1" so the skip link and the post-navigation focus move
            below can put focus here; it is not in the tab order itself. -->
-      <main class="scaffold" id="main" tabindex="-1"${raw(themed)}>
-        ${route.name !== 'home' || me ? raw(tour.demoBanner()) : ''}
+      <main class="scaffold" id="main" tabindex="-1">
+        <!-- Keep route identification for screen readers without duplicating
+             the visible page branding in the utility bar. -->
+        <h1 class="sr-only">${title}</h1>
         ${raw(inner)}
-        ${route.name === 'home' && !me ? raw(tour.demoBanner()) : ''}
+        ${raw(tour.demoBanner())}
       </main>
     </div>`;
 }

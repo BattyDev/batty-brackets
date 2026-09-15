@@ -26,6 +26,7 @@ import { launch, openApp, goTo, generateBracket, standalone, reporter, DEMO_EVEN
 
 const ROUTES = [
   ['landing', '#/'],
+  ['host-home', '#/host'],
   ['dashboard', `#/e/${DEMO_EVENT}/admin`],
   ['entrants', `#/e/${DEMO_EVENT}/admin/entrants`],
   ['seeding', `#/e/${DEMO_EVENT}/admin/seeding`],

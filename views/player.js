@@ -117,8 +117,9 @@ function profile(player, ctx, isMe) {
   const rivals = buildRivals(player.id, history);
 
   return html`
-    <div class="pane" style="max-width:900px">
-      <header class="card card-elevated" style="margin-bottom:16px">
+    <div class="pane player-passport" style="max-width:900px">
+      <header class="card card-elevated passport-card" style="margin-bottom:16px">
+        <p class="eyebrow">PLAYER RECORD</p>
         <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
           ${raw(avatar(player, 'avatar-lg'))}
           <div class="spacer" style="min-width:0">
@@ -137,7 +138,7 @@ function profile(player, ctx, isMe) {
         <div class="row" style="margin-top:16px;gap:8px">
           <span class="chip chip-static chip-assist"><b>${wins}</b>&nbsp;won</span>
           <span class="chip chip-static chip-assist"><b>${losses}</b>&nbsp;lost</span>
-          ${history.length ? html`<span class="chip chip-static chip-assist"><b>${rate}%</b></span>` : ''}
+          ${history.length ? html`<span class="chip chip-static chip-assist"><b>${rate}%</b>&nbsp;win rate</span>` : ''}
           <span class="chip chip-static chip-assist">${new Set(history.map((r) => r.eventId)).size} events</span>
         </div>
 

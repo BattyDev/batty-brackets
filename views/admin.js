@@ -20,7 +20,7 @@
 'use strict';
 
 import {
-  html, raw, list, icon, esc, on, snack, dialog, confirmDialog,
+  html, raw, list, icon, esc, on, snack, dialog, confirmDialog, bindDelegation,
   avatar, formatDateTime, relativeTime, countdown, initials, elapsed,
 } from '../lib/ui.js';
 import * as store from '../lib/store.js';
@@ -38,7 +38,7 @@ const TABS = [
   { id: 'overview', label: 'Overview', icon: 'sparkle' },
   { id: 'entrants', label: 'Entrants', icon: 'group' },
   { id: 'seeding', label: 'Seeding', icon: 'sort' },
-  { id: 'run', label: 'Run', icon: 'play' },
+  { id: 'run', label: 'Run matches', icon: 'play' },
   { id: 'rules', label: 'Rules', icon: 'gavel' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -47,6 +47,7 @@ const TABS = [
    suggestion are properties of this person looking at this screen right now,
    not of the tournament. */
 const ui = {
+  seedScopes: new Map(),
   selected: new Set(),
   dismissed: new Set(),
   search: '',
@@ -164,7 +165,7 @@ const TAB_VIEWS = {
 
 export function view(ctx) {
   const eventId = ctx.params.eventId;
-  const tab = ctx.params.tab || 'overview';
+  const tab = TAB_VIEWS[ctx.params.tab] ? ctx.params.tab : 'overview';
   const data = contextFor(eventId);
 
   if (!data) {
@@ -197,6 +198,7 @@ export function view(ctx) {
          tabpanel, arrow-key roving focus and no page change; promising that
          and not delivering it is worse for a screen-reader user than plain
          links, which they already know how to use. -->
+    <div class="workspace-context"><span class="eyebrow">HOST CONTROLS</span><span>${data.event.name}</span><a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
     <nav class="tabs" aria-label="Organiser sections">
       ${list(TABS.map((t) => html`
         <a class="tab" href="#/e/${eventId}/admin/${t.id}"
@@ -215,7 +217,7 @@ export function view(ctx) {
   return {
     title: data.event.name,
     subtitle: `${data.game?.short || ''} · ${data.entries.length} entrants`,
-    back: `/e/${eventId}`,
+    back: '/host',
     gameId: data.event.gameId,
     body,
   };
@@ -231,6 +233,60 @@ const FLOW_LABEL = {
   seeding: 'Seeding', running: 'Running', complete: 'Finished',
 };
 
+/* Scope is an explicit view choice, never inferred from whether one person
+   happened to check in. The same ordered field drives every seeding action. */
+function seedScope(data) { return ui.seedScopes.get(data.event.id) || 'all'; }
+function seedPool(data) {
+  return data.entries.filter((e) => !e.waitlisted && (seedScope(data) === 'all' || e.checkedInAt))
+    .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+}
+
+function finishProblem(data) {
+  const matches = data.bracket?.matches.filter((m) => !m.cancelled) || [];
+  if (!matches.length) return 'Generate and play a bracket before finishing.';
+  const remaining = matches.filter((m) => m.state !== 'bye' &&
+    (m.state !== 'complete' || !m.winnerId || !m.slots.some((s) => s.entrantId === m.winnerId))).length;
+  if (remaining) return `${remaining} set${remaining === 1 ? '' : 's'} still need a result. Report them in Run before finishing.`;
+  if (!matches.some((m) => m.state === 'complete')) return 'Play a deciding set before finishing.';
+  return '';
+}
+
+function nextStep(data) {
+  if (data.event.status === 'complete') return 'Finished. Review standings or download a backup. Correcting a result reopens the event.';
+  if (data.entries.filter((e) => !e.waitlisted).length < 2) return 'Next: add or import at least two admitted entrants in Entrants.';
+  if (!data.bracket) return 'Next: check in arrivals in Entrants, then choose the entrant scope and review matchups in Seeding. Generating starts the event.';
+  return finishProblem(data) || 'All sets are decided. Next: review standings and finish the event.';
+}
+
+/* Both the phase button and the guidance action enter this review. Recheck on
+   confirmation: a second tab may correct a result while the dialog is open. */
+function finishEvent() {
+  const data = contextFor(currentEventId());
+  const problem = finishProblem(data);
+  if (problem) { snack(problem); return; }
+  const reviewed = JSON.stringify(data.bracket);
+  const table = standings(data.bracket, new Map(data.entries.map((e) => [e.id, {
+    ...e, tag: data.players.get(e.playerId)?.tag || 'Entrant',
+  }])));
+  dialog({
+    title: 'Review final standings',
+    body: html`<p class="body-medium">All sets are decided. Finish ${data.event.name}?</p>
+      <ol class="body-medium">${list(table.slice(0, 8).map((row) => html`<li>${row.place}. ${row.entrant.tag}</li>`))}</ol>`,
+    actions: [
+      { label: 'Cancel', kind: 'text' },
+      { label: 'Finish event', kind: 'filled', onClick: () => {
+        const fresh = contextFor(data.event.id);
+        if (!fresh || finishProblem(fresh) || JSON.stringify(fresh.bracket) !== reviewed) {
+          snack('The bracket changed. Review the results again before finishing.'); return;
+        }
+        store.apply('events', data.event.id, { status: 'complete', completedAt: new Date().toISOString() });
+        snack('Finished — final standings are ready.');
+        rerender();
+      } },
+    ],
+  });
+}
+
 function overviewTab(data, suggestions, ctx) {
   const { event, entries, bracket } = data;
   const checkedIn = entries.filter((e) => e.checkedInAt).length;
@@ -240,12 +296,16 @@ function overviewTab(data, suggestions, ctx) {
   const at = FLOW.indexOf(event.status);
 
   return html`
-    <div class="pane">
-      ${raw(gameHero(data.game, { title: event.name, subtitle: 'Your tournament, from check-in to the final set.' }))}
+    <div class="pane host-overview">
+      <header class="workspace-heading"><div><p class="eyebrow">EVENT OVERVIEW</p><h2>How's the room?</h2><p>${data.game?.name || event.gameId} · ${event.venue || 'Venue to be announced'}</p></div><span class="chip chip-static chip-info">${FLOW_LABEL[event.status]}</span></header>
+      <div class="operations-pulse" aria-label="Event at a glance">
+        <a href="#/e/${event.id}/admin/entrants"><span>Checked in</span><b>${checkedIn}<small> / ${entries.length}</small></b><span>${entries.length - checkedIn} still to arrive</span></a>
+        <a href="#/e/${event.id}/admin/run"><span>Stations occupied</span><b>${data.stations.filter(s => (bracket?.matches || []).some(m => m.stationId === s.id && m.calledAt && !m.state)).length}<small> / ${data.stations.length}</small></b><span>Open station controls</span></a>
+        <a href="#/e/${event.id}/admin/seeding"><span>Bracket</span><b>${bracket ? 'In play' : 'Not seeded'}</b><span>${bracket ? 'Review matchups' : 'Prepare the first round'}</span></a>
+      </div>
       <nav class="local-actions local-console-links" aria-label="Tournament shortcuts">
         <a class="btn btn-tonal" href="#/e/${event.id}/admin/entrants">${raw(icon('group'))} Check in players</a>
         <a class="btn btn-tonal" href="#/e/${event.id}/admin/run">${raw(icon('play'))} Run matches</a>
-        <a class="btn btn-outlined" href="#/e/${event.id}/tv">${raw(icon('station'))} Venue display</a>
       </nav>
       ${!store.syncState().configured || event.demo ? html`
         <p class="local-device-note">${event.demo ? 'Demo event' : 'On this device'} · Manage check-in here.
@@ -266,8 +326,10 @@ function overviewTab(data, suggestions, ctx) {
         <div class="row" style="gap:8px">
           ${at > 0 ? html`<button class="btn btn-text btn-sm" data-act="event-status" data-status="${FLOW[at - 1]}">${raw(icon('back', 'icon-sm'))} Back to ${FLOW_LABEL[FLOW[at - 1]]}</button>` : ''}
           <span class="spacer"></span>
-          ${at < FLOW.length - 1 ? html`<button class="btn btn-filled btn-sm" data-act="event-status" data-status="${FLOW[at + 1]}">Move to ${FLOW_LABEL[FLOW[at + 1]]} ${raw(icon('chevron', 'icon-sm'))}</button>` : ''}
+          ${at < FLOW.length - 1 ? html`<button class="btn btn-filled btn-sm" data-act="event-status" data-status="${FLOW[at + 1]}"
+            ${raw(FLOW[at + 1] === 'complete' && finishProblem(data) ? 'disabled' : '')}>${FLOW[at + 1] === 'running' && !bracket ? 'Review seeding to start' : `Move to ${FLOW_LABEL[FLOW[at + 1]]}`} ${raw(icon('chevron', 'icon-sm'))}</button>` : ''}
         </div>
+        <p class="body-medium" data-operation-guidance style="margin-top:12px">${nextStep(data)}</p>
       </section>
 
       <section style="margin-bottom:20px">
@@ -489,7 +551,7 @@ function entrantsTab(data) {
 
 function seedingTab(data) {
   const { event, entries, players, bracket } = data;
-  const pool = entries.filter((e) => !e.waitlisted && (event.status === 'registration' || e.checkedInAt || !anyCheckedIn(entries)));
+  const pool = seedPool(data);
   const seeded = [...pool].sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
 
   const withNames = seeded.map((entry) => ({
@@ -517,8 +579,19 @@ function seedingTab(data) {
       ${bracket ? html`
         <div class="banner banner-warn" style="margin-bottom:16px">${raw(icon('alert'))}
           <div><b>The bracket is already generated.</b>
-          <div class="body-small">Re-seeding now regenerates it and discards any reported sets. Everyone who has looked at their first-round opponent will see it change.</div></div>
+          <div class="body-small">Seed edits change the proposal only. Regenerate to replace the live bracket; that supersedes its results and releases station calls. Download a backup first if you may need to restore it.</div></div>
         </div>` : ''}
+
+      <section class="card card-outlined" style="margin-bottom:16px" aria-label="Entrants to seed">
+        <h2 class="title-medium">Entrants to seed</h2>
+        <div class="row" style="margin-top:8px">
+          ${list([['all', 'All admitted entrants'], ['checked', 'Checked-in entrants only']].map(([scope, label]) => html`
+            <button class="btn btn-outlined" data-act="seed-scope" data-scope="${scope}" aria-pressed="${seedScope(data) === scope}">${label}</button>`))}
+        </div>
+        <p class="body-medium" data-seed-summary style="margin-top:8px">${pool.length} included · ${entries.filter((e) => !e.waitlisted && !e.checkedInAt).length} admitted entrants not checked in · ${entries.filter((e) => e.waitlisted).length} waitlisted (excluded).
+          ${pool.length >= 2 ? `${bracketSize(pool.length) - pool.length} byes.` : 'Include at least two entrants to generate.'}</p>
+        <a class="btn btn-text" href="#/recovery">Download a backup before replacing a bracket</a>
+      </section>
 
       <div class="row" style="margin-bottom:16px;gap:8px">
         <button class="btn btn-tonal btn-sm" data-act="autoseed" data-mode="history">${raw(icon('sort', 'icon-sm'))} Seed from results here</button>
@@ -621,7 +694,7 @@ function seedingTab(data) {
       </div>
 
       <div class="row" style="margin-top:24px">
-        <button class="btn btn-filled btn-lg" data-act="generate-bracket">
+        <button class="btn btn-filled btn-lg" data-act="generate-bracket" ${raw(pool.length < 2 ? 'disabled' : '')}>
           ${raw(icon('bracket'))} ${bracket ? 'Regenerate the bracket' : 'Generate the bracket'}
         </button>
       </div>
@@ -1177,6 +1250,10 @@ function addWalkUp(eventId, tag, group) {
   });
   const entryId = store.uid('ent');
   const entries = store.entriesFor(eventId);
+  /* A walk-up is present, but presence is not admission. Keep an over-cap
+     entrant visible at the desk without silently seeding them into the event.
+     Count admitted entries only: a waitlist is not an occupied place. */
+  const waitlisted = Boolean(event.capacity && entries.filter((entry) => !entry.waitlisted).length >= event.capacity);
   store.apply('entries', entryId, {
     id: entryId, eventId, playerId,
     seed: entries.length + 1,
@@ -1184,9 +1261,10 @@ function addWalkUp(eventId, tag, group) {
     registeredAt: new Date().toISOString(),
     checkedInAt: new Date().toISOString(),
     source: 'door',
+    waitlisted,
     signedDocuments: [],
   });
-  snack(`${tag} added — claim code ${code}`, { action: 'Copy', onAction: async () => {
+  snack(`${tag} ${waitlisted ? 'waitlisted — event is full' : 'added'} — claim code ${code}`, { action: 'Copy', onAction: async () => {
     const { copy } = await import('../lib/ui.js');
     await copy(code);
   } });
@@ -1196,7 +1274,7 @@ function addWalkUp(eventId, tag, group) {
 on('entrant-menu', ({ id }) => {
   const entry = store.get().entries[id];
   const player = store.getPlayer(entry.playerId);
-  dialog({
+  const menu = dialog({
     title: player?.tag || 'Entrant',
     body: html`
       <div class="list">
@@ -1209,11 +1287,14 @@ on('entrant-menu', ({ id }) => {
           </button>` : ''}
         <button class="list-item" data-act="entrant-dq" data-id="${id}">
           ${raw(icon('close'))}<span class="spacer"><span class="headline">Disqualify</span>
-          <span class="supporting">Advances their opponent in every open set</span></span>
+          <span class="supporting">Records a DQ in their current set; releases its station</span></span>
         </button>
       </div>`,
     actions: [{ label: 'Close', kind: 'text' }],
   });
+  /* Dialogs are appended outside main and the chrome delegation roots. Without
+     their own binding the roster's DQ button looked active but did nothing. */
+  bindDelegation(menu);
 });
 
 /* ---- import / export ---- */
@@ -1267,6 +1348,9 @@ function showPreview(dlg) {
   ui.importPlan = plan;
 
   const { summary } = plan;
+  const admitted = data.entries.filter((entry) => !entry.waitlisted).length;
+  const overflow = data.event.capacity
+    ? Math.max(0, summary.create - Math.max(0, data.event.capacity - admitted)) : 0;
   target.innerHTML = html`
     <hr class="divider" style="margin:16px 0">
     <div class="row" style="gap:8px;margin-bottom:12px">
@@ -1275,6 +1359,11 @@ function showPreview(dlg) {
       <span class="chip chip-static chip-assist">${summary.unchanged} unchanged</span>
       ${summary.duplicate ? html`<span class="chip chip-static chip-warn">${summary.duplicate} duplicate in file</span>` : ''}
     </div>
+    ${overflow ? html`<div class="banner banner-warn" style="margin-bottom:12px">
+      <div><b>${overflow} new entrant${overflow === 1 ? '' : 's'} will be waitlisted</b>
+        <p class="body-small" style="margin:4px 0 0">This event has a capacity of ${data.event.capacity}.
+          Overflow entrants stay on the roster but are not seeded into the bracket.</p></div>
+    </div>` : ''}
     ${hasHeader ? html`
       <p class="body-small dim">Columns read as: ${mapping.map((m, i) => (m ? `${rows[0][i]} → ${m}` : null)).filter(Boolean).join(', ') || 'none recognised'}</p>`
       : html`<p class="body-small dim">No header row found — treating the first column as tags.</p>`}
@@ -1312,12 +1401,17 @@ function runImport() {
   const writes = [];
   const touched = [];
   let seedCursor = store.entriesFor(eventId).length;
+  /* The batch has not reached the store yet. Track its admitted count here
+     so every row after the cap is waitlisted, not just the next import. */
+  let admitted = store.entriesFor(eventId).filter((entry) => !entry.waitlisted).length;
 
   for (const item of plan.plan) {
     if (item.action === 'unchanged' || item.action === 'duplicate-in-file') continue;
     const r = item.record;
 
     if (item.action === 'create') {
+      const waitlisted = Boolean(event.capacity && admitted >= event.capacity);
+      if (!waitlisted) admitted += 1;
       const { id: playerId } = auth.createClaimablePlayer({
         tag: r.tag, orgId: event.orgId, createdBy: auth.currentPlayer()?.id,
         extra: {
@@ -1344,6 +1438,7 @@ function runImport() {
         paidAt: r.paid ? new Date().toISOString() : null,
         registeredAt: new Date().toISOString(),
         source: 'import',
+        waitlisted,
         signedDocuments: [],
       } });
       touched.push({ collection: 'entries', id: entryId });
@@ -1401,9 +1496,15 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 
 /* ---- seeding ---- */
 
+on('seed-scope', ({ scope }) => {
+  if (!['all', 'checked'].includes(scope)) return;
+  ui.seedScopes.set(currentEventId(), scope);
+  rerender();
+});
+
 on('autoseed', ({ mode }) => {
   const data = contextFor(currentEventId());
-  const pool = data.entries.filter((e) => !e.waitlisted);
+  const pool = seedPool(data);
   let ordered;
 
   if (mode === 'random') {
@@ -1431,7 +1532,7 @@ on('autoseed', ({ mode }) => {
 
 on('apply-separation', () => {
   const data = contextFor(currentEventId());
-  const seeded = [...data.entries].filter((e) => !e.waitlisted).sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+  const seeded = seedPool(data);
   const withNames = seeded.map((entry) => ({
     id: entry.id, entryId: entry.id, playerId: entry.playerId,
     name: data.players.get(entry.playerId)?.tag || '—',
@@ -1458,9 +1559,7 @@ on('apply-separation', () => {
    how somebody nudging a seed order actually wants to back out of it. */
 on('seed-move', ({ id, dir }) => {
   const data = contextFor(currentEventId());
-  const ordered = data.entries
-    .filter((e) => !e.waitlisted)
-    .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+  const ordered = seedPool(data);
 
   const at = ordered.findIndex((e) => e.id === id);
   const to = at + Number(dir);
@@ -1482,33 +1581,98 @@ on('seed-move', ({ id, dir }) => {
 
 /* ---- bracket ---- */
 
+/* Bracket match ids are reused after regeneration. Supersede the old durable
+   rows before those ids acquire new opponents. Batch companion records so a
+   render or local snapshot never sees half of an organiser operation. */
+function invalidationWrites(data, ids = null) {
+  const at = new Date().toISOString();
+  return [
+    ...Object.values(store.get().results)
+      .filter((r) => r.eventId === data.event.id && !r.superseded && (!ids || ids.has(r.matchId)))
+      .map((r) => ({ collection: 'results', id: r.id, patch: { superseded: true, supersededAt: at } })),
+    ...data.stations.filter((s) => s.matchId && (!ids || ids.has(s.matchId)))
+      .map((s) => ({ collection: 'stations', id: s.id, patch: { matchId: null } })),
+  ];
+}
+
+function affectedMatches(matches, matchId) {
+  const ids = new Set();
+  const visit = (id) => {
+    if (ids.has(id)) return;
+    const match = matches.find((m) => m.id === id);
+    if (!match) return;
+    ids.add(id);
+    for (const target of [match.winnerTo, match.loserTo]) if (target) visit(target.match);
+  };
+  visit(matchId);
+  return ids;
+}
+
+function clearedMatches(matches, matchId, ids) {
+  return clearResult(matches, matchId).map((m) => {
+    if (!ids.has(m.id)) return m;
+    const next = { ...m };
+    delete next.calledAt;
+    delete next.stationId;
+    delete next.byDq;
+    /* clearResult handles progression but leaves a cancelled GF reset marked
+       cancelled. Once its source is undone it is undecided again. */
+    if (m.bracket === 'GF' && m.round === 2) {
+      next.cancelled = false;
+      next.conditional = true;
+    }
+    return next;
+  });
+}
+
+function correctionReview(data, matchId, apply) {
+  const ids = affectedMatches(data.bracket.matches, matchId);
+  const downstreamResults = Object.values(store.get().results).filter((r) => r.eventId === data.event.id
+    && !r.superseded && r.matchId !== matchId && ids.has(r.matchId));
+  const calls = data.stations.filter((s) => ids.has(s.matchId));
+  if (!downstreamResults.length && !calls.some((s) => s.matchId !== matchId)) { apply(); return; }
+  const reviewed = JSON.stringify(data.bracket);
+  confirmDialog({
+    title: 'Correct this set and its dependent sets?',
+    body: `${downstreamResults.length} downstream result(s) will leave active player history; ${calls.length} station call(s) will be released. The old results remain in the log. Restore a prior backup to recover the previous bracket.`,
+    confirmLabel: 'Confirm correction', danger: true,
+    onConfirm: () => {
+      const fresh = contextFor(data.event.id);
+      if (!fresh || JSON.stringify(fresh.bracket) !== reviewed) {
+        snack('The bracket changed. Open the set again to review its current results.'); return;
+      }
+      apply();
+    },
+  });
+}
+
 on('generate-bracket', () => {
   const data = contextFor(currentEventId());
   const eventId = data.event.id;
   const existing = store.get().brackets[eventId];
 
   const build = () => {
-    /* Only people who are actually here. Before check-in opens, that is
-       everyone; after it, it is the ones who showed up. */
-    const pool = data.entries
-      .filter((e) => !e.waitlisted)
-      .filter((e) => (anyCheckedIn(data.entries) ? e.checkedInAt : true))
-      .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+    const fresh = contextFor(eventId);
+    /* A confirmation must not overwrite changes made since its preview. */
+    if (JSON.stringify(fresh?.bracket) !== JSON.stringify(data.bracket)
+      || JSON.stringify(seedPool(fresh)) !== JSON.stringify(seedPool(data))) {
+      snack('The event changed. Review the seeding again.'); rerender(); return;
+    }
+    const pool = seedPool(fresh);
 
-    if (pool.length < 2) { snack('Need at least two checked-in entrants.'); return; }
+    if (pool.length < 2) { snack('Include at least two entrants in the selected scope.'); return; }
 
     const seeds = pool.map((entry) => ({ id: entry.id, name: data.players.get(entry.playerId)?.tag }));
     const built = data.event.format === 'single'
       ? singleElimination(seeds)
       : doubleElimination(seeds, { grandFinalsReset: data.ruleset?.values?.grandFinalsReset !== false });
 
-    store.apply('brackets', eventId, {
+    store.applyMany([...invalidationWrites(fresh), { collection: 'brackets', id: eventId, patch: {
       id: eventId, eventId,
       type: built.type, size: built.size, rounds: built.rounds,
       matches: built.matches,
       generatedAt: new Date().toISOString(),
-    });
-    store.apply('events', eventId, { status: 'running' });
+    } }, { collection: 'events', id: eventId, patch: { status: 'running', completedAt: null } }]);
     snack(`Bracket made — ${pool.length} entrants, ${built.size} slots`);
     window.location.hash = `#/e/${eventId}/admin/run`;
   };
@@ -1516,7 +1680,7 @@ on('generate-bracket', () => {
   if (existing) {
     confirmDialog({
       title: 'Regenerate the bracket?',
-      body: 'Every reported set is discarded and the bracket is rebuilt from the current seeds.',
+      body: 'Every previous result is superseded in player history, all station calls are released, and the bracket is rebuilt from the displayed entrant scope and seeds. To recover the old bracket you need a prior backup.',
       confirmLabel: 'Regenerate',
       danger: true,
       onConfirm: build,
@@ -1528,12 +1692,15 @@ on('clear-bracket', () => {
   const eventId = currentEventId();
   confirmDialog({
     title: 'Clear the bracket?',
-    body: 'The bracket and every result in it are removed. Entrants and seeds stay.',
+    body: 'The bracket is removed, its results leave active player history, and station calls are released. Entrants and seeds stay. Restore a prior backup to recover the bracket.',
     confirmLabel: 'Clear',
     danger: true,
     onConfirm: () => {
-      store.apply('brackets', eventId, null);
-      store.apply('events', eventId, { status: 'seeding' });
+      const data = contextFor(eventId);
+      store.applyMany([...invalidationWrites(data),
+        { collection: 'brackets', id: eventId, patch: null },
+        { collection: 'events', id: eventId, patch: { status: 'seeding', completedAt: null } },
+      ]);
       snack('Bracket cleared');
       rerender();
     },
@@ -1571,6 +1738,13 @@ on('station-add', () => {
 
 /* ---- reporting ---- */
 
+function scoreTarget(data, match) {
+  const isFinals = match.bracket === 'GF' || (match.bracket === 'W' && match.round === data.bracket.rounds);
+  return Math.ceil(setLength(isFinals
+    ? data.ruleset?.values?.setLengthFinals
+    : data.ruleset?.values?.setLengthPools).games / 2);
+}
+
 on('report-open', ({ match: matchId }) => {
   const data = contextFor(currentEventId());
   const match = data.bracket.matches.find((m) => m.id === matchId);
@@ -1582,16 +1756,12 @@ on('report-open', ({ match: matchId }) => {
     return data.players.get(entry?.playerId)?.tag || '—';
   };
 
-  const isFinals = match.bracket === 'GF' || (match.bracket === 'W' && match.round === data.bracket.rounds);
-  const length = setLength(isFinals
-    ? data.ruleset?.values?.setLengthFinals
-    : data.ruleset?.values?.setLengthPools);
-  const target = Math.ceil(length.games / 2);
+  const target = scoreTarget(data, match);
 
   dialog({
     title: match.name,
     body: html`
-      <p class="body-medium dim">First to ${target} — best of ${length.games}. Tap the winner's score.</p>
+      <p class="body-medium dim">First to ${target} — best of ${target * 2 - 1}. Tap the winner's score.</p>
       <div class="stack" style="margin:16px 0">
         ${list([[a, 'a'], [b, 'b']].map(([slot, side]) => html`
           <div class="card card-outlined">
@@ -1618,6 +1788,7 @@ on('report-open', ({ match: matchId }) => {
         const scoreB = Number(dlg.querySelector('[data-score-side="b"][aria-pressed="true"]')?.dataset.score ?? -1);
         if (scoreA < 0 || scoreB < 0) { snack('Pick both scores.'); return false; }
         if (scoreA === scoreB) { snack('A set cannot be a draw.'); return false; }
+        if (Math.max(scoreA, scoreB) !== target) { snack(`The winner must reach ${target} games.`); return false; }
         saveResult(matchId, scoreA > scoreB ? a.entrantId : b.entrantId, scoreA, scoreB);
         return true;
       } },
@@ -1649,66 +1820,72 @@ on('report-open', ({ match: matchId }) => {
 
 function saveResult(matchId, winnerEntrantId, scoreA, scoreB, byDq = false) {
   const data = contextFor(currentEventId());
+  if (!data?.bracket) return;
   const eventId = data.event.id;
   const match = data.bracket.matches.find((m) => m.id === matchId);
-
-  const next = reportResult(data.bracket.matches, matchId, { winnerId: winnerEntrantId, scoreA, scoreB })
-    .map((m) => (m.id === matchId ? { ...m, byDq, calledAt: m.calledAt } : m));
-
-  store.apply('brackets', eventId, { matches: next });
-
-  /* Free the station this set was on. */
-  const station = data.stations.find((s) => s.matchId === matchId);
-  if (station) store.apply('stations', station.id, { matchId: null });
-
-  /* And write the durable result row. This is the record that outlives the
-     event: it carries PLAYER ids, not entry ids, so a profile query never has
-     to join through a tournament that may have been deleted. */
-  const done = next.find((m) => m.id === matchId);
-  const entryOf = (id) => data.entries.find((e) => e.id === id);
-  const winnerPlayerId = entryOf(done.winnerId)?.playerId;
-  const loserPlayerId = entryOf(done.loserId)?.playerId;
-
-  if (winnerPlayerId && loserPlayerId) {
-    const resultId = store.uid('res');
-    store.apply('results', resultId, {
-      id: resultId, eventId, gameId: data.event.gameId,
-      matchId, roundName: match.name,
-      winnerPlayerId, loserPlayerId,
-      scoreWinner: Math.max(scoreA, scoreB),
-      scoreLoser: Math.min(scoreA, scoreB),
-      byDq,
-      reportedAt: new Date().toISOString(),
-      reportedBy: auth.currentPlayer()?.id || null,
-    });
+  if (!match || match.cancelled || !match.slots.every((s) => s.entrantId)
+    || !match.slots.some((s) => s.entrantId === winnerEntrantId)) return;
+  const target = scoreTarget(data, match);
+  if (![scoreA, scoreB].every((n) => Number.isInteger(n) && n >= 0)
+    || Math.max(scoreA, scoreB) !== target || Math.min(scoreA, scoreB) >= target) {
+    snack(`Report a first-to-${target} result.`); return;
   }
-
-  snack(byDq ? 'Recorded as a disqualification' : 'Reported');
-  rerender();
+  const apply = () => {
+    const ids = match.state === 'complete' ? affectedMatches(data.bracket.matches, matchId) : new Set([matchId]);
+    const base = match.state === 'complete' ? clearedMatches(data.bracket.matches, matchId, ids) : data.bracket.matches;
+    const next = reportResult(base, matchId, { winnerId: winnerEntrantId, scoreA, scoreB })
+      .map((m) => {
+        if (m.id !== matchId) return m;
+        const done = { ...m, byDq };
+        delete done.calledAt;
+        delete done.stationId;
+        return done;
+      });
+    const done = next.find((m) => m.id === matchId);
+    const playerOf = (entrantId) => data.entries.find((e) => e.id === entrantId)?.playerId;
+    const resultId = store.uid('res');
+    store.applyMany([...invalidationWrites(data, ids),
+      { collection: 'brackets', id: eventId, patch: { matches: next } },
+      { collection: 'events', id: eventId, patch: { status: 'running', completedAt: null } },
+      { collection: 'results', id: resultId, patch: {
+        id: resultId, eventId, gameId: data.event.gameId, matchId, roundName: match.name,
+        winnerPlayerId: playerOf(done.winnerId), loserPlayerId: playerOf(done.loserId),
+        scoreWinner: Math.max(scoreA, scoreB), scoreLoser: Math.min(scoreA, scoreB), byDq,
+        reportedAt: new Date().toISOString(), reportedBy: auth.currentPlayer()?.id || null,
+      } },
+    ]);
+    snack(byDq ? 'Recorded as a disqualification' : 'Reported');
+    rerender();
+  };
+  if (match.state === 'complete') correctionReview(data, matchId, apply);
+  else apply();
 }
 
 function unreport(matchId) {
   const data = contextFor(currentEventId());
-  const next = clearResult(data.bracket.matches, matchId);
-  store.apply('brackets', data.event.id, { matches: next });
-
-  /* Supersede rather than delete the result row -- if two people reported
-     different scores from two phones, both are in the log with timestamps, and
-     that is what makes the disagreement settleable. */
-  for (const result of Object.values(store.get().results)) {
-    if (result.matchId === matchId && result.eventId === data.event.id && !result.superseded) {
-      store.apply('results', result.id, { superseded: true, supersededAt: new Date().toISOString() });
-    }
-  }
-  snack('Un-reported');
-  rerender();
+  if (!data?.bracket?.matches.some((m) => m.id === matchId && m.state === 'complete')) return;
+  correctionReview(data, matchId, () => {
+    const ids = affectedMatches(data.bracket.matches, matchId);
+    store.applyMany([...invalidationWrites(data, ids),
+      { collection: 'brackets', id: data.event.id, patch: { matches: clearedMatches(data.bracket.matches, matchId, ids) } },
+      { collection: 'events', id: data.event.id, patch: { status: 'running', completedAt: null } },
+    ]);
+    snack('Un-reported — affected sets need new results and station calls.');
+    rerender();
+  });
 }
 
 /* ---- event settings ---- */
 
 on('event-status', ({ status }) => {
   const eventId = currentEventId();
-  const patch = { status };
+  if (!FLOW.includes(status)) return;
+  if (status === 'complete') { finishEvent(); return; }
+  if (status === 'running' && !store.get().brackets[eventId]) {
+    window.location.hash = `#/e/${eventId}/admin/seeding`;
+    snack('Review the entrant scope and generate the bracket to start.'); return;
+  }
+  const patch = { status, completedAt: null };
   if (status === 'checkin') {
     patch.checkInOpensAt = new Date().toISOString();
     patch.checkInClosesAt = new Date(Date.now() + 30 * 60000).toISOString();
@@ -1786,18 +1963,17 @@ on('entrant-dq', ({ id }) => {
   const data = contextFor(currentEventId());
   if (!data.bracket) { snack('No bracket yet — remove them from the entrants list instead.'); return; }
 
-  let matches = data.bracket.matches;
-  let count = 0;
-  for (const match of readyMatches(matches)) {
-    const slot = match.slots.findIndex((s) => s.entrantId === id);
-    if (slot < 0) continue;
-    const winner = match.slots[1 - slot].entrantId;
-    matches = reportResult(matches, match.id, { winnerId: winner, scoreA: slot === 0 ? 0 : 2, scoreB: slot === 0 ? 2 : 0 });
-    count += 1;
+  /* Match-level DQ, consistently from either entry point. Do not recursively
+     eliminate somebody from newly opened losers sets without another decision. */
+  const matches = readyMatches(data.bracket.matches).filter((m) => m.slots.some((s) => s.entrantId === id));
+  if (matches.length !== 1) {
+    snack(matches.length ? 'Multiple open sets: open the specific set in Run to disqualify.' : 'They have no open sets.'); return;
   }
-  store.apply('brackets', data.event.id, { matches });
-  snack(count ? `Disqualified — ${count} set${count === 1 ? '' : 's'} advanced` : 'They have no open sets.');
-  rerender();
+  const match = matches[0];
+  const slot = match.slots.findIndex((s) => s.entrantId === id);
+  const target = scoreTarget(data, match);
+  saveResult(match.id, match.slots[1 - slot].entrantId, slot === 0 ? 0 : target, slot === 0 ? target : 0, true);
+  document.querySelector('dialog[open]')?.close();
 });
 
 /* ---- guidance actions ---- */
@@ -1913,12 +2089,11 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
     }
 
     case 'publish-results':
-      store.apply('events', eventId, { status: 'complete', completedAt: new Date().toISOString() });
-      snack('Published — results are on every entrant\'s profile');
-      break;
+      finishEvent();
+      return;
 
     case 'review-standings':
-      window.location.hash = `#/e/${eventId}`;
+      window.location.hash = `#/e/${eventId}/bracket`;
       return;
 
     case 'add-password':

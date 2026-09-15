@@ -109,10 +109,11 @@ export function view(ctx) {
   return {
     title: 'New event',
     subtitle: STEPS[draft.step],
-    back: draft.step === 0 ? '/' : null,
+    back: draft.step === 0 ? '/host' : null,
     gameId: draft.gameId,
     body: html`
-      <div class="pane" style="max-width:760px">
+      <div class="pane setup-workspace" style="max-width:760px">
+        <header class="setup-heading"><p class="eyebrow">CREATE AN EVENT · STEP ${draft.step + 1} OF ${STEPS.length}</p><h2>${STEPS[draft.step]}</h2></header>
         <div class="row" style="margin-bottom:20px;gap:6px">
           ${list(STEPS.map((label, i) => html`
             <button class="chip ${raw(i === draft.step ? 'selected' : '')}"

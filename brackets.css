@@ -322,14 +322,20 @@ a { color: var(--md-primary); }
 /* Skip link. The nav rail is up to nine stops before the content on every
    page, and a keyboard user should not have to tab through it each time. */
 .skip-link {
-  position: absolute; z-index: 100; top: 8px; left: 8px;
+  position: fixed; z-index: 100; top: 8px; left: 8px;
   padding: 12px 20px; border-radius: var(--shape-full);
   background: var(--md-primary); color: var(--md-on-primary);
   font: var(--label-large); text-decoration: none;
   transform: translateY(-200%);
   transition: transform var(--dur-short) var(--ease-standard);
 }
-.skip-link:focus { transform: translateY(0); }
+.skip-link:focus {
+  /* Becoming keyboard-visible is an accessibility state, not decorative
+     motion. Show it in the same frame so a busy browser cannot leave the
+     focused link above the viewport while the transition catches up. */
+  transform: translateY(0);
+  transition: none;
+}
 
 /* The scroll panes take focus so they can be scrolled from the keyboard; they
    must not then draw a focus ring as though they were a control, so the ring
@@ -1136,10 +1142,8 @@ table.data .check { width: 44px; }
    8. GAME THEMING
    ---------------------------------------------------------------------------
    The colour side lives in data/themes.js, which injects one <style> of
-   [data-game="…"] rules that override M3's own colour roles. That is the whole
-   trick: because the override is on the ROLES rather than on bespoke classes,
-   every button, chip, tab, switch and focus ring inside a themed container
-   picks up the game with no component-level work at all.
+   rules restricted to game modules. Route metadata never changes product
+   roles; heroes, selection cards and badges carry the game's accent locally.
 
    What is below is only the structure the artwork needs.
    =========================================================================== */
@@ -1229,7 +1233,10 @@ table.data .check { width: 44px; }
 .top-bar h1 { overflow-wrap: anywhere; }
 .btn:not(.btn-icon), .fab { border-radius: 4px; }
 .card, .banner, .station, .game-hero, .demo-tour { border-radius: 6px; }
-.app-publication, .publication {
+/* Publisher roles belong to every route, including the chromeless TV.
+   Explicit theme selectors match the earlier dark overrides in specificity.
+   Game modules may override primary locally; metadata on a route cannot. */
+:root, :root:not([data-theme]), :root[data-theme='light'], :root[data-theme='dark'] {
   --md-surface: light-dark(#f3eedf, #211f19);
   --md-on-surface: light-dark(#20221c, #f3eedf);
   --md-on-surface-variant: light-dark(#55574d, #c6c4b9);
@@ -1239,8 +1246,24 @@ table.data .check { width: 44px; }
   --md-on-primary: light-dark(#ffffff, #4b0c05);
   --md-primary-container: light-dark(#ffdad2, #713023);
   --md-on-primary-container: light-dark(#390900, #ffdad2);
+  --md-inverse-primary: light-dark(#ffb4a6, #982e22);
+  --md-surface-container-lowest: light-dark(#fffaf0, #171610);
+  --md-surface-container-low: light-dark(#eee9dc, #25231d);
+  --md-surface-container: light-dark(#e9e4d7, #29271f);
+  --md-surface-container-high: light-dark(#e4dfd2, #302e26);
+  --md-surface-container-highest: light-dark(#dfdacd, #36342b);
+  --md-surface-variant: light-dark(#e4dfd2, #36342b);
+  --md-secondary: light-dark(#55574d, #c6c4b9);
+  --md-on-secondary: light-dark(#ffffff, #20221c);
+  --md-secondary-container: light-dark(#e4e3d6, #414238);
+  --md-on-secondary-container: light-dark(#20221c, #e4e3d6);
   background: var(--md-surface); color: var(--md-on-surface);
 }
+.brand-mark { width: 1.6em; height: 1.6em; flex: none; color: var(--md-primary); vertical-align: middle; }
+.brand-credit { display: block; font: var(--label-small); letter-spacing: .06em; color: var(--md-on-surface-variant); }
+.brand-signature { display: flex; align-items: center; gap: 8px; }
+.publication-wordmark .brand-mark { width: .65em; height: .65em; margin-right: .15em; }
+.event-attribution { font: var(--body-small); color: var(--md-on-surface-variant); margin: 4px 0; overflow-wrap: anywhere; }
 .publication {
   margin-top: 18px; margin-bottom: 24px; padding-top: 22px;
 }
@@ -1329,8 +1352,7 @@ table.data .check { width: 44px; }
 .game-hero[data-game="tokon"] .game-hero-eyebrow { margin-bottom: 12px; }
 .game-hero[data-game="tokon"].compact { min-height: 96px; }
 .game-hero[data-game="tokon"].compact .game-hero-title { font: var(--title-medium); }
-.tv[data-game="tokon"] .tv-head { border-left: 6px solid var(--md-primary); padding-left: 20px; }
-.tv[data-game="tokon"] .tv-title { font-weight: 800; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.tv .tv-title { font-weight: 800; letter-spacing: -.025em; overflow-wrap: anywhere; }
 @media (max-width: 799px) {
   .game-hero[data-game="tokon"] .game-hero-body { max-width: 100%; padding: 20px; }
   .game-hero[data-game="tokon"] .game-hero-art { display: none; }
@@ -1350,9 +1372,8 @@ table.data .check { width: 44px; }
 .game-card[aria-pressed='true'] { box-shadow: inset 0 0 0 2px var(--md-primary); }
 .game-card[aria-pressed='true'] .game-card-art { opacity: .3; }
 
-/* A themed page keeps its accent on the app bar, so the game is present even
-   when the banner has scrolled away. */
-.top-bar[data-game] { border-bottom: 3px solid var(--md-primary); }
+/* The publisher rule persists when event artwork scrolls away. */
+.top-bar { border-bottom: 3px solid var(--md-primary); }
 
 @media (prefers-reduced-motion: reduce) {
   .game-hero-art, .game-card-art { transition: none; }
@@ -1823,7 +1844,10 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .tv-brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; margin: 0 0 10px; font: bold clamp(1.1rem, 2.6vmin, 2rem)/1.15 var(--font-editorial); letter-spacing: -.04em; }
 .tv-brand span { font: var(--label-small); letter-spacing: .08em; text-transform: uppercase; color: var(--md-on-surface-variant); }
 .tv-head { padding-bottom: 14px; border-bottom: 3px solid var(--md-primary); }
-.tv[data-game="tokon"] .tv-head { border-left: 0; padding-left: 0; }
+.tv .tv-head { border-left: 0; padding-left: 0; }
+.tv-brand .brand-mark { width: 1em; height: 1em; }
+.tv-brand > span { font: inherit; letter-spacing: inherit; text-transform: none; color: inherit; }
+.tv-brand .brand-credit { display: inline; margin-left: 12px; }
 .tv-station, .tv-queue-row, .tv-match, .tv-recent-list li, .tv-complete { border-radius: 0; }
 .tv-station { border-left: 5px solid var(--md-outline-variant); box-shadow: none; display: grid; grid-template-columns: minmax(90px, .3fr) minmax(0, 1fr); column-gap: 16px; }
 .tv-station.busy { border-left-color: var(--md-primary); box-shadow: none; }
@@ -1839,4 +1863,289 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   .tv-station { grid-template-columns: 1fr; }
   .tv-station-meta { grid-row: auto; flex-direction: row; justify-content: space-between; border-right: 0; }
   .tv-station .tv-vs, .tv-station .tv-round, .tv-station .tv-free { grid-column: 1; }
+}
+/* ========================================================================
+   Two experiences, one tournament.
+   Shared Material roles keep every existing tool legible. Player surfaces
+   use generous match-card hierarchy; host surfaces use compact operational
+   groups and a dark navigation spine. Neither mode changes data permissions.
+   These overrides deliberately leave the venue display's measured grid alone.
+   ======================================================================== */
+:root, :root:not([data-theme]), :root[data-theme='light'], :root[data-theme='dark'] {
+  --md-surface: light-dark(#f5f6fb, #10131d);
+  --md-on-surface: light-dark(#191c2b, #f0f2ff);
+  --md-on-surface-variant: light-dark(#555d73, #bac1d6);
+  --md-outline: light-dark(#747c92, #8993af);
+  --md-outline-variant: light-dark(#d5d9e5, #353e56);
+  --md-primary: light-dark(#5141c9, #c4baff);
+  --md-on-primary: light-dark(#ffffff, #26146c);
+  --md-primary-container: light-dark(#e8e3ff, #332778);
+  --md-on-primary-container: light-dark(#26146c, #eee9ff);
+  --md-inverse-primary: light-dark(#c4baff, #5141c9);
+  --md-surface-container-lowest: light-dark(#ffffff, #0c0f18);
+  --md-surface-container-low: light-dark(#ffffff, #191e2c);
+  --md-surface-container: light-dark(#eef0f7, #202637);
+  --md-surface-container-high: light-dark(#e8ebf4, #293147);
+  --md-surface-container-highest: light-dark(#e0e4ef, #313b53);
+  --md-surface-variant: light-dark(#e8ebf4, #313b53);
+  --md-secondary: light-dark(#555d73, #bac1d6);
+  --md-on-secondary: light-dark(#ffffff, #191c2b);
+  --md-secondary-container: light-dark(#e8ebf4, #313b53);
+  --md-on-secondary-container: light-dark(#242b40, #e8ebf4);
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --headline-large: 750 2rem/1.2 var(--font);
+  --headline-medium: 700 1.75rem/1.25 var(--font);
+  --headline-small: 700 1.5rem/1.3 var(--font);
+  --title-large: 700 1.375rem/1.3 var(--font);
+  --title-medium: 650 1rem/1.5 var(--font);
+  --body-medium: 400 1rem/1.5 var(--font);
+  --body-small: 400 .875rem/1.45 var(--font);
+  --label-medium: 600 .875rem/1.4 var(--font);
+  --label-small: 600 .75rem/1.4 var(--font);
+}
+.app .btn:not(.btn-icon), .app .fab { border-radius: 10px; }
+.app .btn { min-height: 44px; }
+.app .card { border-radius: 16px; }
+.app .card-outlined { background: var(--md-surface-container-low); border: 1px solid var(--md-outline-variant); }
+.app .card-elevated { background: var(--md-surface-container-low); box-shadow: 0 6px 24px #080c2410; }
+.app .banner { border-radius: 12px; }
+.app .field input, .app .field select, .app .field textarea { border-radius: 10px; }
+.top-bar { border-bottom: 1px solid var(--md-outline-variant); padding: 12px 20px; gap: 14px; background: var(--md-surface-container-low); }
+.top-bar h1 { font-size: 1.125rem; font-weight: 700; }
+.brand-signature { font-size: .75rem; letter-spacing: .025em; margin-bottom: 4px; }
+.top-bar .sub { margin-top: 3px; }
+.experience-switch { display: inline-flex; padding: 4px; border: 1px solid var(--md-outline-variant); border-radius: 12px; background: var(--md-surface); flex-shrink: 0; }
+.experience-switch a { min-height: 36px; padding: 7px 18px; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: .875rem; font-weight: 650; color: var(--md-on-surface-variant); text-decoration: none; }
+.experience-switch a[aria-current] { background: var(--md-primary); color: var(--md-on-primary); }
+.rail-identity { display: none; }
+.nav { border-right: 1px solid var(--md-outline-variant); }
+.nav-item { font-size: .875rem; }
+.nav-item .pill { border-radius: 10px; }
+.tabs { background: var(--md-surface-container-low); padding-inline: 24px; gap: 12px; border-bottom: 1px solid var(--md-outline-variant); }
+.tab { min-height: 54px; font-weight: 650; gap: 8px; }
+.tab[aria-current] { color: var(--md-primary); }
+.workspace-context { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 16px 28px; background: var(--md-surface-container-low); border-bottom: 1px solid var(--md-outline-variant); font-size: .875rem; color: var(--md-on-surface-variant); }
+.workspace-context a, .workspace-context > :last-child { margin-left: auto; }
+.workspace-context a { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; }
+.eyebrow { font: 750 .75rem/1.5 var(--font); letter-spacing: .12em; color: var(--md-primary); margin: 0 0 8px; }
+.workspace-context .eyebrow { margin: 0; }
+.workspace-heading, .lobby-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.workspace-heading h2, .player-greeting h2 { font-size: clamp(1.8rem, 3.1vw, 2.7rem); line-height: 1.15; letter-spacing: -.045em; margin: 0; font-weight: 750; }
+.workspace-heading p:not(.eyebrow), .player-greeting p:not(.eyebrow) { color: var(--md-on-surface-variant); margin: 12px 0 0; max-width: 58ch; }
+.workspace-heading > .btn, .lobby-heading > .btn { flex-shrink: 0; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.section-heading h3 { font: var(--title-large); margin: 0; }
+.section-heading .eyebrow { margin-bottom: 4px; }
+.lobby { max-width: 1360px; }
+.publication-wordmark { font: 800 clamp(2rem, 4vw, 3.4rem)/1.2 var(--font); letter-spacing: -.055em; margin: 8px 0 12px; border: 0; }
+.publication-edition { display: block; border: 0; padding: 0; color: var(--md-primary); }
+.lobby-deck { font-size: 1.125rem; color: var(--md-on-surface-variant); margin: 0; }
+.lobby-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 32px; align-items: start; }
+.event-directory { min-width: 0; }
+.event-card { overflow: hidden; padding: 0 !important; transition: border-color .15s ease, box-shadow .15s ease; }
+.event-card:hover { border-color: var(--md-primary); box-shadow: 0 6px 24px #080c2410; }
+.event-card-main { display: block; padding: 24px; text-decoration: none; color: inherit; }
+.event-card-main .game-mark { width: 56px; height: 64px; border-radius: 12px; font-weight: 800; }
+.event-card-main .title-medium { font-size: 1.15rem; line-height: 1.35; }
+.event-card-main .row-tight { flex-wrap: wrap; }
+.event-card-main .body-small { margin-top: 8px !important; }
+.event-card-footer { padding: 12px 24px; border-top: 1px solid var(--md-outline-variant); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: .875rem; color: var(--md-on-surface-variant); }
+.event-card-footer a { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; font-weight: 700; }
+.lobby-aside { display: grid; gap: 20px; }
+.player-door, .host-door { padding: 28px; border-radius: 20px; border: 1px solid var(--md-outline-variant); }
+.player-door { background: #24204d; color: #fff; position: relative; overflow: hidden; border: none; }
+.player-door .eyebrow { color: #c4baff; }
+.player-door h3, .host-door h3 { font: 750 1.65rem/1.15 var(--font); letter-spacing: -.035em; margin: 12px 0; }
+.player-door p:not(.eyebrow) { color: #dedbf5; font-size: 1rem; line-height: 1.6; }
+.player-door .btn-filled { background: #d5ff75; color: #213000; margin-top: 20px; }
+.door-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: #403a6c; margin-bottom: 24px; }
+.host-door { background: var(--md-surface-container-low); }
+.host-door p:not(.eyebrow) { color: var(--md-on-surface-variant); line-height: 1.6; }
+.host-door .btn { margin-top: 10px; }
+.lobby-footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--md-outline-variant); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; color: var(--md-on-surface-variant); font-size: .875rem; }
+.host-summary, .operations-pulse { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); border: 1px solid var(--md-outline-variant); border-radius: 16px; overflow: hidden; background: var(--md-surface-container-low); margin: 0 0 28px; }
+.host-summary > div, .operations-pulse > a { padding: 22px 26px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid var(--md-outline-variant); }
+.host-summary > div:last-child, .operations-pulse > a:last-child { border: 0; }
+.host-summary b, .operations-pulse b { font-size: clamp(1.6rem, 2.8vw, 2.4rem); line-height: 1.2; letter-spacing: -.04em; }
+.host-summary span, .operations-pulse span { font-size: .875rem; color: var(--md-on-surface-variant); }
+.operations-pulse > a { color: inherit; text-decoration: none; }
+.operations-pulse > a:hover { background: var(--md-surface-container); }
+.operations-pulse small { font-size: 1rem; font-weight: 500; color: var(--md-on-surface-variant); }
+.workspace-help { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; border-top: 1px solid var(--md-outline-variant); margin-top: 36px; padding-top: 28px; }
+.workspace-help > div > .icon { display: block; color: var(--md-primary); margin-bottom: 12px; }
+.workspace-help p { color: var(--md-on-surface-variant); font-size: .875rem; }
+.past-events { margin-top: 28px; }
+.past-events summary { padding: 16px 0; font-weight: 650; cursor: pointer; }
+.your-events { margin-bottom: 32px; }
+.your-events > h2 { margin-bottom: 16px; }
+.player-greeting { margin: 8px 0 28px; }
+.player-status { margin-bottom: 20px; padding: 28px; background: var(--md-primary-container); color: var(--md-on-primary-container); }
+.player-status h2 { font: var(--headline-small); }
+.player-status p { line-height: 1.6; }
+.player-status .eyebrow { color: inherit; }
+.next-set { padding: 28px; }
+.next-set .headline-small { font-size: clamp(1.8rem, 5vw, 2.75rem); font-weight: 800; letter-spacing: -.04em; }
+.next-set .title-medium { font-size: 1.35rem; }
+.entry-checklist { padding: 24px; }
+.entry-checklist .stack-sm > .row { padding: 12px 0; border-bottom: 1px solid var(--md-outline-variant); }
+.entry-checklist .stack-sm > .row:last-child { border-bottom: 0; }
+.experience-player .game-hero { border-radius: 20px; }
+.experience-host .guide { border-radius: 12px; padding: 20px; }
+.experience-host .station { border-radius: 12px; }
+.experience-host table { background: var(--md-surface-container-low); }
+.experience-host th { font-weight: 700; background: var(--md-surface-container); }
+.experience-host td { padding-top: 14px; padding-bottom: 14px; }
+.experience-host .local-console-links { margin-bottom: 20px; }
+@media (min-width: 1000px) {
+  .app { grid-template-columns: 184px minmax(0, 1fr); }
+  .nav { width: 184px; padding: 28px 12px; position: sticky; top: 0; height: 100dvh; }
+  .rail-identity { display: block; width: 100%; padding: 8px 12px 32px; color: var(--md-primary); font-size: 2rem; font-weight: 850; letter-spacing: -.07em; }
+  .rail-identity span { display: block; font-size: .625rem; letter-spacing: .1em; margin-top: 10px; color: var(--md-on-surface-variant); }
+  .nav-item { flex-direction: row; justify-content: flex-start; gap: 4px; padding: 8px; min-height: 52px; border-radius: 10px; }
+  .nav-item .pill { width: 36px; background: transparent; }
+  .nav-item[aria-current='page'] { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+  .nav-item[aria-current='page'] .pill { background: transparent; color: inherit; }
+  .experience-host .nav { background: #171b2e; border: 0; }
+  .experience-host .nav .rail-identity { color: #d5ff75; }
+  .experience-host .rail-identity span, .experience-host .nav-item { color: #c2c9df; }
+  .experience-host .nav-item[aria-current='page'] { color: #fff; background: #363053; }
+  .experience-host .nav-item:hover { background: #292c43; }
+  .pane { padding: 36px 36px 64px; }
+}
+@media (max-width: 999px) {
+  .top-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .top-bar h1 { flex-basis: calc(100% - 64px); }
+  .top-bar .sync { margin-left: auto; }
+  .lobby-grid { grid-template-columns: 1fr; }
+  .lobby-aside { grid-template-columns: 1fr 1fr; }
+  .workspace-heading, .lobby-heading { align-items: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 599px) {
+  .pane { padding: 24px 16px 40px; }
+  .nav { position: sticky; bottom: 0; background: var(--md-surface-container-low); }
+  .nav-item { font-size: .75rem; padding: 8px 0; }
+  .nav-item .pill { width: 48px; }
+  .top-bar { position: relative; }
+  .top-bar .sync { max-width: 170px; font-size: .75rem !important; }
+  .experience-switch a { padding: 7px 14px; }
+  .workspace-context { padding: 14px 16px; gap: 8px 16px; }
+  .workspace-context > :nth-child(2) { display: none; }
+  .workspace-context > :last-child { margin-left: 0; }
+  .tabs { padding-inline: 12px; gap: 0; }
+  .tab { padding-inline: 14px; }
+  .lobby-aside { grid-template-columns: 1fr; }
+  .event-card-main { padding: 18px; }
+  .event-card-main .game-mark { width: 40px; height: 48px; font-size: .75rem; }
+  .event-card-footer { padding: 10px 18px; }
+  .host-summary > div, .operations-pulse > a { padding: 16px 12px; }
+  .host-summary b, .operations-pulse b { font-size: 1.5rem; overflow-wrap: anywhere; }
+  .operations-pulse { grid-template-columns: 1fr; }
+  .operations-pulse > a { display: grid; grid-template-columns: 1fr 1fr; border-right: 0; border-bottom: 1px solid var(--md-outline-variant); }
+  .operations-pulse > a b { grid-column: 2; grid-row: 1 / 3; align-self: center; text-align: right; }
+  .workspace-help { grid-template-columns: 1fr; gap: 24px; }
+  .entry-checklist, .next-set, .player-status { padding: 20px; }
+  .entry-checklist .section-heading { flex-wrap: wrap; }
+  .experience-host .guide { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .event-card { transition: none; } }
+/* A small family of crisp SVG marks carries the identity without competing
+   with event information. Role symbols reuse the application's icon set. */
+.rail-logo { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: var(--md-primary); color: var(--md-on-primary); }
+.rail-logo .brand-mark { width: 40px; height: 32px; color: inherit; }
+.experience-host .rail-logo { background: #d5ff75; color: #171b2e; }
+.door-icon { width: 52px; height: 52px; border-radius: 14px; color: #d5ff75; }
+.door-icon .icon { width: 28px; height: 28px; }
+.host-door-icon { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+
+/* Wider bat wings need their native aspect ratio beside the wordmark. */
+.brand-mark { aspect-ratio: 5 / 4; }
+.publication-wordmark .brand-mark { width: .95em; height: .76em; margin-right: .2em; }
+/* Local fight-night identity: poster typography, ticket edges and a bat crest.
+   Personality belongs to welcome surfaces and section hierarchy. Operational
+   copy, tables and status colors retain the shared readable system. */
+:root { --font-poster: Impact, 'Arial Narrow', 'Franklin Gothic Medium', var(--font); }
+.lobby-heading {
+  position: relative; padding: 28px 0 30px; margin-bottom: 28px;
+  border-top: 4px solid var(--md-on-surface);
+  border-bottom: 2px solid var(--md-on-surface);
+}
+.lobby-heading::after {
+  content: ''; position: absolute; bottom: -5px; left: 0; width: 88px; height: 8px;
+  background: var(--md-primary);
+}
+.publication-wordmark {
+  font-family: var(--font); font-weight: 650; text-transform: none;
+  font-size: clamp(2.2rem, 4.4vw, 3.75rem); line-height: 1.2; letter-spacing: .01em; word-spacing: normal;
+  margin: 12px 0 16px;
+}
+.publication-wordmark .brand-mark { width: .82em; height: .66em; }
+.lobby-deck { font-size: 1.1rem; font-weight: 550; }
+.eyebrow { font-family: var(--font-mono); letter-spacing: .08em; }
+.event-directory .section-heading h3, .host-home > .section-heading h3 {
+  font: 400 2rem/1.1 var(--font-poster); text-transform: uppercase; letter-spacing: .02em;
+}
+.app .event-card {
+  border: 1px solid var(--md-outline); border-left: 5px solid var(--md-primary);
+  border-radius: 4px 16px 16px 4px; box-shadow: 3px 3px 0 var(--md-outline-variant);
+}
+.event-card-main .title-medium { font-size: 1.25rem; font-weight: 750; }
+.event-card-main .game-mark {
+  border-radius: 6px; border: 1px solid currentColor; box-shadow: 3px 3px 0 var(--md-outline-variant);
+  font-family: var(--font); font-size: 1rem; font-weight: 650; letter-spacing: .04em;
+}
+.event-card-footer { border-top-style: dashed; background: var(--md-surface-container); }
+.event-card-footer a { text-decoration: none; }
+.player-door {
+  background: #24204d; border: 1px solid #7564be; border-radius: 4px 24px 4px 24px;
+  padding-top: 24px; isolation: isolate;
+}
+.player-door .door-icon { display: none; }
+.player-door h3, .host-door h3 {
+  font-family: var(--font-poster); font-size: clamp(1.8rem, 2.7vw, 2.5rem);
+  font-weight: 400; text-transform: uppercase; letter-spacing: .015em; line-height: 1.08;
+}
+.player-door .btn-filled { border: 1px solid #d5ff75; border-radius: 4px; box-shadow: 3px 3px 0 #0e1120; font-weight: 750; }
+.host-door { border-radius: 4px; border-top: 4px solid var(--md-primary); }
+.host-door .door-icon { border-radius: 4px; width: 40px; height: 40px; margin-bottom: 18px; }
+.workspace-heading h2, .player-greeting h2 {
+  font-family: var(--font-poster); text-transform: uppercase; letter-spacing: .015em;
+  font-weight: 400; font-size: clamp(2rem, 3.6vw, 3rem);
+}
+.host-home .workspace-heading, .host-overview .workspace-heading {
+  border-bottom: 2px solid var(--md-on-surface); padding-bottom: 24px;
+}
+.host-summary, .operations-pulse { border-radius: 4px; border-top: 3px solid var(--md-primary); }
+.host-summary b, .operations-pulse b { font-family: var(--font-poster); font-weight: 400; letter-spacing: .02em; }
+.rail-logo { border-radius: 4px 14px 4px 14px; transform: rotate(-4deg); box-shadow: 3px 3px 0 var(--md-outline-variant); }
+.rail-identity span { font-family: var(--font-mono); font-size: .75rem; }
+.lobby-footer { border-top: 2px solid var(--md-on-surface); }
+.next-set { border-radius: 4px 20px 20px 4px !important; }
+.next-set .headline-small { font-family: var(--font-poster); text-transform: uppercase; letter-spacing: .02em; }
+@media (max-width: 599px) {
+  .lobby-heading { padding-top: 20px; }
+  .publication-wordmark { font-size: clamp(2.1rem, 8.5vw, 3rem); }
+  .event-card-main .title-medium { font-size: 1.1rem; }
+  .event-card-main .game-mark { font-size: .875rem; }
+}
+
+/* The top bar is utilities only; page identity belongs in the content. */
+.top-bar { justify-content: flex-end; }
+.top-bar > [aria-label="Back"] { margin-right: auto; }
+
+/* Extend the accepted identity to setup and records. Names remain system sans:
+   condensed poster lettering is reserved for short, nonessential headings. */
+.setup-heading { border-bottom: 2px solid var(--md-outline-variant); padding-bottom: 20px; margin-bottom: 20px; }
+.setup-heading h2 { font: 650 1.75rem/1.3 var(--font); margin: 0; }
+.player-passport .passport-card { border-radius: 4px 16px 16px 4px; border: 1px solid var(--md-outline-variant); border-left: 5px solid var(--md-primary); box-shadow: 3px 3px 0 var(--md-outline-variant); }
+.passport-card > .eyebrow { margin-bottom: 18px; }
+.passport-card .headline-small, .next-set .headline-small, .player-greeting h2 {
+  font-family: var(--font); font-weight: 650; text-transform: none; letter-spacing: .01em; overflow-wrap: anywhere;
+}
+.experience-host .rules-group > h3, .experience-player .rules-group > h3 { border-bottom: 2px solid var(--md-outline-variant); padding-bottom: 10px; }
+@media (max-width: 599px) {
+  /* The removed global title must not leave hosts guessing which event they
+     are editing. Keep the event context visible above every operational tab. */
+  .experience-host .workspace-context > :nth-child(2) { display: block; flex-basis: 100%; color: var(--md-on-surface); font-weight: 650; overflow-wrap: anywhere; }
+  .experience-host .tabs { flex-wrap: wrap; gap: 0; }
+  .experience-host .tabs .tab { flex: 1 0 30%; padding-inline: 8px; }
 }

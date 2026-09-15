@@ -9,8 +9,8 @@
 <!-- Theme colour is set for both schemes. The app bar is the surface colour,
      so matching it here is what stops the phone's status bar being a bright
      band above a dark page. -->
-<meta name="theme-color" content="#f8fafa" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#101416" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10131d" media="(prefers-color-scheme: dark)">
 
 <!-- Link preview. Page-level rather than per-event, and that is a real
      limitation rather than an oversight: GitHub Pages serves static files, so
@@ -18,18 +18,16 @@
      does not run JavaScript. An event link therefore unfurls as the site.
      See README, "What is not built". -->
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="BattyDev">
+<meta property="og:site_name" content="Batty Brackets">
 <meta property="og:title" content="Batty Brackets · By BattyDev">
 <meta property="og:description" content="Tournament brackets for fighting games, built for the people running them. Works offline at the venue.">
 <meta property="og:url" content="https://battydev.com/brackets/">
 <meta name="twitter:card" content="summary">
 
-<!-- Inline SVG favicon as a data URI. One fewer request, and no 404 in the
-     console for a file that does not exist -- which matters more than it
-     sounds when the pitch is "this loads fast and cleanly". -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300a0b4' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M3 5h4v6h4M3 19h4v-6'/%3E%3Cpath d='M13 11h4V7h4M13 13h4v4h4'/%3E%3C/svg%3E">
+<!-- The favicon uses the same bracket mark and violet badge as navigation. -->
+<link rel="icon" type="image/svg+xml" href="assets/brand/bracket-badge.svg?v=2">
 
-<link rel="stylesheet" href="brackets.css?v=1">
+<link rel="stylesheet" href="brackets.css?v=9">
 </head>
 <body>
 
@@ -41,7 +39,7 @@
   <div style="min-height:100dvh;display:grid;place-items:center;padding:24px;text-align:center">
     <div>
       <p class="label-large" style="color:var(--md-primary);margin:0 0 8px">BattyDev</p>
-      <h1 class="headline-large" style="margin-bottom:8px">Batty Brackets</h1>
+      <h1 class="publication-wordmark" style="margin-bottom:8px">Batty Brackets<span>.</span></h1>
       <p class="body-medium dim">Loading…</p>
       <noscript>
         <div class="banner banner-warn" style="margin-top:24px;text-align:left;max-width:44ch">
@@ -78,7 +76,7 @@
      the module can read synchronously at boot. Blank by default: the app runs
      entirely on-device until this names a project. -->
 <script src="config.js"></script>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=9"></script>
 
 </body>
 </html>

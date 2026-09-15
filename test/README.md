@@ -84,6 +84,19 @@ the configuration/demo guard made all nine assertions pass.
 
 ### The rule these follow
 
+`rehearsal` creates a fresh eight-place Tōkon event through the wizard, imports
+a duplicate and an overflow entrant, adds a walk-up, generates the admitted
+bracket, un-reports a score, records a DQ, downloads a real backup and restores
+it after reload. It uses an isolated browser context and never touches a real
+organiser's data. Run with `node test/run.mjs rehearsal`.
+
+The initial rehearsal failed on both import and walk-up capacity handling:
+neither path set `waitlisted`, and the generated bracket exceeded the cap.
+The fix counts admitted entrants (including the pending import batch), leaves
+overflow on the roster as waitlisted, and states that consequence in the import
+preview before committing. This is a local follow-up to release `f84f029`, not
+part of that deployed snapshot.
+
 **Assert, do not print.** An earlier version of these scripts logged what they
 found and left a human to notice something was wrong, which is not a test — it
 is a screenshot with extra steps. Every check ends in `ok()` and the process

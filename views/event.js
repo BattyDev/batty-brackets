@@ -46,9 +46,8 @@ export function view(ctx) {
   const bracket = store.get().brackets[event.id] || null;
   const me = ctx.me;
   const myEntry = me ? entries.find((e) => e.playerId === me.id) : null;
-  const isOrganiser = !ctx.session || !event.ownerId || event.ownerId === me?.id;
 
-  const tab = ctx.params.tab || 'now';
+  const tab = ['now', 'bracket', 'entrants', 'rules'].includes(ctx.params.tab) ? ctx.params.tab : 'now';
 
   return {
     title: event.name,
@@ -57,9 +56,10 @@ export function view(ctx) {
     gameId: event.gameId,
     body: html`
       <!-- Links in a <nav>, not an ARIA tab widget. See the note in admin.js. -->
+      <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span></div>
       <nav class="tabs" aria-label="Event sections">
         ${list([
-          ['now', 'You', 'person'],
+          ['now', 'My event', 'person'],
           ['bracket', 'Bracket', 'bracket'],
           ['entrants', 'Entrants', 'group'],
           ['rules', 'Rules', 'gavel'],
@@ -68,10 +68,7 @@ export function view(ctx) {
              ${raw(id === tab ? 'aria-current="page"' : '')}>
             ${raw(icon(ic, 'icon-sm'))}${label}
           </a>`))}
-        ${isOrganiser ? html`
-          <a class="tab" href="#/e/${event.id}/admin">
-            ${raw(icon('settings', 'icon-sm'))}Organise
-          </a>` : ''}
+
       </nav>
 
       ${raw({
@@ -93,25 +90,26 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
         <div class="card card-elevated" style="margin-top:16px;text-align:center">
-          <p class="body-large">Sign in to enter, or to see where you are in the bracket.</p>
+          <p class="eyebrow">YOUR EVENT COMPANION</p><h2 class="title-large">Your next set starts here.</h2><p class="body-large">Sign in to see your entry, check-in, and station calls.</p>
           <button class="btn btn-filled btn-lg" data-act="sign-in" style="margin-top:8px">Sign in</button>
         </div>
       </div>`;
   }
 
   if (!myEntry) {
-    const full = event.capacity && entries.length >= event.capacity;
+    const full = event.capacity && entries.filter(e => !e.waitlisted).length >= event.capacity;
+    const open = event.status === 'registration';
     return html`
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
         <div class="card card-elevated" style="margin-top:16px">
           <b class="title-large">You are not entered</b>
           <p class="body-medium dim" style="margin:4px 0 12px">
-            ${full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
+            ${!open ? 'Registration is closed. Ask the host about joining this event.' : full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
           </p>
-          <button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}">
+          ${open ? html`<button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}">
             ${full ? 'Join the waitlist' : 'Enter this event'}
-          </button>
+          </button>` : html`<a class="btn btn-tonal" href="#/e/${event.id}/bracket">Follow the bracket</a>`}
         </div>
       </div>`;
   }
@@ -138,12 +136,15 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
   const station = next?.stationId ? store.get().stations[next.stationId] : null;
 
   return html`
-    <div class="pane" style="max-width:720px">
+    <div class="pane player-now" style="max-width:800px">
+      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p></header>
+      ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
+      ${!next && !waiting && !out ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Review your entry below. Check in when the host opens check-in.' : 'Your matchup will appear here when the bracket is ready. Check any remaining entry requirements below.'}</p></section>` : ''}
       ${next ? html`
-        <div class="card card-elevated" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
+        <div class="card card-elevated next-set" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
           <div class="label-large" style="color:var(--md-primary)">${next.calledAt ? 'You are up now' : 'Your next set'}</div>
           <h2 class="headline-small" style="margin:6px 0">
-            v ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}
+            vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}
           </h2>
           <div class="body-medium dim">${next.name}</div>
           ${station ? html`
@@ -174,8 +175,8 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           </p>
         </div>` : ''}
 
-      <section class="card card-outlined" style="margin-bottom:16px">
-        <b class="title-medium">Your entry</b>
+      <section class="card card-outlined entry-checklist" style="margin-bottom:16px">
+        <div class="section-heading"><b class="title-large">Your entry</b><span class="eyebrow">BEFORE YOU PLAY</span></div>
         <div class="stack-sm" style="margin-top:12px">
           ${raw(checkRow('Seed', myEntry.seed ? `#${myEntry.seed}` : 'not seeded yet', true))}
           ${raw(checkRow('Checked in', myEntry.checkedInAt ? 'yes' : 'not yet', Boolean(myEntry.checkedInAt)))}

@@ -21,17 +21,21 @@ See [ROADMAP.md](ROADMAP.md) for what is outstanding and in what order.
 
 ## Identity and local-pilot update
 
-The selected identity is an independent sports publication: **Batty Brackets,
-By BattyDev**. The landing page uses a serif masthead, paper/ink surfaces,
-editorial columns and ruled event listings. Game identity stays in the feature
-and event views; the publisher is not renamed after the featured game. Tōkon
-is the first pilot, not a claim of official affiliation. No webfonts or new
-runtime assets are required.
+The current design separates **Player** and **Host** into explicit route-based
+experiences. The player lounge starts with events and joining, while `#/host`
+opens the host event workspace. Inside an event, the mode switch keeps the same
+event selected. This is a navigation choice, not an authorization boundary.
 
-The venue display shares the publisher wordmark but uses broadcast-style
-station rows and a clear next-set hierarchy. Its tested bracket depth window,
-per-column type scaling, rotation timing and live clocks remain intact. Colour
-and creator identity must never outrank player names, station calls or warnings.
+The visual system uses bold system typography, violet accents, cool neutral
+surfaces, and a dark host navigation rail. Player match cards prioritize the
+opponent and station; hosts get a compact overview of arrivals, stations, and
+bracket readiness. Existing Material role pairs, game accents, manual themes,
+keyboard navigation, and the venue display's measured bracket layout remain.
+There are no new runtime dependencies, webfonts, or raster image requests.
+The bracket logo and player/host symbols use the existing inline SVG system.
+
+See [UX-DESIGN.md](UX-DESIGN.md) for the audience model, screen hierarchy,
+interaction decisions, and remaining research questions.
 
 The reviewed pilot changes are integrated locally: setup creates the requested
 station count (1–64) and capacity, provisional rules require acknowledgement,
@@ -778,10 +782,9 @@ not have caught and they are easy to reintroduce:
 
 ## Official game artwork
 
-Selecting a game re-themes the app: the palette shifts, the app bar takes the
-game's accent, the hero banner changes, and every button, chip and focus ring
-inside follows, because the override is on Material 3's own colour *roles*
-rather than on bespoke classes.
+Batty owns the product palette, navigation and working tools. Selecting a game
+changes its bounded cards, marks and artwork, not the app bar or the whole page.
+This keeps the publisher recognizable when a local runs more than one game.
 
 **There is no Marvel artwork in this repository, and that is deliberate.**
 
@@ -900,7 +903,7 @@ needs neither.
 
 ### The security model
 
-It lives in `sql/001_schema.sql` and the app is assumed hostile — the publishable
+The original design lives in `sql/001_schema.sql` and the app is assumed hostile — the publishable
 key is in the page source. A bracket is public *by design*, so the interesting
 question is who can **write**:
 
@@ -928,7 +931,17 @@ passport with head-to-head; claimable walk-up players; document signing;
 local-first storage with an offline write queue; light and dark themes;
 per-game theming; and the guest demo tour with reset.
 
-**Written but never run against a live server:** everything in `sql/`, and the
+**Backend activation is blocked pending verification.** The old
+`sql/001_schema.sql` is a historical design, not a safe installation script:
+review found contact-consent, grants, identity and registration weaknesses.
+The replacement lives in `sql/staging/`, with its contract and setup guidance
+under `backend/`. It targets an empty staging database, not an in-place upgrade.
+`lib/backend.js` is an explicit RPC adapter with dependency-free contract tests;
+it is intentionally not connected to the legacy store's generic write queue.
+Never upload device/demo data automatically or interpret an adapter test as
+proof of database authorization or cross-device reliability.
+
+**Not yet verified against a live server:** the Supabase paths in the existing
 Supabase paths in `store.js` and `auth.js`. There is no project configured, so
 the schema is unapplied and the sync code is untested against a real PostgREST.
 Expect to fix things on first connection.
@@ -978,8 +991,9 @@ sized empty columns. See `test/README.md` for the full list and for the rule
 they follow — assert rather than print, and prove each assertion can fail by
 putting the original bug back.
 
-To connect a backend: run `sql/001_schema.sql` against the `battydevsite`
-project, enable the Discord provider with redirect `https://battydev.com/brackets/`
-and scopes `identify email`, then fill in `config.js`. Demo seeding stops as soon
-as a project is named — an account with a real backend must look empty when it is
-empty.
+Do not activate connected mode by applying `sql/001_schema.sql` or filling in
+`config.js`. Follow the staging backend contract first, execute the database
+permission tests, then complete the auth/cache integration and a real
+laptop + phone + TV rehearsal. Production config remains blank until those
+gates pass. Any eventual config contains only a public project URL and
+publishable key; service keys and database passwords never belong in this repo.

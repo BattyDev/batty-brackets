@@ -1,6 +1,6 @@
 /* Brackets · game theming
    ===========================================================================
-   Picking a game should visibly change the app, not just change a label.
+   Picking a game changes its bounded artwork and badges. Batty owns the shell.
 
    ## What is here, and what is deliberately not
 
@@ -47,10 +47,9 @@
    ## How it is applied
 
    `themeStylesheet()` emits one <style> block covering every game, with rules
-   scoped to `[data-game="<id>"]` and the same light/dark structure as the base
-   sheet. Putting a `data-game` attribute on any container re-themes everything
-   inside it — which is why the wizard, the event header and the admin console
-   all pick up the game with no per-component work.
+   scoped to game heroes, badges, selection cards and explicit data-game-module
+   regions, with the same light/dark structure as the base sheet. data-game
+   alone is metadata, never permission to recolour product navigation or calls.
    =========================================================================== */
 
 'use strict';
@@ -203,7 +202,7 @@ export const themeFor = (gameId) => GAME_THEMES[gameId] || null;
 /* --------------------------------------------------------------------------
    The stylesheet
    --------------------------------------------------------------------------
-   One <style> for every game, injected once. Scoped on [data-game], with the
+   One <style> for every game, injected once. Scoped on game modules, with the
    same three-way light/dark structure the base sheet uses: bare rule is light,
    then the system-dark media query guarded against an explicit light choice,
    then the explicit dark attribute so the toggle wins in both directions.
@@ -218,9 +217,9 @@ export const themeFor = (gameId) => GAME_THEMES[gameId] || null;
    game. M3's secondary is meant to be a muted companion to primary, not a
    second copy of it.
 
-   Leaving it alone means the game accent marks what is emphatic (the primary
-   button, the selected card, the focus ring, the app-bar rule) while the
-   surrounding furniture stays recognisably the same app. */
+   Within an opted-in game module primary can identify the artwork or selected
+   game card. Product actions, focus rings and the app-bar rule elsewhere keep
+   the publisher palette, and secondary always remains the product's own. */
 function roles(ramp, mode) {
   return mode === 'dark'
     ? {
@@ -251,7 +250,10 @@ const block = (selector, vars) => `${selector}{${Object.entries(vars)
 export function themeStylesheet() {
   const out = [];
   for (const [id, theme] of Object.entries(GAME_THEMES)) {
-    const sel = `[data-game="${id}"]`;
+    /* A route may carry game metadata, but it must never recolour the product.
+       Only bounded game artwork/badges/cards opt into these colour roles.
+       Keeping this boundary here also protects older shells carrying data-game. */
+    const sel = `:is(.game-hero, .game-mark, .game-card, [data-game-module])[data-game="${id}"]`;
     out.push(block(sel, roles(theme.ramp, 'light')));
     out.push(`@media (prefers-color-scheme: dark){${
       block(`:root:not([data-theme="light"]) ${sel}`, roles(theme.ramp, 'dark'))}}`);

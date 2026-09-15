@@ -33,7 +33,7 @@ const browser = await launch();
 const report = reporter('navigation');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, width: 1280, height: 800, errors });
+const { ctx, page } = await openApp(browser, { base, width: 1280, height: 600, errors });
 const scrollY = () => page.evaluate(() => window.scrollY);
 
 /* ---- forward navigation starts at the top ------------------------------- */
@@ -46,9 +46,11 @@ report.ok('the landing page is long enough for this test to mean anything', land
    button or the dashboard's floating action button. Scrolled halfway down and
    clicking it is not a contrived case: the FAB is fixed to the viewport, so
    that is the only way it is ever clicked from down a long list. */
-const newEvent = await page.$('[data-act="go"][data-path="/new"]');
+const newEvent = await page.$('.host-door a[href="#/new"]');
 report.ok('the landing page has the new-event button', Boolean(newEvent));
-await newEvent.click();
+// Invoke the real link without Playwright scrolling it into view first;
+// this assertion is about router scroll restoration, not locator auto-scroll.
+await newEvent.evaluate(el => el.click());
 await page.waitForTimeout(400);
 report.ok('it went to the wizard', (await page.evaluate(() => location.hash)) === '#/new');
 report.ok('navigating to a new page starts at the top', (await scrollY()) === 0, `${await scrollY()}px`);
@@ -66,9 +68,13 @@ report.ok('Back restores the position you left from', Math.abs((await scrollY())
 await goTo(page, base, `#/e/${DEMO_EVENT}/admin/entrants`);
 await page.evaluate(() => window.scrollTo(0, 600));
 await page.waitForTimeout(200);
+const checkbox = await page.$('table.data tbody tr:nth-child(20) input[type="checkbox"]');
+// Establish the viewport after exposing the target, so locator auto-scroll
+// is not mistaken for application scroll movement after an edit.
+if (checkbox) await checkbox.scrollIntoViewIfNeeded();
+await page.waitForTimeout(150);
 const before = await scrollY();
 report.ok('the roster is long enough to scroll', before > 100, `${before}px`);
-const checkbox = await page.$('table.data tbody tr:nth-child(20) input[type="checkbox"]');
 if (checkbox) await checkbox.click();
 await page.waitForTimeout(400);
 report.ok('editing a row does not move the page', (await scrollY()) === before, `${before} -> ${await scrollY()}`);

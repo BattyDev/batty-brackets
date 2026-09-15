@@ -20,6 +20,7 @@ import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { gameById, GAMES } from '../data/games.js';
 import { formatMoney } from '../lib/guidance.js';
+import { brandMark } from '../lib/brand.js';
 
 const STATUS = {
   draft: { label: 'Draft', chip: '' },
@@ -34,6 +35,7 @@ export function view(ctx) {
   const { me, params } = ctx;
 
   if (ctx.route === 'join') return joinView(ctx, params.code);
+  if (ctx.route === 'host') return { title: 'Host workspace', subtitle: 'Your events. Your room.', body: hostHome(ctx) };
 
   return {
     title: 'Batty Brackets',
@@ -46,61 +48,62 @@ export function view(ctx) {
    Signed out
    -------------------------------------------------------------------------- */
 
-/* The publication identity belongs to BattyDev, not to whichever game is
-   featured. Keep this page neutral; the game mark is a clearly labelled
-   sidebar rather than a theme applied to the entire product. */
+/* A first visit starts with the actual event list. The two doors explain the
+   task before sign-in, and demo actions borrow the existing real walkthroughs. */
 function landing(ctx) {
-  const live = store.listEvents().filter((e) => ['registration', 'checkin', 'seeding', 'running'].includes(e.status));
+  const live = store.listEvents().filter(e => ['registration', 'checkin', 'seeding', 'running'].includes(e.status));
   const demo = store.getEvent('evt_demo_tokon')?.demo;
   return html`
-    <div class="pane publication">
-      <header class="publication-masthead">
-        <div class="publication-edition"><span>The fighting game local</span><span>Independent tools · By BattyDev</span></div>
-        <h2 class="publication-wordmark">Batty Brackets<span>.</span></h2>
-        <nav class="publication-nav" aria-label="Get started">
-          <a href="#/new">Run a tournament ${raw(icon('plus'))}</a>
-          <a href="#/join">Join with a code ${raw(icon('key'))}</a>
-          <button data-act="sign-in">Sign in ${raw(icon('person'))}</button>
-        </nav>
+    <div class="pane lobby publication">
+      <header class="lobby-heading">
+        <div><p class="eyebrow publication-edition">LOCAL SCENE. BIG SETS. · By BattyDev</p>
+          <h2 class="publication-wordmark">${raw(brandMark())}Batty Brackets<span>.</span></h2>
+          <p class="lobby-deck">Find your local. Get your games in.</p></div>
+        <a class="btn btn-filled" href="#/join">${raw(icon('key'))} Join with a code</a>
       </header>
-      <section class="publication-lead" aria-labelledby="local-title">
-        <div class="publication-story">
-          <p class="publication-kicker">From the first check-in to grand finals</p>
-          <h3 id="local-title">Good games.<br>Better locals.</h3>
-          <p class="publication-deck">Tournament tools with a place in your scene.
-            Clear seeding, quick results, and a screen the whole room can follow.</p>
-          <div class="local-actions">
-            <a class="btn btn-filled btn-lg" href="#/new">${raw(icon('plus'))} Set up an event</a>
-            ${demo ? html`<button class="btn btn-outlined btn-lg" data-act="tour-start" data-tour="organiser">${raw(icon('play'))} Try the Tōkon demo</button>` : ''}
-          </div>
-          <p class="publication-note">${store.syncState().configured
-            ? 'Explore the setup before signing in.'
-            : 'Runs on this device. Online registration and sharing are not connected yet.'}</p>
-        </div>
-        <aside class="publication-feature" aria-labelledby="featured-game-title">
-          <p class="publication-kicker">In the spotlight</p>
-          <div class="publication-four" aria-hidden="true">04<span>Fighters.<br>One team.</span></div>
-          <h3 id="featured-game-title">Marvel Tōkon:<br>Fighting Souls</h3>
-          <dl class="publication-facts"><div><dt>Built for</dt><dd>Your local</dd></div>
-            <div><dt>Rules</dt><dd>Organiser-reviewed presets</dd></div></dl>
-          ${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} See the venue display</button>` : ''}
-          <p class="publication-note">Community tournament tools. Not an official game service.</p>
+      <div class="lobby-grid">
+        <section class="event-directory" aria-labelledby="events-heading">
+          <div class="section-heading"><div><p class="eyebrow">THE LINEUP</p><h3 id="events-heading">On the card</h3></div>
+            <span class="chip chip-static">${live.length} active</span></div>
+          <div class="stack">${live.length ? list(live.map(e => eventCard(e, ctx))) : html`<div class="empty"><p>No active events on this device.</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}</div>
+          <p class="local-device-note">${store.syncState().configured ? 'Browse events or enter the code from your host.' : 'These events are saved on this device. Online registration and sharing are not connected yet.'}</p>
+        </section>
+        <aside class="lobby-aside">
+          <section class="player-door">
+            <span class="door-icon">${raw(icon('esports'))}</span>
+            <p class="eyebrow">FOR PLAYERS</p>
+            <h3>Your next challenger awaits.</h3><p>Check in, find your opponent, and know which station to head to.</p>
+            ${demo ? html`<button class="btn btn-filled btn-block" data-act="tour-start" data-tour="player">${raw(icon('play'))} Take the player seat</button>` : html`<a class="btn btn-filled" href="#/me">Open my profile</a>`}
+          </section>
+          <section class="host-door publication-story">
+            <span class="door-icon host-door-icon">${raw(icon('tune'))}</span>
+            <p class="eyebrow">FOR HOSTS</p><h3>You run the room.</h3>
+            <p>Your roster, seeding, stations, and results in one workspace.</p>
+            <a class="btn btn-outlined btn-block" href="#/host">Open host workspace ${raw(icon('chevron'))}</a>
+            <a class="btn btn-text btn-block" href="#/new">Create an event</a>
+          </section>
         </aside>
-      </section>
-      ${live.length ? html`<section class="publication-events">
-        <div class="publication-section-heading"><h3>On the local circuit</h3><span>${store.syncState().configured ? 'Upcoming & running' : 'On this device'}</span></div>
-        <div class="stack-sm">${list(live.slice(0, 5).map((e) => eventCard(e, ctx)))}</div>
-      </section>` : ''}
-      <section class="publication-tools" aria-label="Tournament tools">
-        ${list([
-          ['01', 'Keep the room moving', 'Check in arrivals, call sets to stations, and show who is up next on the venue TV.'],
-          ['02', 'Make the seed make sense', 'Preview matchups and proposed teammate separation before committing the bracket.'],
-          ['03', 'Keep a copy you control', 'Import your roster, preview edits, and download a backup before the first set.'],
-        ].map(([number, title, body]) => html`<article><span class="publication-kicker">${number} / The toolkit</span><h3>${title}</h3><p>${body}</p></article>`))}
-      </section>
-      <div class="publication-start"><p>Make room for your next local.</p><button class="btn btn-outlined" data-act="go" data-path="/new">${raw(icon('plus'))} Set up an event</button></div>
-      <footer class="publication-footer"><a href="../index.html">A project by BattyDev.</a><span>Built around the people on both sides of the setup.</span></footer>
+      </div>
+      <footer class="lobby-footer"><span>Good games. Same time next week. · By BattyDev.</span>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} Try the venue display</button>` : ''}</footer>
     </div>`;
+}
+
+function hostHome(ctx) {
+  // Match existing local ownership semantics; a mode switch does not grant
+  // connected users access to somebody else's event or expose unlisted rows.
+  const events = store.listEvents({ all: true }).filter(e => !ctx.session || !e.ownerId || e.ownerId === ctx.me?.id);
+  const active = events.filter(e => e.status !== 'complete');
+  const past = events.filter(e => e.status === 'complete');
+  const demo = store.getEvent('evt_demo_tokon')?.demo;
+  return html`<div class="pane host-home">
+    <header class="workspace-heading"><div><p class="eyebrow">HOST WORKSPACE</p><h2>Put on a good local.</h2><p>Pick an event to manage arrivals, seed the bracket, and run the room.</p></div>
+      <a class="btn btn-filled" href="#/new">${raw(icon('plus'))} Create event</a></header>
+    <div class="host-summary"><div><b>${active.length}</b><span>Active events</span></div><div><b>${active.reduce((n,e) => n + store.entriesFor(e.id).length, 0)}</b><span>Registered entries</span></div><div><b>${past.length}</b><span>Completed events</span></div></div>
+    <div class="section-heading"><h3>Your events</h3>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="organiser">${raw(icon('play'))} Walk through hosting</button>` : ''}</div>
+    <div class="stack">${active.length ? list(active.map(e => eventCard(e, ctx))) : html`<div class="empty"><p>Your next local starts here.</p><a class="btn btn-tonal" href="#/new">Create your first event</a></div>`}</div>
+    ${past.length ? html`<details class="past-events"><summary>Completed events (${past.length})</summary><div class="stack">${list(past.map(e => eventCard(e, ctx)))}</div></details>` : ''}
+    <div class="workspace-help"><div>${raw(icon('station'))}<b>Taking it to the venue?</b><p>Open an event for station controls and its venue display.</p></div><div>${raw(icon('undo'))}<b>Keep your night backed up.</b><p>Download a device backup before play starts.</p><a href="#/recovery">Backup and recovery</a></div></div>
+  </div>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -118,12 +121,14 @@ function dashboard(ctx) {
   const mine = (e) => e.ownerId === me.id || e.orgId === me.defaultOrgId || entered.has(e.id);
   const events = store.listEvents({ all: true }).filter((e) => e.visibility !== 'unlisted' || mine(e));
 
+  const yours = events.filter(e => entered.has(e.id) && e.status !== 'complete');
   const running = events.filter((e) => ['checkin', 'seeding', 'running'].includes(e.status));
   const upcoming = events.filter((e) => e.status === 'registration' || e.status === 'draft');
   const past = events.filter((e) => e.status === 'complete');
 
   return html`
-    <div class="pane">
+    <div class="pane player-dashboard">
+      <header class="workspace-heading"><div><p class="eyebrow">PLAYER LOUNGE</p><h2>Ready, ${me.tag}?</h2><p>Your events, your next set, your results.</p></div><a class="btn btn-filled" href="#/join">Join with a code</a></header>
       ${ctx.session?.needsPasswordFallback ? html`
         <div class="banner banner-warn" style="margin-bottom:16px">
           ${raw(icon('key'))}
@@ -136,6 +141,7 @@ function dashboard(ctx) {
           </div>
         </div>` : ''}
 
+      ${yours.length ? html`<section class="your-events"><h2 class="title-large">Your next events</h2><div class="stack">${list(yours.map(e => eventCard(e, ctx, true)))}</div></section>` : ''}
       ${running.length ? html`
         <section style="margin-bottom:24px">
           <h2 class="title-large" style="margin-bottom:12px">Live</h2>
@@ -158,8 +164,7 @@ function dashboard(ctx) {
           <div class="stack-sm">${list(past.slice(0, 6).map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
         </section>` : ''}
     </div>
-
-    <button class="fab" data-act="go" data-path="/new">${raw(icon('plus'))} New event</button>`;
+`;
 }
 
 function eventCard(event, ctx, isEntered = false) {
@@ -174,7 +179,8 @@ function eventCard(event, ctx, isEntered = false) {
   const canAdmin = !ctx.session || !event.ownerId || event.ownerId === ctx.me?.id;
 
   return html`
-    <a class="card card-outlined" href="#/e/${event.id}">
+    <article class="card card-outlined event-card">
+      <a class="event-card-main" href="#/e/${event.id}${ctx.route === 'host' ? '/admin' : ''}">
       <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
         <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark || '?'}</span>
         <div class="spacer" style="min-width:0">
@@ -184,19 +190,19 @@ function eventCard(event, ctx, isEntered = false) {
             <span class="chip chip-static chip-sm ${raw(status.chip)}" style="min-height:22px;padding:0 8px;font:var(--label-small)">${status.label}</span>
             ${isEntered ? html`<span class="chip chip-static chip-info" style="min-height:22px;padding:0 8px;font:var(--label-small)">Entered</span>` : ''}
           </div>
+          ${org ? html`<p class="event-attribution">Organized by ${org.name}</p>` : ''}
           <div class="body-small dim" style="margin-top:2px">
             ${game?.short || event.gameId} · ${entries.length} entrant${entries.length === 1 ? '' : 's'}
             ${event.entryFee ? ` · ${formatMoney(event.entryFee, event.currency)}` : ''}
-            ${org ? ` · ${org.name}` : ''}
           </div>
           <div class="body-small dim">${formatDateTime(event.startsAt)} · ${relativeTime(event.startsAt)}</div>
         </div>
-        ${canAdmin ? html`
-          <button class="btn btn-icon" data-act="go" data-path="/e/${event.id}/admin" aria-label="Organiser tools for ${event.name}">
-            ${raw(icon('settings'))}
-          </button>` : ''}
+        ${raw(icon('chevron'))}
+      </div></a>
+      <div class="event-card-footer"><span>${event.venue || 'Venue to be announced'}</span>
+        <a href="#/e/${event.id}${ctx.route === 'host' && canAdmin ? '/admin' : ''}">${ctx.route === 'host' && canAdmin ? 'Manage event' : 'View event'} ${raw(icon('chevron', 'icon-sm'))}</a>
       </div>
-    </a>`;
+    </article>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -211,9 +217,11 @@ function eventCard(event, ctx, isEntered = false) {
 function joinView(ctx, code) {
   const event = code ? store.eventByInvite(code) : null;
   const game = event ? gameById(event.gameId) : null;
+  const org = event ? store.getOrg(event.orgId) : null;
   const entries = event ? store.entriesFor(event.id) : [];
   const already = event && ctx.me ? store.entryFor(event.id, ctx.me.id) : null;
-  const full = event?.capacity && entries.length >= event.capacity;
+  const admitted = entries.filter((entry) => !entry.waitlisted).length;
+  const full = event?.capacity && admitted >= event.capacity;
 
   return {
     title: 'Join an event',
@@ -241,13 +249,14 @@ function joinView(ctx, code) {
               <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark}</span>
               <div class="spacer">
                 <h2 class="title-large">${event.name}</h2>
+                ${org ? html`<p class="event-attribution">Organized by ${org.name}</p>` : ''}
                 <div class="body-small dim">${game?.name} · ${formatDateTime(event.startsAt)}</div>
                 ${event.venue ? html`<div class="body-small dim">${event.venue}</div>` : ''}
               </div>
             </div>
 
             <div class="row" style="margin-top:16px;gap:8px">
-              <span class="chip chip-static chip-assist">${entries.length}${event.capacity ? `/${event.capacity}` : ''} entrants</span>
+              <span class="chip chip-static chip-assist">${admitted}${event.capacity ? `/${event.capacity}` : ''} admitted</span>
               ${event.entryFee ? html`<span class="chip chip-static chip-assist">${formatMoney(event.entryFee, event.currency)} entry</span>` : ''}
               <span class="chip chip-static ${raw((STATUS[event.status] || {}).chip || '')}">${(STATUS[event.status] || {}).label}</span>
             </div>
@@ -257,6 +266,8 @@ function joinView(ctx, code) {
                 <div>You are already entered — seed ${already.seed ?? 'not set'}.</div>
               </div>
               <a class="btn btn-tonal btn-block" href="#/e/${event.id}" style="margin-top:12px">Open the event</a>`
+            : event.status !== 'registration' ? html`
+              <div class="banner banner-warn" style="margin-top:16px"><div>Registration is closed. Check with the organiser.</div></div>`
             : full ? html`
               <div class="banner banner-warn" style="margin-top:16px">${raw(icon('alert'))}
                 <div>This event is full at ${event.capacity}. Join anyway to go on the waitlist — organisers usually get a few drop-outs.</div>
@@ -264,7 +275,7 @@ function joinView(ctx, code) {
               <button class="btn btn-outlined btn-block" data-act="join-event" data-event="${event.id}" style="margin-top:12px">Join the waitlist</button>`
             : html`
               <button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}" style="margin-top:16px">
-                ${ctx.me ? 'Enter this event' : 'Sign in and enter'}
+                ${ctx.me ? 'Enter this event' : 'Sign in to continue'}
               </button>`}
           </div>` : ''}
       </div>`,
@@ -282,13 +293,17 @@ on('join-lookup', (data, form) => {
 
 on('join-event', async ({ event: eventId }) => {
   const { openSignIn } = await import('./auth.js');
+  // Recheck current state at the action boundary: an old button can outlive
+  // registration. Signing in only redraws this route; entry needs a new click.
+  const event = store.getEvent(eventId);
+  if (!event || event.status !== 'registration') { snack('Registration is closed. Check with the organiser.'); return; }
   if (!auth.isSignedIn()) { openSignIn(() => window.dispatchEvent(new HashChangeEvent('hashchange'))); return; }
 
   const me = auth.currentPlayer();
   if (store.entryFor(eventId, me.id)) { snack('You are already entered.'); return; }
 
-  const event = store.getEvent(eventId);
   const entries = store.entriesFor(eventId);
+  const full = Boolean(event.capacity && entries.filter((entry) => !entry.waitlisted).length >= event.capacity);
   const id = store.uid('ent');
 
   store.apply('entries', id, {
@@ -301,10 +316,10 @@ on('join-event', async ({ event: eventId }) => {
     registeredAt: new Date().toISOString(),
     source: 'self',
     signedDocuments: [],
-    waitlisted: Boolean(event?.capacity && entries.length >= event.capacity),
+    waitlisted: full,
   });
 
-  snack(event?.capacity && entries.length >= event.capacity ? 'On the waitlist.' : `Entered ${event?.name || 'the event'}.`);
+  snack(full ? 'On the waitlist.' : `Entered ${event.name}.`);
   window.location.hash = `#/e/${eventId}`;
 });
 

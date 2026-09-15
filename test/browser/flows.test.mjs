@@ -38,10 +38,9 @@ const clickDialog = async (label) => {
 
 /* ---- organiser walk ----------------------------------------------------- */
 await goTo(page, base, `#/e/${DEMO_EVENT}/admin`);
-/* The event's name lives in the top bar, not in main -- the shell owns the
-   title so it survives a tab change without every view repeating it. */
+/* Event identity belongs above the operational tabs; the top bar is utilities. */
 report.ok('the dashboard names the event',
-  await page.evaluate(() => /Tokon Tuesdays/i.test(document.querySelector('.top-bar')?.innerText || '')));
+  await page.evaluate(() => /Tokon Tuesdays/i.test(document.querySelector('.workspace-context')?.innerText || '')));
 report.ok('the dashboard has the organiser tabs',
   await page.evaluate(() => document.querySelectorAll('a.tab').length >= 5));
 
