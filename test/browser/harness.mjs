@@ -44,7 +44,12 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const REPO_ROOT = path.resolve(HERE, '../../..');
+const APP_ROOT = path.resolve(HERE, '../..');
+const PARENT_ROOT = path.dirname(APP_ROOT);
+const IS_SITE_CHECKOUT = path.basename(APP_ROOT) === 'brackets'
+  && fs.existsSync(path.join(PARENT_ROOT, 'index.html'));
+export const REPO_ROOT = IS_SITE_CHECKOUT ? PARENT_ROOT : APP_ROOT;
+export const APP_BASE_PATH = IS_SITE_CHECKOUT ? '/brackets/' : '/';
 
 /* --------------------------------------------------------------------------
    Static server
@@ -91,7 +96,7 @@ export function serve(root = REPO_ROOT) {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address();
-      resolve({ base: `http://127.0.0.1:${port}/brackets/`, close: () => new Promise((r) => server.close(r)) });
+      resolve({ base: `http://127.0.0.1:${port}${APP_BASE_PATH}`, close: () => new Promise((r) => server.close(r)) });
     });
   });
 }
