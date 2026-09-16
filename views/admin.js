@@ -21,7 +21,7 @@
 
 import {
   html, raw, list, icon, esc, on, snack, dialog, confirmDialog, bindDelegation,
-  avatar, formatDateTime, relativeTime, countdown, initials, elapsed,
+  avatar, formatDateTime, relativeTime, countdown, initials, elapsed, joinUrl,
 } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
@@ -343,7 +343,7 @@ function overviewTab(data, suggestions, ctx) {
           <b class="title-medium spacer">${FLOW_LABEL[event.status]}</b>
           ${store.syncState().configured && !event.demo ? html`
             <span class="code">${event.inviteCode}</span>
-            <button class="btn btn-icon" data-act="copy-text" data-text="https://battydev.com/brackets/?join=${event.inviteCode}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
+            <button class="btn btn-icon" data-act="copy-text" data-text="${joinUrl(event.inviteCode)}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
         </div>
         <div class="row" style="gap:4px;margin-bottom:12px">
           ${list(FLOW.map((s, i) => html`

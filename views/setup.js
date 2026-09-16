@@ -20,7 +20,7 @@
 
 'use strict';
 
-import { html, raw, list, icon, on, snack, dialog } from '../lib/ui.js';
+import { html, raw, list, icon, on, snack, dialog, joinUrl } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, evoLabel } from '../data/games.js';
@@ -903,7 +903,7 @@ function publish() {
         <p class="body-medium">${name} is live. Share this code with entrants who open the site.</p>
         <div class="card card-filled" style="text-align:center;margin:16px 0">
           <div class="invite-code">${code}</div>
-          <div class="body-small dim" style="margin-top:4px">battydev.com/brackets/?join=${code}</div>
+          <div class="body-small dim" style="margin-top:4px">${joinUrl(code)}</div>
         </div>` : html`
         <div class="banner banner-info local-device-note">
           ${raw(icon('station'))}
@@ -915,7 +915,7 @@ function publish() {
     actions: [
       ...(auth.isRemote() ? [{ label: 'Copy the link', kind: 'text', onClick: async () => {
         const { copy } = await import('../lib/ui.js');
-        await copy(`https://battydev.com/brackets/?join=${code}`);
+        await copy(joinUrl(code));
         snack('Link copied');
         return false;
       } }] : []),

@@ -413,7 +413,7 @@ export function gameHero(game, { title, subtitle, compact = false } = {}) {
     <div class="game-hero ${raw(compact ? 'compact' : '')}" data-game="${game.id}">
       <div class="game-hero-art" aria-hidden="true">
         ${official
-          ? html`<img src="../assets/games/${game.id}/${official}" alt="" loading="lazy" decoding="async">`
+          ? html`<img src="assets/games/${game.id}/${official}" alt="" loading="lazy" decoding="async">`
           : raw(gameArt(game.id, { variant: compact ? 'strip' : 'hero' }))}
       </div>
       <div class="game-hero-body">

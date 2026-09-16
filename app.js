@@ -573,7 +573,7 @@ on('undo', () => {
   setup.resumePendingPublish();
 
   /* Sets up the "brackets" search param -> invite code shortcut, so a QR code
-     on a flyer can be battydev.com/brackets/?join=TKN14B and land straight on
+     on a flyer can be battybrackets.com/?join=TKN14B and land straight on
      the join screen. Query params survive Discord's link handling better than
      a hash does. */
   const params = new URLSearchParams(window.location.search);
