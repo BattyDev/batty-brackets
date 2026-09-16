@@ -876,7 +876,8 @@ brackets/
   views/              home, setup wizard, admin console, event page, profile,
                       tv (the venue display)
   assets/games/<id>/  where licensed artwork goes, if you have any
-  sql/001_schema.sql  the security model
+  sql/001_schema.sql  historical schema; unsafe to apply, retained for review
+  sql/staging/        replacement schema and explicit command boundary
   test/bracket.test.mjs
   test/theme.test.mjs
 ```
@@ -942,7 +943,7 @@ Never upload device/demo data automatically or interpret an adapter test as
 proof of database authorization or cross-device reliability.
 
 **Not yet verified against a live server:** the Supabase paths in the existing
-Supabase paths in `store.js` and `auth.js`. There is no project configured, so
+`store.js` and `auth.js`. There is no project configured, so
 the schema is unapplied and the sync code is untested against a real PostgREST.
 Expect to fix things on first connection.
 
