@@ -1,12 +1,6 @@
-> **Archived design record.** This was the project README until the docs were
-> reset. It is kept because it is the reasoning trail — what was tried, what
-> broke, and what the alternatives cost — and that is worth searching when you
-> hit a decision that looks strange.
->
-> It is **not** current, and it is not required reading. Parts of it are stale
-> (suite counts, and `sql/001_schema.sql`, which it later describes as a
-> historical design rather than a safe install script). For what is true today,
-> see the top-level `README.md` and `AGENTS.md`.
+> **Archived design record.** This was the project's detailed working README.
+> It remains useful context, but some sections are stale; use the root README,
+> AGENTS.md, and current tests for present-day behavior.
 
 # Batty Brackets — battydev.com/brackets
 
@@ -886,7 +880,8 @@ brackets/
   views/              home, setup wizard, admin console, event page, profile,
                       tv (the venue display)
   assets/games/<id>/  where licensed artwork goes, if you have any
-  sql/001_schema.sql  the security model
+  sql/001_schema.sql  historical schema; unsafe to apply, retained for review
+  sql/staging/        replacement schema and explicit command boundary
   test/bracket.test.mjs
   test/theme.test.mjs
 ```
@@ -952,7 +947,7 @@ Never upload device/demo data automatically or interpret an adapter test as
 proof of database authorization or cross-device reliability.
 
 **Not yet verified against a live server:** the Supabase paths in the existing
-Supabase paths in `store.js` and `auth.js`. There is no project configured, so
+`store.js` and `auth.js`. There is no project configured, so
 the schema is unapplied and the sync code is untested against a real PostgREST.
 Expect to fix things on first connection.
 
@@ -984,16 +979,18 @@ It seeds the demo the first time only, and never over real data.
 Tests:
 
 ```
-node brackets/test/run.mjs        # everything: 848 node assertions + 135 browser
+node brackets/test/run.mjs        # all top-level Node and browser suites
 node brackets/test/run.mjs tv     # just one suite
+node brackets/test/backend/contract-static.test.mjs # SQL/client contract drift
 ```
 
 The Node half needs nothing installed. The browser half needs Playwright and
 axe-core (`cd brackets/test && npm install && npx playwright install chromium`)
 and is skipped with a note if they are missing, so the fast half always runs.
 
-Ten suites. Two cover the pure functions — the bracket engine and the colour
-palettes. The other eight drive a real browser, because every bug this project
+Twenty suites. Three cover dependency-free logic — the explicit backend client,
+the bracket engine and the colour palettes. The other seventeen drive a real
+browser, because every bug this project
 has actually shipped lived outside the reach of a unit test: a tour card that
 rebuilt itself once a second, `opacity` dimming text below contrast, a bracket
 pane you could not scroll without a mouse, a TV screen drawing eight perfectly

@@ -5,8 +5,10 @@ attached. Two rules for this file: nothing goes in without a reason, and
 anything that gets done comes out. A to-do list nobody deletes from stops
 being read.
 
-Status as of this writing: the app is built and tested, has never touched a
-server, and has never run an event.
+Status as of September 2026: the local app and refreshed player/host UI are
+built and tested, but no connected backend has been activated and no real event
+has run. A replacement staging schema and explicit client contract exist; their
+presence is not proof that database permissions or cross-device operation work.
 
 The first pilot targets a Marvel Tōkon local. The selected sports-publication
 identity and broadcast-style venue display are implemented locally, alongside
@@ -20,23 +22,33 @@ below: online registration is still unconnected.
 
 ## Now — the two that block everything else
 
-### 1. Connect the backend
+### 1. Verify and connect the replacement backend
 
-**Nothing in `sql/` has ever run.** The RLS policies, the claim RPC, the
-entry-guard trigger, the auth-methods lookup and the new
-`bkt_event_by_code` are all written and unapplied. The camelCase ↔
-snake_case boundary in `store.js` is untested against real PostgREST.
+**Nothing in `sql/` has ever run against a real project.** The historical
+`sql/001_schema.sql` must not be applied: review found authorization, contact
+consent, identity and registration-insert defects. The replacement is the
+isolated schema under `sql/staging/`, with the wire contract in `backend/` and
+an explicit client boundary in `lib/backend.js`.
 
 This is first because **decisions upstream of it change if the security model
 has a flaw**. It is much cheaper to find that now than after there are events
 in it.
 
-- [ ] Apply `sql/001_schema.sql` to the `battydevsite` project
-- [ ] Enable the Discord provider — redirect `https://battydev.com/brackets/`, scopes `identify email`
-- [ ] Fill in `config.js` (public URL and publishable key only — **never** a service role key or the database password)
-- [ ] Verify demo seeding stops the moment a project is named; an account with a real backend must look empty when it is empty
-- [ ] Test the sync queue against a genuinely bad connection, not a fast one — that is the case it exists for
-- [ ] Re-run the browser suites against the connected build
+- [ ] Choose and provision a dedicated empty Supabase staging project; confirm
+      owner, region and budget before any paid resource is created
+- [ ] Apply `sql/staging/` only, then run every adversarial test in
+      `test/backend/` with anonymous, player, staff and owner roles
+- [ ] Integrate authenticated identity, create, list, code redemption, join and
+      event reads through `lib/backend.js`; do not enable the generic store
+      outbox or automatically upload local/demo data
+- [ ] Partition connected caches and queues by project and account; clear
+      protected data on sign-out/account switch
+- [ ] Add authoritative report/correct/station-release commands with operation
+      IDs and expected revisions before promising a connected live bracket
+- [ ] Rehearse organiser laptop, player phone and TV as independent clients,
+      including capacity races, reconnect, stale state and failed writes
+- [ ] Only then fill in `config.js` with the public URL and publishable key —
+      **never** a service-role key or database password
 
 **Expect to fix things on first connection.** Sync code that has never seen a
 server is not working code, it is code that has not failed yet.
@@ -176,11 +188,11 @@ rather than oversights.
       Staff can write anything into `bkt_brackets.matches`. Fine for a weekly,
       not fine once there is a pot. Progression should move into a server-side
       function before money is involved.
-- [ ] **`bkt_event_by_code` has no rate limit.** Invite codes are short. It
-      requires a signed-in caller, which buys something — a guesser needs an
-      account, and accounts can be banned — and it is not sufficient on its
-      own. Needs a per-caller attempt limit before unlisted events are relied
-      on for anything sensitive.
+- [ ] **Invitation throttling still needs edge protection and live proof.** The
+      replacement staging command now has a per-account database throttle and
+      generic failure responses. That is not an IP/edge limit, and it has not
+      run against Supabase yet. Prove it with JWT-backed requests and add edge
+      controls before unlisted links are relied on for anything sensitive.
 - [ ] **Unlisted is not private.** It is a discoverability setting and the UI
       says so in those words. Genuinely private events — where the entrant
       list is not visible to everyone holding the link — are a different

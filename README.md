@@ -23,10 +23,11 @@ The demo seeds on first load only, and never over real data.
 ```
 node test/run.mjs              # everything
 node test/run.mjs tv roster    # only suites matching those names
+node test/backend/contract-static.test.mjs # staging/client contract drift
 ```
 
 Three Node suites (bracket engine, colour palettes, backend client) need
-nothing installed. Sixteen browser suites need Playwright and axe:
+nothing installed. Seventeen browser suites need Playwright and axe:
 
 ```
 cd test && npm install && npx playwright install chromium
@@ -78,8 +79,8 @@ deliberately being left alone for now.
 `sql/001_schema.sql` is a historical design, **not** a safe install script —
 review found contact-consent, grants, identity and registration weaknesses. The
 replacement is in `sql/staging/`, with its contract under `backend/`, and it
-targets an empty staging database rather than an in-place upgrade. Note that the
-comments in `config.js` still point at the old script and are out of date.
+targets an empty staging database rather than an in-place upgrade. The setup
+notes in `config.js` point at that reviewed staging path.
 
 `config.js` takes a project URL and a publishable key, both public by design.
 A service role key or database password there would bypass row-level security

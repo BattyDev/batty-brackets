@@ -14,8 +14,9 @@ python3 -m http.server 8000
 ```
 
 ```
-node test/run.mjs              # everything: 3 Node suites + 16 browser suites
+node test/run.mjs              # everything: 3 Node suites + 17 browser suites
 node test/run.mjs tv roster    # only suites matching those names
+node test/backend/contract-static.test.mjs # staging/client contract drift
 ```
 
 The Node half (bracket engine, colour palettes, backend client) needs nothing
@@ -47,8 +48,8 @@ Everything else in this file is description. These two are not:
 
 Also worth knowing before touching the backend: `sql/001_schema.sql` is a
 historical design, not a safe install script. The reviewed replacement is in
-`sql/staging/` with its contract under `backend/`. The comments in `config.js`
-still point at the old file and are stale.
+`sql/staging/` with its contract under `backend/`. The setup notes in
+`config.js` point at that reviewed staging path.
 
 ## How it's currently built
 
@@ -87,9 +88,12 @@ Two references reach outside this directory: the home button links to
 
 ## Deploying
 
-GitHub Pages serves `main` directly with no CI step, so a push to `main` is
-live on `battydev.com` immediately. Work on a branch.
+This repository is assembled into `BattyDev.github.io` at `/brackets/` by the
+site repository's Pages workflow. A push to `main` runs the full test workflow
+here first. When `SITE_DISPATCH_TOKEN` is configured, `publish.yml` then asks
+the site repository to rebuild immediately; otherwise its hourly schedule is
+the fallback. Work on a branch and require green tests before merging.
 
-`docs/history/design-record.md` is the old 999-line README: the reasoning trail
+`docs/history/design-record.md` is the old detailed README: the reasoning trail
 for why things look the way they do. It is searchable context when a decision
 seems strange, not required reading, and parts of it are out of date.

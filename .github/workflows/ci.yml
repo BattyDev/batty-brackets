@@ -22,9 +22,9 @@ jobs:
           npm install
           npx playwright install --with-deps chromium
 
-      # run.mjs skips the 16 browser suites and still exits 0 when Playwright
+      # run.mjs skips the 17 browser suites and still exits 0 when Playwright
       # is missing, which is right on a laptop and wrong here: a green run that
-      # covered 3 suites out of 19 is worse than a red one, because it looks
+      # covered 3 suites out of 20 is worse than a red one, because it looks
       # like proof. Fail loudly instead.
       - name: Assert Playwright resolved
         working-directory: test
@@ -35,4 +35,6 @@ jobs:
           )"
 
       - name: Run the suites
-        run: node test/run.mjs
+        run: |
+          node test/run.mjs
+          node test/backend/contract-static.test.mjs
