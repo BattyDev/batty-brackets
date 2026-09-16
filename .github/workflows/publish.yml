@@ -1,0 +1,36 @@
+# Asks battydev.com to rebuild after a green run on main.
+#
+# The site is assembled from two repositories (see BattyDev.github.io's
+# pages.yml), so a change here is not live until that build runs. Gated on
+# Tests rather than on push, so a red main doesn't ship.
+name: Publish to battydev.com
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Trigger the site build
+        env:
+          # Fine-grained PAT, scoped to BattyDev.github.io, Contents: read and
+          # write. The built-in GITHUB_TOKEN cannot dispatch across repos.
+          TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "SITE_DISPATCH_TOKEN is not set — the site will not rebuild." >&2
+            exit 1
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/BattyDev/BattyDev.github.io/dispatches \
+            -d '{"event_type":"brackets-updated"}'
+          echo "Requested a rebuild of battydev.com"

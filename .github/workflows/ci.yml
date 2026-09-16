@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser test dependencies
+        working-directory: test
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      # run.mjs skips the 16 browser suites and still exits 0 when Playwright
+      # is missing, which is right on a laptop and wrong here: a green run that
+      # covered 3 suites out of 19 is worse than a red one, because it looks
+      # like proof. Fail loudly instead.
+      - name: Assert Playwright resolved
+        working-directory: test
+        run: |
+          node -e "import('playwright').then(
+            () => console.log('playwright present'),
+            () => { console.error('Playwright missing — the browser suites would silently skip'); process.exit(1); }
+          )"
+
+      - name: Run the suites
+        run: node test/run.mjs
