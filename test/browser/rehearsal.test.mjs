@@ -56,11 +56,19 @@ try {
   report.ok('bracket contains only the eight admitted entrants', admitted.size === 8 && initial.bracket.matches.flatMap(m => m.slots).filter(s => s.entrantId).every(s => admitted.has(s.entrantId)));
   await goTo(page, base, `#/e/${id}/admin/run`);
   await page.locator('[data-act="call-next"]').first().click();
-  const first = (await snapshot()).stations.find(s => s.matchId)?.matchId;
+  let operationState = await snapshot();
+  const occupied = operationState.stations.find(s => s.matchId);
+  const first = occupied?.matchId;
+  const calledMatch = operationState.bracket.matches.find(m => m.id === first);
+  report.ok('calling a set records the same assignment on station and bracket',
+    Boolean(first) && calledMatch?.stationId === occupied.id && Boolean(calledMatch.calledAt));
   await page.locator(`[data-act="report-open"][data-match="${first}"]`).first().click();
   await page.locator('dialog [data-score-side="a"]').last().click();
   await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
-  report.ok('reported set frees its station', !(await snapshot()).stations.some(s => s.matchId === first));
+  operationState = await snapshot();
+  const reportedMatch = operationState.bracket.matches.find(m => m.id === first);
+  report.ok('reported set frees both halves of its station assignment',
+    !operationState.stations.some(s => s.matchId === first) && !reportedMatch.calledAt && !reportedMatch.stationId);
   await goTo(page, base, `#/e/${id}/admin/run`);
   await page.locator(`[data-act="report-open"][data-match="${first}"]`).first().click();
   await page.locator('dialog #unreport').click();
@@ -70,7 +78,11 @@ try {
   const called = (await snapshot()).stations.find(s => s.matchId)?.matchId;
   await page.locator(`[data-act="report-open"][data-match="${called}"]`).first().click();
   await page.locator('dialog #dq-b').click();
-  report.ok('DQ advances the opponent and records the reason', (await snapshot()).results.some(r => r.matchId === called && r.byDq));
+  operationState = await snapshot();
+  const dqMatch = operationState.bracket.matches.find(m => m.id === called);
+  report.ok('DQ advances the opponent, records the reason and releases the call',
+    operationState.results.some(r => r.matchId === called && r.byDq && !r.superseded)
+      && !operationState.stations.some(s => s.matchId === called) && !dqMatch.calledAt && !dqMatch.stationId);
   await goTo(page, base, '#/recovery');
   const downloadPromise = page.waitForEvent('download');
   await page.locator('[data-act="recovery-export"]').click();

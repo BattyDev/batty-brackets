@@ -47,12 +47,15 @@ exercise awkward cases rather than to look good.
 ## Testing
 
 ```
-node test/run.mjs              # everything: 12 suites
+node test/run.mjs              # everything: 20 suites
 node test/run.mjs tv roster    # only suites whose filename matches
+node test/backend/contract-static.test.mjs # staging/client contract drift
 ```
 
-Two Node suites (bracket engine, colour palettes) need nothing installed. Ten
-browser suites need Playwright and axe:
+Three top-level Node suites (backend adapter, bracket engine, colour palettes)
+need nothing installed. Seventeen browser suites need Playwright and axe. The
+database contract drift check under `test/backend/` is run directly because it
+does not pretend to execute PostgreSQL:
 
 ```
 cd test && npm install && npx playwright install chromium

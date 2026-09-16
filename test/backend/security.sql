@@ -28,11 +28,21 @@ do $$ declare t record; r text; v text; begin
   end loop;
  end loop;
  perform pg_temp.assert_true(not has_schema_privilege('authenticated','bkt_private','USAGE'),'private schema hidden');
+ perform pg_temp.assert_true(has_function_privilege('anon','public.bkt_read_event(uuid)','EXECUTE'),'anon public read RPC');
+ perform pg_temp.assert_true(has_function_privilege('anon','public.bkt_list_events()','EXECUTE'),'anon public list RPC');
+ foreach v in array array['public.bkt_identity(text)','public.bkt_create_event(uuid,jsonb)',
+   'public.bkt_join_event(uuid,text,boolean)','public.bkt_event_by_code(text)',
+   'public.bkt_set_contact(uuid,text,boolean)','public.bkt_read_contacts(uuid)',
+   'public.bkt_create_walkup(uuid,text)','public.bkt_claim_player(text)'] loop
+  perform pg_temp.assert_true(not has_function_privilege('anon',v,'EXECUTE'),'anon denied RPC '||v);
+  perform pg_temp.assert_true(has_function_privilege('authenticated',v,'EXECUTE'),'authenticated RPC '||v);
+ end loop;
 end $$;
 set local role anon;
 select pg_temp.denied($q$select public.bkt_identity('intruder')$q$);
 select pg_temp.denied($q$select public.bkt_event_by_code('anything')$q$);
 select pg_temp.denied($q$insert into public.bkt_players(tag) values('intruder')$q$);
+select pg_temp.denied($q$select * from bkt_private.create_requests$q$);
 reset role;
 set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
 set local role authenticated;
@@ -52,6 +62,8 @@ select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-
  '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"owner_id":"spoof"}')$q$);
 select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
  '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"entry_fee":10}')$q$);
+select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
+ '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"documents":[{"id":"conduct","version":1},{"id":"conduct","version":1}]}')$q$);
 select pg_temp.assert_true(jsonb_array_length(public.bkt_list_events()->'events')=2,'owner sees hidden');
 select public.bkt_create_walkup('10000000-0000-0000-0000-000000000002','Walkup') as walkup \gset
 select public.bkt_join_event('10000000-0000-0000-0000-000000000001') as owner_entry \gset
@@ -60,17 +72,35 @@ select pg_temp.denied($q$delete from public.bkt_events$q$);
 select pg_temp.denied($q$select * from bkt_private.claims$q$);
 reset role;
 
+-- Possessing an event UUID and even reproducing its payload cannot reveal the
+-- original actor's idempotent create response or invitation credential.
+set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000004';
+set local role authenticated;
+select public.bkt_identity('  Collision  ')->>'id' as collision_id \gset
+select pg_temp.assert_true(public.bkt_identity()->>'tag'='Collision','identity tag normalized');
+select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000002',
+ '{"org_name":"One","name":"Hidden","game_id":"tokon","capacity":2,"visibility":"unlisted"}')$q$);
+select pg_temp.assert_true(public.bkt_event_by_code(:'hidden'::jsonb->>'invite_code') ? 'access','code grants reader');
+select pg_temp.assert_true(public.bkt_join_event('10000000-0000-0000-0000-000000000002')->>'waitlisted'='false','redeemed reader can join hidden');
+reset role;
+
 -- Seed hidden child data as trusted fixture owner, then test real SELECT RLS.
 insert into public.bkt_brackets(event_id) values('10000000-0000-0000-0000-000000000002');
+insert into public.bkt_results(event_id,match_id,winner_player_id,loser_player_id)
+ values('10000000-0000-0000-0000-000000000002','fixture',:'owner_id',(:'walkup'::jsonb->'player'->>'id')::uuid);
 set local request.jwt.claim.sub='';
 set local role anon;
 select pg_temp.assert_true((select count(*) from public.bkt_events)=1,'anon hidden event denied');
+select pg_temp.assert_true((select count(*) from public.bkt_orgs)=1,'anon hidden org denied');
+select pg_temp.assert_true((select count(*) from public.bkt_players)=1,'anon hidden players denied');
 select pg_temp.assert_true((select count(*) from public.bkt_entries where event_id='10000000-0000-0000-0000-000000000002')=0,'anon hidden entry denied');
 select pg_temp.assert_true((select count(*) from public.bkt_brackets)=0,'anon hidden bracket denied');
+select pg_temp.assert_true((select count(*) from public.bkt_results where event_id='10000000-0000-0000-0000-000000000002')=0,'anon hidden results denied');
 select pg_temp.assert_true((select count(*) from public.bkt_stations where event_id='10000000-0000-0000-0000-000000000002')=0,'anon hidden stations denied');
 select pg_temp.denied($q$select public.bkt_read_event('10000000-0000-0000-0000-000000000002')$q$);
 select pg_temp.assert_true(public.bkt_read_event('10000000-0000-0000-0000-000000000001') ?& array['orgs','brackets','results','revision'],'bundle arrays');
 reset role;
+delete from public.bkt_results where event_id='10000000-0000-0000-0000-000000000002';
 delete from public.bkt_brackets where event_id='10000000-0000-0000-0000-000000000002';
 
 set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000002';
@@ -84,6 +114,7 @@ select public.bkt_join_event('10000000-0000-0000-0000-000000000001','entrant@exa
 select pg_temp.assert_true((:'joined'::jsonb->>'waitlisted')='false','second admitted');
 select pg_temp.assert_true((:'joined'::jsonb->'seed')='null'::jsonb,'no self seed');
 select pg_temp.assert_true(public.bkt_join_event('10000000-0000-0000-0000-000000000001')= :'joined'::jsonb,'join retry stable');
+select pg_temp.fails($q$select public.bkt_set_contact('10000000-0000-0000-0000-000000000001',null,true)$q$);
 select pg_temp.assert_true(public.bkt_event_by_code('bad')->>'error'='invalid_code','bad token generic');
 select pg_temp.assert_true(public.bkt_event_by_code(:'hidden'::jsonb->>'invite_code') ? 'access','code grants membership');
 select pg_temp.assert_true(public.bkt_read_event('10000000-0000-0000-0000-000000000002')->'event'->>'name'='Hidden','redemption enables bundle');

@@ -4,15 +4,17 @@
 node brackets/test/run.mjs              # everything
 node brackets/test/run.mjs tv roster    # only suites whose filename matches
 node brackets/test/browser/tv.test.mjs  # one suite, directly
+node brackets/test/backend/contract-static.test.mjs # staging contract drift
 ```
 
 Two kinds, in two directories, for two different reasons.
 
 ## The Node tests — pure functions, no dependencies
 
-`bracket.test.mjs` and `theme.test.mjs` run on a bare `node` with nothing
-installed. Between them they make 848 assertions about the two parts of this
-app that are pure functions, and pure functions are the cheap half to test:
+`backend-client.test.mjs`, `bracket.test.mjs` and `theme.test.mjs` run on a bare
+`node` with nothing installed. The bracket and theme suites make 848 assertions
+about the two parts of this app that are pure functions; the adapter suite holds
+the explicit connected-mode boundary without claiming a database exists:
 
 - **`bracket.test.mjs`** — double elimination. Seeding order against the
   Challonge/start.gg convention, byes, forward pointers, losers-side drop
@@ -25,6 +27,10 @@ app that are pure functions, and pure functions are the cheap half to test:
   can paint, in both schemes, against the WCAG contrast requirement, plus
   perceptual distinctness between games in OKLab. This is where the record of
   two failed attempts at spreading 21 hues lives.
+- **`backend-client.test.mjs`** — explicit RPC payloads, server-issued player
+  identity, contact consent, failed acknowledgements and account-change races.
+  `backend/contract-static.test.mjs` separately catches SQL/client name and
+  grant drift; actual authorization still requires PostgreSQL.
 
 ## The browser tests — everything that is not a pure function
 
@@ -73,6 +79,11 @@ of Playwright.
 | `brand` | Publisher/creator identity, editorial typography, real setup action, 320/390px reflow in both schemes, and broadcast station rows with actual calls. Includes negative probes for lost typography and missing TV identity. |
 | `setup` | Local capacity/station creation, station bounds, provisional-rule acknowledgement, and truthful device-only setup controls. |
 | `recovery` | Immediate durable snapshots, reload/corruption/quota failures, validated portable backups, cleared undo history, and deliberate approval of imported server writes. |
+| `events` | Draft persistence, the sign-in publication gate, local creation, visibility, and truthful absence of cross-device links. |
+| `navigation` | Scroll restoration, stable live clocks, and system/light/dark preference behavior. |
+| `operations` | Seeding scope, station assignment, report/correct/DQ history, finish prerequisites, and the 390px reporting dialog. |
+| `rehearsal` | A fresh eight-place Tōkon event from setup through import, play, correction, backup, reload, restore, and TV. |
+| `mobile-player` | Invite → sign-in intent → explicit entry → documents → check-in → station call at 390px and 320px. |
 
 For optional design-review screenshots, set `BRACKETS_SCREENSHOTS` to a local
 output directory before running `node test/run.mjs brand`. The test captures

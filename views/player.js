@@ -90,7 +90,8 @@ function signedOut() {
           ${raw(icon('person'))}
           <p class="body-large">Sign in to see your record.</p>
           <p class="body-medium">Every set you play at any event on this site lands on one profile.</p>
-          <button class="btn btn-filled" data-act="sign-in">Sign in</button>
+          ${!auth.isRemote() ? html`<p class="body-small dim">Right now that profile stays on this device. It will not appear on another phone.</p>` : ''}
+          <button class="btn btn-filled" data-act="sign-in">${auth.isRemote() ? 'Sign in' : 'Continue on this device'}</button>
         </div>
       </div>`,
   };
@@ -167,17 +168,25 @@ function profile(player, ctx, isMe) {
 
       ${upcoming.length ? html`
         <section style="margin-bottom:16px">
-          <h2 class="title-large" style="margin-bottom:8px">${isMe ? 'You are entered in' : 'Entered in'}</h2>
+          <div class="section-heading" style="margin-bottom:8px">
+            <div><p class="eyebrow">EVENT DESK</p><h2 class="title-large">${isMe ? 'What’s next for you' : 'Entered in'}</h2></div>
+          </div>
           <div class="stack-sm">
-            ${list(upcoming.map(({ entry, event }) => html`
-              <a class="card card-outlined row" href="#/e/${event.id}" style="flex-wrap:nowrap">
-                <div class="spacer">
-                  <b class="title-small">${event.name}</b>
-                  <div class="body-small dim">${formatDateTime(event.startsAt)} · seed ${entry.seed ?? '—'}
-                    ${entry.checkedInAt ? ' · checked in' : ''}</div>
-                </div>
-                ${raw(icon('chevron'))}
-              </a>`))}
+            ${list(upcoming.map(({ entry, event }) => {
+              const status = playerEventStatus(entry, event);
+              return html`
+                <a class="card card-outlined" href="#/e/${event.id}" aria-label="${event.name}: ${status.title}" style="display:block">
+                  <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+                    <div class="spacer" style="min-width:0">
+                      <b class="title-small">${event.name}</b>
+                      <div class="body-small dim">${formatDateTime(event.startsAt)} · seed ${entry.seed ?? '—'}</div>
+                    </div>
+                    <span class="chip chip-static ${raw(status.chip)}" style="min-height:22px;padding:0 8px;font:var(--label-small)">${status.title}</span>
+                    ${raw(icon('chevron'))}
+                  </div>
+                  <p class="body-medium" style="margin:10px 0 0">${status.detail}</p>
+                </a>`;
+            }))}
           </div>
         </section>` : ''}
 
@@ -250,6 +259,36 @@ function buildRivals(playerId, history) {
   return [...map.values()].sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
 }
 
+/* The passport used to reduce an event to its date, seed and a quiet
+   "checked in" suffix. On a phone this is the player's launch point, so it
+   needs to answer the same urgent question as the event desk: what happens
+   next? Keep the summary derived from rows already on the device; absence of
+   fresh server data must not be dressed up as a live notification. */
+function playerEventStatus(entry, event) {
+  if (entry.waitlisted) return { title: 'Waitlist', chip: 'chip-warn', detail: 'Check with the host before preparing for a set.' };
+
+  const bracket = store.get().brackets[event.id];
+  const match = bracket?.matches?.find((row) => !row.cancelled && !row.state
+    && row.slots.some((slot) => slot.entrantId === entry.id));
+  if (match?.calledAt) {
+    const station = match.stationId ? store.get().stations[match.stationId] : null;
+    return {
+      title: 'Called now', chip: 'chip-warn',
+      detail: station ? `Go to ${station.label}. Open the event for your opponent and DQ clock.` : 'Open the event and check with the host for your station.',
+    };
+  }
+  if (match?.slots?.every((slot) => slot.entrantId)) {
+    return { title: 'Up next', chip: 'chip-info', detail: 'Your opponent is set. The station will appear when the host calls you.' };
+  }
+  if (!entry.checkedInAt && ['checkin', 'seeding'].includes(event.status)) {
+    return { title: 'Check in', chip: 'chip-warn', detail: 'Open the event to finish required tasks and check in.' };
+  }
+  if (!entry.checkedInAt) {
+    return { title: 'Entered', chip: 'chip-info', detail: 'Your entry is saved. Check-in is not open yet.' };
+  }
+  return { title: 'Ready', chip: 'chip-ok', detail: 'You are checked in. Keep the event page handy for your station call.' };
+}
+
 /* --------------------------------------------------------------------------
    Connected accounts
    -------------------------------------------------------------------------- */
@@ -272,14 +311,14 @@ function connectionsSection(player) {
           <p class="body-small dim" style="margin:2px 0 8px">${blurb}</p>
           <div class="stack-sm">
             ${list(CONNECTIONS.filter((c) => c.kind === kind).map((c) => html`
-              <div class="row" style="flex-wrap:nowrap;gap:8px">
-                <span class="body-medium" style="flex:0 0 130px">${c.label}</span>
-                <input type="text" class="spacer" value="${connections[c.id] || ''}"
+              <label class="field" style="margin:0">
+                <span class="field-label">${c.label}</span>
+                <input type="text" value="${connections[c.id] || ''}"
                        placeholder="${c.id === 'startgg' ? 'not wired up yet' : 'not set'}"
                        ${raw(c.id === 'startgg' ? 'disabled' : '')}
                        data-act-change="set-connection" data-connection="${c.id}"
-                       style="min-width:120px;padding:8px;border:1px solid var(--md-outline-variant);border-radius:var(--shape-xs);background:transparent;color:inherit;font:var(--body-medium)">
-              </div>`))}
+                       style="width:100%;min-width:0;padding:8px;border:1px solid var(--md-outline-variant);border-radius:var(--shape-xs);background:transparent;color:inherit;font:var(--body-medium)">
+              </label>`))}
           </div>
         </div>`))}
       <p class="field-help" style="padding-left:0;margin-top:12px">

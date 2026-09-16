@@ -188,11 +188,11 @@ rather than oversights.
       Staff can write anything into `bkt_brackets.matches`. Fine for a weekly,
       not fine once there is a pot. Progression should move into a server-side
       function before money is involved.
-- [ ] **`bkt_event_by_code` has no rate limit.** Invite codes are short. It
-      requires a signed-in caller, which buys something — a guesser needs an
-      account, and accounts can be banned — and it is not sufficient on its
-      own. Needs a per-caller attempt limit before unlisted events are relied
-      on for anything sensitive.
+- [ ] **Invitation throttling still needs edge protection and live proof.** The
+      replacement staging command now has a per-account database throttle and
+      generic failure responses. That is not an IP/edge limit, and it has not
+      run against Supabase yet. Prove it with JWT-backed requests and add edge
+      controls before unlisted links are relied on for anything sensitive.
 - [ ] **Unlisted is not private.** It is a discoverability setting and the UI
       says so in those words. Genuinely private events — where the entrant
       list is not visible to everyone holding the link — are a different

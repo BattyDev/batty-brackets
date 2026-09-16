@@ -23,7 +23,7 @@ import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { gameById, resolveRuleset, fieldVisible, formatValue } from '../data/games.js';
 import { gameHero, gameMark } from '../data/themes.js';
-import { standings, readyMatches } from '../lib/bracket.js';
+import { standings } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
 import { readinessFor } from '../lib/auth.js';
 
@@ -48,6 +48,13 @@ export function view(ctx) {
   const myEntry = me ? entries.find((e) => e.playerId === me.id) : null;
 
   const tab = ['now', 'bracket', 'entrants', 'rules'].includes(ctx.params.tab) ? ctx.params.tab : 'now';
+  const content = {
+    now: () => youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }),
+    bracket: () => bracketTab({ event, entries, players, bracket }),
+    entrants: () => entrantsTab({ event, entries, players }),
+    rules: () => rulesTab({ event, game, ruleset }),
+  }[tab]?.() || '';
+  const navigation = eventNavigation(event, tab, tab === 'now');
 
   return {
     title: event.name,
@@ -55,8 +62,22 @@ export function view(ctx) {
     back: '/',
     gameId: event.gameId,
     body: html`
-      <!-- Links in a <nav>, not an ARIA tab widget. See the note in admin.js. -->
       <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span></div>
+      <!-- On a phone, "what do I do now?" must arrive before a full bracket.
+           The information navigation follows the personal desk on its home
+           route, while detail routes keep it at the top for an obvious way
+           back. These remain links, not an ARIA tab widget. -->
+      ${tab === 'now' ? html`${raw(content)}${raw(navigation)}` : html`${raw(navigation)}${raw(content)}`}`,
+  };
+}
+
+function eventNavigation(event, tab, secondary) {
+  return html`
+    <div class="pane ${raw(secondary ? 'player-secondary' : '')}" style="max-width:800px;padding-top:${raw(secondary ? '0' : '16px')}">
+      ${secondary ? html`
+        <div class="section-heading" style="margin-bottom:8px">
+          <div><p class="eyebrow">EVENT INFORMATION</p><h2 class="title-large">Bracket, field, and rules</h2></div>
+        </div>` : ''}
       <nav class="tabs" aria-label="Event sections">
         ${list([
           ['now', 'My event', 'person'],
@@ -68,16 +89,8 @@ export function view(ctx) {
              ${raw(id === tab ? 'aria-current="page"' : '')}>
             ${raw(icon(ic, 'icon-sm'))}${label}
           </a>`))}
-
       </nav>
-
-      ${raw({
-        now: () => youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }),
-        bracket: () => bracketTab({ event, entries, players, bracket }),
-        entrants: () => entrantsTab({ event, entries, players }),
-        rules: () => rulesTab({ event, game, ruleset }),
-      }[tab]?.() || '')}`,
-  };
+    </div>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -90,9 +103,15 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
         <div class="card card-elevated" style="margin-top:16px;text-align:center">
-          <p class="eyebrow">YOUR EVENT COMPANION</p><h2 class="title-large">Your next set starts here.</h2><p class="body-large">Sign in to see your entry, check-in, and station calls.</p>
+          <p class="eyebrow">YOUR EVENT COMPANION</p><h2 class="title-large">Your next set starts here.</h2>
+          <p class="body-large">Sign in to see your entry, check-in tasks, and station calls.</p>
+          <p class="body-small dim" style="margin-top:8px">Signing in does not enter you automatically. You will review and confirm first.</p>
           <button class="btn btn-filled btn-lg" data-act="sign-in" style="margin-top:8px">Sign in</button>
         </div>
+        ${!store.syncState().configured ? html`
+          <div class="banner banner-info" style="margin-top:16px">${raw(icon('station'))}
+            <div><b>On this device only</b><p class="body-small" style="margin:4px 0 0">This copy is not connected to a server. Another phone cannot open or join this event; ask the host to add you at the desk.</p></div>
+          </div>` : ''}
       </div>`;
   }
 
@@ -103,13 +122,14 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
         <div class="card card-elevated" style="margin-top:16px">
-          <b class="title-large">You are not entered</b>
+          <p class="eyebrow">ENTRY STATUS</p><h2 class="title-large">You are not entered</h2>
           <p class="body-medium dim" style="margin:4px 0 12px">
             ${!open ? 'Registration is closed. Ask the host about joining this event.' : full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
           </p>
           ${open ? html`<button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}">
-            ${full ? 'Join the waitlist' : 'Enter this event'}
+            ${full ? 'Confirm waitlist entry' : 'Confirm entry'}
           </button>` : html`<a class="btn btn-tonal" href="#/e/${event.id}/bracket">Follow the bracket</a>`}
+          ${open ? html`<p class="body-small dim" style="margin:10px 0 0">This is the final confirmation. Your entry is created only when you activate the button.</p>` : ''}
         </div>
       </div>`;
   }
@@ -118,7 +138,8 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
   const myMatches = bracket
     ? bracket.matches.filter((m) => !m.cancelled && m.slots.some((s) => s.entrantId === myEntry.id))
     : [];
-  const next = myMatches.find((m) => !m.state && m.slots[0].entrantId && m.slots[1].entrantId);
+  const current = myMatches.find((m) => !m.state && m.calledAt && m.slots[0].entrantId && m.slots[1].entrantId);
+  const next = myMatches.find((m) => !m.state && !m.calledAt && m.slots[0].entrantId && m.slots[1].entrantId);
   const waiting = myMatches.find((m) => !m.state && !m.slots.every((s) => s.entrantId));
   const played = myMatches.filter((m) => m.state === 'complete');
   const losses = played.filter((m) => m.winnerId && m.winnerId !== myEntry.id).length;
@@ -133,33 +154,39 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
     const entry = entries.find((e) => e.id === entrantId);
     return players.get(entry?.playerId)?.tag || '—';
   };
-  const station = next?.stationId ? store.get().stations[next.stationId] : null;
+  const station = current?.stationId ? store.get().stations[current.stationId] : null;
+  const statusLabel = myEntry.waitlisted ? 'Waitlisted' : out ? 'Eliminated'
+    : current ? 'Called now' : myEntry.checkedInAt ? 'Checked in' : 'Entered';
 
   return html`
     <div class="pane player-now" style="max-width:800px">
-      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p></header>
+      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static chip-info" style="margin-top:10px">${statusLabel}</span></header>
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
-      ${!next && !waiting && !out ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Review your entry below. Check in when the host opens check-in.' : 'Your matchup will appear here when the bracket is ready. Check any remaining entry requirements below.'}</p></section>` : ''}
-      ${next ? html`
-        <div class="card card-elevated next-set" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
-          <div class="label-large" style="color:var(--md-primary)">${next.calledAt ? 'You are up now' : 'Your next set'}</div>
-          <h2 class="headline-small" style="margin:6px 0">
-            vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}
-          </h2>
-          <div class="body-medium dim">${next.name}</div>
-          ${station ? html`
-            <div class="row-tight" style="margin-top:12px;color:var(--md-primary)">
-              ${raw(icon('station'))}<b class="title-medium">${station.label}</b>
-            </div>` : ''}
-          ${next.calledAt ? html`
+      ${!current && !next && !waiting && !out ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Complete the next task below. Check-in appears here as soon as the host opens it.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
+      ${current ? html`
+        <section class="card card-elevated next-set" aria-labelledby="current-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
+          <p class="eyebrow" style="color:var(--md-primary)">GO NOW</p>
+          <h2 id="current-set-heading" class="headline-small" style="margin:6px 0">${station?.label || 'See the host for your station'}</h2>
+          <p class="title-medium" style="margin:4px 0">vs. ${nameOf(current.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</p>
+          <div class="body-medium dim">${current.name}</div>
+          ${current.calledAt ? html`
             <div class="banner banner-warn" style="margin-top:12px">${raw(icon('clock'))}
-              <div class="body-small">Called ${relativeTime(next.calledAt)}. The DQ window is
+              <div class="body-small">Called ${relativeTime(current.calledAt)}. The DQ window is
               ${ruleset?.values?.dqTimer || 5} minutes from when it was called.</div>
             </div>` : ''}
-          ${raw(headToHeadLine(me.id, entries, players, next, myEntry))}
-        </div>` : ''}
+          ${raw(headToHeadLine(me.id, entries, players, current, myEntry))}
+        </section>` : ''}
 
-      ${!next && waiting ? html`
+      ${!current && next ? html`
+        <section class="card card-elevated next-set" aria-labelledby="next-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
+          <p class="eyebrow" style="color:var(--md-primary)">UP NEXT</p>
+          <h2 id="next-set-heading" class="headline-small" style="margin:6px 0">vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</h2>
+          <div class="body-medium dim">${next.name}</div>
+          <p class="body-small" style="margin:12px 0 0">Stay close. Your station appears here when the host calls the set.</p>
+          ${raw(headToHeadLine(me.id, entries, players, next, myEntry))}
+        </section>` : ''}
+
+      ${!current && !next && waiting ? html`
         <div class="card card-elevated" style="margin-bottom:16px">
           <div class="label-large dim">Waiting</div>
           <h2 class="title-large" style="margin:6px 0">${waiting.name}</h2>
@@ -175,10 +202,12 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           </p>
         </div>` : ''}
 
+      ${!current ? raw(nextTaskCard({ event, myEntry, unsigned, readiness })) : ''}
+
       <section class="card card-outlined entry-checklist" style="margin-bottom:16px">
         <div class="section-heading"><b class="title-large">Your entry</b><span class="eyebrow">BEFORE YOU PLAY</span></div>
         <div class="stack-sm" style="margin-top:12px">
-          ${raw(checkRow('Seed', myEntry.seed ? `#${myEntry.seed}` : 'not seeded yet', true))}
+          ${raw(checkRow('Seed', myEntry.seed ? `#${myEntry.seed}` : 'not seeded yet', Boolean(myEntry.seed)))}
           ${raw(checkRow('Checked in', myEntry.checkedInAt ? 'yes' : 'not yet', Boolean(myEntry.checkedInAt)))}
           ${event.entryFee ? raw(checkRow('Entry fee', myEntry.paidAt ? 'paid' : `${formatMoney(event.entryFee, event.currency)} owing`, Boolean(myEntry.paidAt))) : ''}
           ${list(required.map((doc) => raw(checkRow(doc.title, signed.has(doc.id) ? 'signed' : 'not signed', signed.has(doc.id)))))}
@@ -212,6 +241,45 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 
       ${raw(eventHeader(event, game, entries))}
     </div>`;
+}
+
+function nextTaskCard({ event, myEntry, unsigned, readiness }) {
+  if (myEntry.waitlisted || event.status === 'complete') return '';
+  let title = 'You are ready';
+  let copy = 'Keep this page handy. Your opponent and station will appear above when the host calls you.';
+  let action = '';
+
+  if (unsigned.length) {
+    const doc = unsigned[0];
+    title = `Sign ${doc.title}`;
+    copy = `${unsigned.length} required document${unsigned.length === 1 ? '' : 's'} left before check-in.`;
+    action = html`<button class="btn btn-filled btn-block" data-act="sign-doc" data-entry="${myEntry.id}" data-doc="${doc.id}">${raw(icon('doc'))} Read and sign</button>`;
+  } else if (!myEntry.checkedInAt && ['checkin', 'seeding'].includes(event.status)) {
+    title = 'Check in now';
+    copy = 'Your required documents are complete. Confirm that you are in the room.';
+    action = html`<button class="btn btn-filled btn-block" data-act="self-checkin" data-entry="${myEntry.id}">${raw(icon('check'))} Check in</button>`;
+  } else if (!myEntry.checkedInAt && event.status === 'registration') {
+    title = 'Check-in has not opened';
+    copy = 'Your entry is saved. Come back when the host opens check-in.';
+  } else if (!myEntry.checkedInAt && event.status === 'running') {
+    title = 'Find the host';
+    copy = 'The tournament is already running and you are not checked in. The host needs to confirm your status.';
+  } else if (event.entryFee && !myEntry.paidAt) {
+    title = `Pay ${formatMoney(event.entryFee, event.currency)} at the desk`;
+    copy = 'Only the host can mark an entry paid. Keep the receipt or confirmation they give you.';
+  } else if (readiness.length) {
+    title = 'Finish your player details';
+    copy = readiness[0].text;
+    action = html`<a class="btn btn-tonal btn-block" href="#/me">Open your profile</a>`;
+  }
+
+  return html`
+    <section class="card card-filled" aria-labelledby="next-task-heading" style="margin-bottom:16px">
+      <p class="eyebrow">NEXT TASK</p>
+      <h2 id="next-task-heading" class="title-large" style="margin:4px 0">${title}</h2>
+      <p class="body-medium" style="margin:0 0 ${raw(action ? '12px' : '0')}">${copy}</p>
+      ${raw(action)}
+    </section>`;
 }
 
 function checkRow(label, value, ok) {

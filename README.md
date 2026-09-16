@@ -975,16 +975,18 @@ It seeds the demo the first time only, and never over real data.
 Tests:
 
 ```
-node brackets/test/run.mjs        # everything: 848 node assertions + 135 browser
+node brackets/test/run.mjs        # all top-level Node and browser suites
 node brackets/test/run.mjs tv     # just one suite
+node brackets/test/backend/contract-static.test.mjs # SQL/client contract drift
 ```
 
 The Node half needs nothing installed. The browser half needs Playwright and
 axe-core (`cd brackets/test && npm install && npx playwright install chromium`)
 and is skipped with a note if they are missing, so the fast half always runs.
 
-Ten suites. Two cover the pure functions — the bracket engine and the colour
-palettes. The other eight drive a real browser, because every bug this project
+Twenty suites. Three cover dependency-free logic — the explicit backend client,
+the bracket engine and the colour palettes. The other seventeen drive a real
+browser, because every bug this project
 has actually shipped lived outside the reach of a unit test: a tour card that
 rebuilt itself once a second, `opacity` dimming text below contrast, a bracket
 pane you could not scroll without a mouse, a TV screen drawing eight perfectly

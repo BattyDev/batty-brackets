@@ -241,6 +241,34 @@ function seedPool(data) {
     .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
 }
 
+function resultHistoryProblem(data, matches) {
+  const active = Object.values(store.get().results)
+    .filter((result) => result.eventId === data.event.id && !result.superseded);
+  const completed = matches.filter((match) => match.state === 'complete');
+  const completedIds = new Set(completed.map((match) => match.id));
+  const playerFor = (entryId) => data.entries.find((entry) => entry.id === entryId)?.playerId;
+
+  /* The bracket and player history are one organiser operation. Finishing
+     while either side is missing would publish standings that disagree with
+     the profiles, which is much harder to repair after people share them. */
+  for (const match of completed) {
+    const rows = active.filter((result) => result.matchId === match.id);
+    const result = rows[0];
+    if (rows.length !== 1 || !result
+      || result.winnerPlayerId !== playerFor(match.winnerId)
+      || result.loserPlayerId !== playerFor(match.loserId)
+      || result.scoreWinner !== Math.max(match.score?.a ?? -1, match.score?.b ?? -1)
+      || result.scoreLoser !== Math.min(match.score?.a ?? -1, match.score?.b ?? -1)
+      || Boolean(result.byDq) !== Boolean(match.byDq)) {
+      return 'A completed set does not match player history. Correct or re-report it in Run before finishing.';
+    }
+  }
+  if (active.some((result) => !completedIds.has(result.matchId))) {
+    return 'Player history contains an active result for an undecided set. Correct it in Run before finishing.';
+  }
+  return '';
+}
+
 function finishProblem(data) {
   const matches = data.bracket?.matches.filter((m) => !m.cancelled) || [];
   if (!matches.length) return 'Generate and play a bracket before finishing.';
@@ -248,7 +276,7 @@ function finishProblem(data) {
     (m.state !== 'complete' || !m.winnerId || !m.slots.some((s) => s.entrantId === m.winnerId))).length;
   if (remaining) return `${remaining} set${remaining === 1 ? '' : 's'} still need a result. Report them in Run before finishing.`;
   if (!matches.some((m) => m.state === 'complete')) return 'Play a deciding set before finishing.';
-  return '';
+  return resultHistoryProblem(data, matches);
 }
 
 function nextStep(data) {
@@ -624,7 +652,7 @@ function seedingTab(data) {
                 <div>${c.a.name} v ${c.b.name} — round ${c.round}, both ${c.group}</div>`))}
               ${report.collisions.length > 5 ? html`<div>…and ${report.collisions.length - 5} more</div>` : ''}
             </div>
-            <div class="body-small" style="margin-top:6px;opacity:.85">
+            <div class="body-small dim" style="margin-top:6px">
               These are what is left after separation. With this many entrants from one venue, some of them have to play each other early — the alternative is moving people so far that the seeding stops meaning anything.
             </div>
           </div>
@@ -701,8 +729,6 @@ function seedingTab(data) {
     </div>`;
 }
 
-const anyCheckedIn = (entries) => entries.some((e) => e.checkedInAt);
-
 /* --------------------------------------------------------------------------
    Run
    -------------------------------------------------------------------------- */
@@ -743,7 +769,11 @@ function runTab(data) {
         <h2 class="title-large" style="margin-bottom:12px">Stations</h2>
         <div class="stations">
           ${list(stations.map((station) => {
-            const match = live.find((m) => m.id === station.matchId);
+            /* A station call is duplicated in the bracket and station rows so
+               either screen can read it cheaply. Show the assignment when
+               either side survives an interrupted write; the action handlers
+               below repair both sides as one batch. */
+            const match = live.find((m) => m.id === station.matchId || m.stationId === station.id);
             const over = match ? Date.now() - new Date(match.calledAt).getTime() > dq * 60000 : false;
             return html`
               <div class="station ${raw(match ? 'busy' : 'open')}">
@@ -784,7 +814,7 @@ function runTab(data) {
         ${queue.length ? html`
           <div class="stack-sm">
             ${list(queue.slice(0, 10).map((match) => html`
-              <div class="card card-outlined row" style="flex-wrap:nowrap;gap:12px">
+              <div class="card card-outlined row" style="flex-wrap:wrap;gap:12px">
                 <div class="spacer" style="min-width:0">
                   <div class="body-medium"><b>${nameOf(match.slots[0].entrantId)}</b> <span class="dim">v</span> <b>${nameOf(match.slots[1].entrantId)}</b></div>
                   <div class="body-small dim">${match.name}</div>
@@ -1709,14 +1739,27 @@ on('clear-bracket', () => {
 
 on('call-next', ({ station: stationId }) => {
   const data = contextFor(currentEventId());
+  const station = data.stations.find((candidate) => candidate.id === stationId);
+  const bracketAssignment = data.bracket.matches.find((match) => match.stationId === stationId
+    && match.calledAt && !match.state);
+  /* The button can be tapped twice before the first render replaces it, and a
+     second staff view can be a render behind. Recheck both halves of the
+     assignment instead of overwriting one live set with the next one. */
+  if (!station || station.closed || station.matchId || bracketAssignment) {
+    snack('That station is no longer free. Review its current set.');
+    rerender();
+    return;
+  }
   const called = new Set(data.bracket.matches.filter((m) => m.calledAt && !m.state).map((m) => m.id));
   const next = readyMatches(data.bracket.matches).find((m) => !called.has(m.id));
   if (!next) { snack('Nothing ready to call.'); return; }
 
   const matches = data.bracket.matches.map((m) => (m.id === next.id
     ? { ...m, calledAt: new Date().toISOString(), stationId } : m));
-  store.apply('brackets', data.event.id, { matches });
-  store.apply('stations', stationId, { matchId: next.id });
+  store.applyMany([
+    { collection: 'brackets', id: data.event.id, patch: { matches } },
+    { collection: 'stations', id: stationId, patch: { matchId: next.id } },
+  ]);
 
   const nameOf = (entrantId) => {
     const entry = data.entries.find((e) => e.id === entrantId);
@@ -1765,8 +1808,8 @@ on('report-open', ({ match: matchId }) => {
       <div class="stack" style="margin:16px 0">
         ${list([[a, 'a'], [b, 'b']].map(([slot, side]) => html`
           <div class="card card-outlined">
-            <div class="row" style="flex-wrap:nowrap">
-              <b class="title-medium spacer">${nameOf(slot.entrantId)}</b>
+            <div class="row" style="flex-wrap:wrap;gap:8px">
+              <b class="title-medium spacer" style="min-width:0;overflow-wrap:anywhere">${nameOf(slot.entrantId)}</b>
               <div class="segmented">
                 ${list(Array.from({ length: target + 1 }, (_, n) => html`
                   <button type="button" data-score-side="${side}" data-score="${n}"
@@ -2013,11 +2056,17 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
       break;
 
     case 'reseed-present': {
-      const present = data.entries.filter((e) => e.checkedInAt).sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+      /* This action used to reorder the checked-in rows but leave generation
+         on its default "all entrants" scope. The preview then showed a
+         different field from the action the organiser had just chosen. */
+      const present = data.entries.filter((e) => !e.waitlisted && e.checkedInAt)
+        .sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999));
+      ui.seedScopes.set(eventId, 'checked');
       store.checkpoint('re-seeded to who is here', present.map((e) => ({ collection: 'entries', id: e.id })));
       store.applyMany(present.map((e, i) => ({ collection: 'entries', id: e.id, patch: { seed: i + 1 } })));
       snack(`Re-seeded ${present.length}`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
-      break;
+      window.location.hash = `#/e/${eventId}/admin/seeding`;
+      return;
     }
 
     case 'autoseed-history':
@@ -2114,8 +2163,11 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
       return;
 
     case 'run-with-byes':
+      ui.seedScopes.set(eventId, 'all');
       ui.dismissed.add(suggestion);
-      break;
+      window.location.hash = `#/e/${eventId}/admin/seeding`;
+      snack('All admitted entrants are included. Review the byes, then generate.');
+      return;
 
     default:
       break;
@@ -2126,20 +2178,27 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
 function assignQueue(data) {
   const called = new Set(data.bracket.matches.filter((m) => m.calledAt && !m.state).map((m) => m.id));
   const queue = readyMatches(data.bracket.matches).filter((m) => !called.has(m.id));
-  const free = data.stations.filter((s) => !s.matchId && !s.closed);
+  const assignedStations = new Set(data.bracket.matches
+    .filter((match) => match.stationId && match.calledAt && !match.state)
+    .map((match) => match.stationId));
+  const free = data.stations.filter((s) => !s.matchId && !s.closed && !assignedStations.has(s.id));
   let matches = data.bracket.matches;
   let n = 0;
+  const writes = [];
 
   for (const station of free) {
     const match = queue[n];
     if (!match) break;
     matches = matches.map((m) => (m.id === match.id
       ? { ...m, calledAt: new Date().toISOString(), stationId: station.id } : m));
-    store.apply('stations', station.id, { matchId: match.id });
+    writes.push({ collection: 'stations', id: station.id, patch: { matchId: match.id } });
     n += 1;
   }
 
-  store.apply('brackets', data.event.id, { matches });
+  if (n) store.applyMany([
+    ...writes,
+    { collection: 'brackets', id: data.event.id, patch: { matches } },
+  ]);
   snack(n ? `Called ${n} set${n === 1 ? '' : 's'}` : 'No free stations.');
   rerender();
 }

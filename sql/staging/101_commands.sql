@@ -15,7 +15,10 @@ begin
  perform pg_advisory_xact_lock(hashtextextended(auth.uid()::text,10));
  v_player := bkt_private.me();
  if v_player is null then
-   v_tag := coalesce(p_tag,'Player');
+   v_tag := case when p_tag is null then 'Player' else trim(p_tag) end;
+   if length(v_tag) not between 1 and 64 or octet_length(v_tag)>256 then
+     raise exception 'invalid_tag' using errcode='22023';
+   end if;
    insert into public.bkt_players(tag) values(v_tag) returning id into v_player;
    insert into bkt_private.identities values(auth.uid(),v_player);
  end if;
@@ -98,7 +101,12 @@ begin
    -- Document bodies are public rules, never signed names. Collection/signature
    -- APIs remain disabled until document-version validation has its own tests.
    for v_item in select value from jsonb_array_elements(coalesce(p_event->'documents','[]')) loop
-     if jsonb_typeof(v_item)<>'object' or jsonb_typeof(v_item->'id') is distinct from 'string' then
+     if jsonb_typeof(v_item)<>'object'
+        or jsonb_typeof(v_item->'id') is distinct from 'string'
+        or length(trim(v_item->>'id')) not between 1 and 120
+        or (v_item->>'id')<>trim(v_item->>'id')
+        or jsonb_typeof(v_item->'version') is distinct from 'number'
+        or (v_item->>'version') !~ '^[1-9][0-9]*$' then
        raise exception 'invalid_document' using errcode='22023';
      end if;
      for v_key in select jsonb_object_keys(v_item) loop
@@ -112,16 +120,20 @@ begin
        end if;
      end loop;
    end loop;
+   if exists(select 1 from jsonb_array_elements(coalesce(p_event->'documents','[]')) d
+             group by d->>'id',d->>'version' having count(*)>1) then
+     raise exception 'duplicate_document_version' using errcode='22023';
+   end if;
    v_stations := coalesce(p_event->'stations','[{"label":"Station 1","platform":null}]');
    if jsonb_typeof(v_stations)<>'array' then raise exception 'invalid_stations' using errcode='22023'; end if;
    if jsonb_array_length(v_stations) not between 1 and 64 then
      raise exception 'invalid_station_count' using errcode='22023';
    end if;
-   insert into public.bkt_orgs(name,owner_id) values(p_event->>'org_name',v_me) returning id into v_org;
+   insert into public.bkt_orgs(name,owner_id) values(trim(p_event->>'org_name'),v_me) returning id into v_org;
    insert into bkt_private.staff values(v_org,v_me,'owner');
    insert into public.bkt_events(id,org_id,name,game_id,capacity,format,venue_type,venue,
       platforms,starts_at,entry_fee,currency,preset_id,overrides,documents,visibility)
-   values(p_event_id,v_org,p_event->>'name',p_event->>'game_id',(p_event->>'capacity')::integer,
+   values(p_event_id,v_org,trim(p_event->>'name'),trim(p_event->>'game_id'),(p_event->>'capacity')::integer,
       coalesce(p_event->>'format','double'),coalesce(p_event->>'venue_type','offline'),p_event->>'venue',
       array(select jsonb_array_elements_text(coalesce(p_event->'platforms','[]'))),
       (p_event->>'starts_at')::timestamptz,0,coalesce(p_event->>'currency','USD'),p_event->>'preset_id',
@@ -138,7 +150,7 @@ begin
      end if;
      v_n:=v_n+1;
      insert into public.bkt_stations(event_id,number,label,platform)
-       values(p_event_id,v_n,v_item->>'label',v_item->>'platform');
+       values(p_event_id,v_n,trim(v_item->>'label'),v_item->>'platform');
    end loop;
    v_code:=bkt_private.new_token();
    insert into bkt_private.invites values(sha256(convert_to(v_code,'UTF8')),p_event_id,now()+interval '30 days');
@@ -167,7 +179,11 @@ begin
  insert into public.bkt_entries(event_id,player_id,waitlisted)
    values(p_event_id,v_me,v_count>=v_event.capacity) returning * into v_entry;
  if p_share_contact is true then
-   insert into bkt_private.contacts(event_id,player_id,contact) values(p_event_id,v_me,p_contact);
+   if p_contact is null or length(trim(p_contact)) not between 1 and 320
+      or octet_length(trim(p_contact))>1280 then
+     raise exception 'invalid_contact' using errcode='22023';
+   end if;
+   insert into bkt_private.contacts(event_id,player_id,contact) values(p_event_id,v_me,trim(p_contact));
  elsif p_contact is not null then
    raise exception 'contact_requires_consent' using errcode='22023';
  end if;
@@ -183,7 +199,11 @@ begin
    raise exception 'entry_required' using errcode='42501';
  end if;
  if p_share_contact is true then
-   insert into bkt_private.contacts(event_id,player_id,contact) values(p_event_id,v_me,p_contact)
+   if p_contact is null or length(trim(p_contact)) not between 1 and 320
+      or octet_length(trim(p_contact))>1280 then
+     raise exception 'invalid_contact' using errcode='22023';
+   end if;
+   insert into bkt_private.contacts(event_id,player_id,contact) values(p_event_id,v_me,trim(p_contact))
    on conflict(event_id,player_id) do update set contact=excluded.contact,consent_at=now();
  else
    if p_contact is not null then raise exception 'contact_requires_consent' using errcode='22023'; end if;

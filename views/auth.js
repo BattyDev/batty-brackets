@@ -20,10 +20,38 @@ let redraw = () => {};
    clicked "Sign in" would get. Being interrupted by a modal that does not say
    why is the thing that makes people close the tab. */
 let context = null;
+const RETURN_AFTER_AUTH = 'brackets.returnAfterAuth';
+
+/* An invitation is an intent, not permission to create an entry. Preserve the
+   exact join route across OAuth's full-page redirect, then put the player back
+   in front of the event so they can make the final decision themselves. The
+   stored value is deliberately restricted to the one route this view owns;
+   sessionStorage must never become an open redirect assembled from arbitrary
+   input. */
+function joinIntent() {
+  const match = window.location.hash.match(/^#\/join\/([A-Z0-9]+)$/i);
+  if (!match) return null;
+  const code = match[1].toUpperCase();
+  return {
+    path: `#/join/${code}`,
+    title: 'Sign in to join this event',
+    why: 'Your invite stays open while you sign in. Afterwards you will review the event and confirm your entry — signing in never enters you automatically.',
+  };
+}
+
+function rememberJoinIntent() {
+  const intent = joinIntent();
+  if (!intent) return;
+  try { sessionStorage.setItem(RETURN_AFTER_AUTH, intent.path); } catch { /* private mode */ }
+}
+
+function validReturnPath(value) {
+  return /^#\/join\/[A-Z0-9]+$/i.test(value || '') ? value : null;
+}
 
 export function openSignIn(onDone, why = null) {
   redraw = onDone || (() => {});
-  context = why;
+  context = why || joinIntent();
   chooseStep();
 }
 
@@ -54,14 +82,18 @@ function chooseStep() {
           <button class="btn btn-outlined btn-block" id="sign-discord" disabled
                   title="Discord sign-in needs a server, which is not connected yet.">
             ${raw(icon('discord'))} Continue with Discord — not available yet
+          </button>
+          <button class="btn btn-outlined btn-block" id="sign-email" disabled
+                  title="Email sign-in needs a server, which is not connected yet.">
+            ${raw(icon('mail'))} Continue with email — not available yet
           </button>`
         : html`
           <button class="btn btn-filled btn-lg btn-block" id="sign-discord">
             ${raw(icon('discord'))} Continue with Discord
+          </button>
+          <button class="btn btn-outlined btn-block" id="sign-email">
+            ${raw(icon('mail'))} Use an email address
           </button>`}
-        <button class="btn btn-outlined btn-block" id="sign-email">
-          ${raw(icon('mail'))} Use an email address
-        </button>
       </div>
       <hr class="divider">
       <button class="btn btn-text btn-block" id="sign-claim">
@@ -75,6 +107,7 @@ function chooseStep() {
 
   el.querySelector('#sign-discord')?.addEventListener('click', async () => {
     try {
+      rememberJoinIntent();
       await auth.signInWithDiscord();
       el.close();
       redraw();
@@ -83,7 +116,7 @@ function chooseStep() {
     }
   });
   el.querySelector('#sign-local')?.addEventListener('click', () => { el.close(); localStep(); });
-  el.querySelector('#sign-email').addEventListener('click', () => { el.close(); emailStep(); });
+  el.querySelector('#sign-email:not([disabled])')?.addEventListener('click', () => { el.close(); emailStep(); });
   el.querySelector('#sign-claim').addEventListener('click', () => { el.close(); claimStep(); });
 }
 
@@ -174,7 +207,7 @@ function discordCollisionStep(email) {
   });
 
   el.querySelector('#use-discord').addEventListener('click', async () => {
-    try { await auth.signInWithDiscord(); el.close(); redraw(); }
+    try { rememberJoinIntent(); await auth.signInWithDiscord(); el.close(); redraw(); }
     catch (err) { snack(err.message); }
   });
   el.querySelector('#add-password').addEventListener('click', () => {
@@ -192,6 +225,7 @@ function discordCollisionStep(email) {
             try {
               sessionStorage.setItem('brackets.afterAuth', 'set-password');
             } catch { /* private mode */ }
+            rememberJoinIntent();
             await auth.signInWithDiscord();
           },
         },
@@ -233,6 +267,7 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
           const note = dlg.querySelector('#pw-note');
           if (password.length < 8) { note.textContent = 'At least 8 characters.'; return false; }
           try {
+            rememberJoinIntent();
             if (signup) await auth.signUpWithEmail(email, password, dlg.querySelector('#tag')?.value);
             else await auth.signInWithEmail(email, password);
             dlg.close();
@@ -296,6 +331,7 @@ function localStep() {
             dlg.querySelector('#tag-note').textContent = 'Pick something — even one letter.';
             return false;
           }
+          rememberJoinIntent();
           auth.signInLocal({ tag });
           dlg.close();
           snack(`Signed in as ${tag} — on this device`);
@@ -358,11 +394,14 @@ export async function resumeAfterRedirect(onDone) {
   redraw = onDone || (() => {});
   let pending = null;
   let claimCode = null;
+  let returnPath = null;
   try {
     pending = sessionStorage.getItem('brackets.afterAuth');
     claimCode = sessionStorage.getItem('brackets.pendingClaim');
+    returnPath = validReturnPath(sessionStorage.getItem(RETURN_AFTER_AUTH));
     sessionStorage.removeItem('brackets.afterAuth');
     sessionStorage.removeItem('brackets.pendingClaim');
+    sessionStorage.removeItem(RETURN_AFTER_AUTH);
   } catch { /* private mode */ }
 
   if (claimCode && auth.isSignedIn()) {
@@ -374,7 +413,36 @@ export async function resumeAfterRedirect(onDone) {
   }
 
   if (pending === 'set-password' && auth.isSignedIn()) openSetPassword();
+
+  /* Route restoration happens after the account exists and after any claim
+     waiting on it. It only redraws the invite; the join action still requires
+     its own explicit activation on the event summary. */
+  if (returnPath && auth.isSignedIn()) {
+    if (window.location.hash !== returnPath) window.location.hash = returnPath;
+    else redraw();
+  }
 }
+
+/* app.js imports this module before auth boot. Listening here lets both a
+   local sign-in and a returning OAuth session resume the same stored intent
+   without adding a second auth coordinator to the application shell. Defer
+   the work: provider callbacks should finish before any follow-up RPC runs. */
+let resumeScheduled = false;
+auth.onAuth(() => {
+  if (!auth.isSignedIn() || resumeScheduled) return;
+  let hasWork = false;
+  try {
+    hasWork = Boolean(sessionStorage.getItem(RETURN_AFTER_AUTH)
+      || sessionStorage.getItem('brackets.afterAuth')
+      || sessionStorage.getItem('brackets.pendingClaim'));
+  } catch { /* private mode */ }
+  if (!hasWork) return;
+  resumeScheduled = true;
+  setTimeout(async () => {
+    try { await resumeAfterRedirect(redraw); }
+    finally { resumeScheduled = false; }
+  }, 0);
+});
 
 export function openSetPassword() {
   dialog({
