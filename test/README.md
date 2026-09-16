@@ -1,10 +1,10 @@
 # Tests
 
 ```
-node brackets/test/run.mjs              # everything
-node brackets/test/run.mjs tv roster    # only suites whose filename matches
-node brackets/test/browser/tv.test.mjs  # one suite, directly
-node brackets/test/backend/contract-static.test.mjs # staging contract drift
+node test/run.mjs              # everything
+node test/run.mjs tv roster    # only suites whose filename matches
+node test/browser/tv.test.mjs  # one suite, directly
+node test/backend/contract-static.test.mjs # staging contract drift
 ```
 
 Two kinds, in two directories, for two different reasons.
@@ -37,7 +37,7 @@ the explicit connected-mode boundary without claiming a database exists:
 `browser/` needs Playwright and axe-core:
 
 ```
-cd brackets/test && npm install && npx playwright install chromium
+cd test && npm install && npx playwright install chromium
 ```
 
 They are optional. `run.mjs` skips them with a note if Playwright is not

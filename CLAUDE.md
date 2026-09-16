@@ -5,8 +5,8 @@ file so it can't drift out of sync between tools. Read it first.
 
 The short version:
 
-- No build step. Serve statically, `python3 -m http.server 8000`, then
-  `/brackets/`.
+- No build step. Serve the repository root statically with
+  `python3 -m http.server 8000`, then open `/` locally.
 - `node test/run.mjs` runs everything. The browser half silently skips without
   Playwright installed, so confirm which half ran before calling a UI change
   verified.

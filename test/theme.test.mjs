@@ -1,6 +1,6 @@
 /* Brackets · theme contrast proof
    ---------------------------------------------------------------------------
-   Run: node brackets/test/theme.test.mjs
+   Run: node test/theme.test.mjs
 
    The game palettes in data/themes.js are generated, not hand-picked, and the
    comments there claim specific contrast ratios. This re-measures them, so the

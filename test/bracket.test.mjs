@@ -1,6 +1,6 @@
 /* Brackets · engine proof
    ---------------------------------------------------------------------------
-   Run: node brackets/test/bracket.test.mjs
+   Run: node test/bracket.test.mjs
 
    No test framework on purpose -- the repo has no build step and no
    node_modules, and a bracket engine's invariants are simple enough to assert

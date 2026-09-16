@@ -1,11 +1,11 @@
 /* Run everything: the pure-function tests and the browser suites.
    ===========================================================================
-     node brackets/test/run.mjs             # all of it
-     node brackets/test/run.mjs tv roster   # only suites whose name matches
+     node test/run.mjs             # all of it
+     node test/run.mjs tv roster   # only suites whose name matches
 
    The Node tests need nothing. The browser suites need Playwright and axe:
 
-     cd brackets/test && npm install && npx playwright install chromium
+     cd test && npm install && npx playwright install chromium
 
    If Playwright is not installed the browser suites are SKIPPED with a note
    rather than failing, so `run.mjs` stays useful on a machine that only wants
@@ -54,7 +54,7 @@ try { await import('playwright'); } catch { havePlaywright = false; }
 
 if (!havePlaywright) {
   console.log(`\nSkipping ${BROWSER_SUITES.length} browser suites — Playwright is not installed.`);
-  console.log('  cd brackets/test && npm install && npx playwright install chromium');
+  console.log('  cd test && npm install && npx playwright install chromium');
 } else {
   // The harness imports Playwright. Load it only after the optional dependency
   // check, otherwise even the dependency-free bracket filter fails at startup.

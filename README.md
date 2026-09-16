@@ -13,7 +13,7 @@ No build step. Any static server will do:
 
 ```
 python3 -m http.server 8000
-# http://localhost:8000/brackets/
+# http://localhost:8000/
 ```
 
 The demo seeds on first load only, and never over real data.

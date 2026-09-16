@@ -30,8 +30,8 @@
 
    ## Running them
 
-     node brackets/test/run.mjs            # everything, node + browser
-     node brackets/test/browser/a11y.test.mjs   # one suite
+     node test/run.mjs            # everything, node + browser
+     node test/browser/a11y.test.mjs   # one suite
 
    The runner starts its own server on a free port. If a suite is run
    directly it starts one too, so there is nothing to remember.
