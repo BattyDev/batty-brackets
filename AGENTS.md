@@ -1,7 +1,8 @@
 # AGENTS.md — Batty Brackets
 
 A standalone tournament bracket app for the fighting game community, served at
-`battybrackets.com`.
+`battybrackets.com`. Self-contained: nothing outside this directory shares
+code with it.
 
 ## Running and testing
 
@@ -86,11 +87,11 @@ directory left empty for licensing reasons.
 
 ## Deploying
 
-This repository is assembled into `BattyDev.github.io` at `/brackets/` by the
-site repository's Pages workflow. A push to `main` runs the full test workflow
-here first. When `SITE_DISPATCH_TOKEN` is configured, `publish.yml` then asks
-the site repository to rebuild immediately; otherwise its hourly schedule is
-the fallback. Work on a branch and require green tests before merging.
+This repository publishes directly to GitHub Pages at `battybrackets.com`.
+A push to `main` runs the full test job and the Pages deployment only runs when
+that job succeeds. The custom domain lives in the repository's Pages settings;
+DNS is managed in Cloudflare. Work on a branch and require green tests before
+merging.
 
 `docs/history/design-record.md` is the old detailed README: the reasoning trail
 for why things look the way they do. It is searchable context when a decision

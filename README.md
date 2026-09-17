@@ -85,3 +85,14 @@ notes in `config.js` point at that reviewed staging path.
 `config.js` takes a project URL and a publishable key, both public by design.
 A service role key or database password there would bypass row-level security
 entirely on a page whose source anyone can read.
+
+## Deploying
+
+GitHub Pages publishes this repository directly at the domain root. A push to
+`main` runs every Node and browser suite first; the same workflow deploys only
+after that test job succeeds. The custom domain is configured in the
+repository's Pages settings, not by committing a `CNAME` file.
+
+The old `battydev.com/brackets` assembly can remain available during the
+transition. Share links derive their origin and path from the page currently
+serving the app, so both locations continue to produce usable links.

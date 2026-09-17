@@ -2081,7 +2081,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .publication-wordmark .brand-mark { width: .82em; height: .66em; }
 .lobby-deck { font-size: 1.1rem; font-weight: 550; }
 .eyebrow { font-family: var(--font-mono); letter-spacing: .08em; }
-.event-directory .section-heading h3, .host-home > .section-heading h3 {
+.event-directory .section-heading :is(h2, h3), .host-home > .section-heading h3 {
   font: 750 2rem/1.15 var(--font-poster); text-transform: none; letter-spacing: -.025em;
 }
 .app .event-card {

@@ -83,7 +83,7 @@ function landing(ctx) {
       </header>
       <div class="lobby-grid">
         <section class="event-directory" aria-labelledby="events-heading">
-          <div class="section-heading"><div><p class="eyebrow">THE LINEUP</p><h3 id="events-heading">On the card</h3></div>
+          <div class="section-heading"><div><p class="eyebrow">THE LINEUP</p><h2 id="events-heading">On the card</h2></div>
             <span class="chip chip-static">${live.length} active</span></div>
           <div class="stack">${live.length ? list(live.map(e => eventCard(e, ctx))) : html`<div class="empty"><p>No active events on this device.</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}</div>
           <p class="local-device-note">${store.syncState().configured ? 'Browse events or enter the code from your host.' : 'These events are saved on this device. Online registration and sharing are not connected yet.'}</p>
