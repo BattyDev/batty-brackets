@@ -24,7 +24,7 @@ import { html, raw, list, icon, on, snack, dialog } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, evoLabel } from '../data/games.js';
-import { gameArt, gameHero, themeFor } from '../data/themes.js';
+import { gameArt, gameHero, gameMark, themeFor } from '../data/themes.js';
 
 /* Wizard state.
    --------------------------------------------------------------------------
@@ -43,6 +43,7 @@ import { gameArt, gameHero, themeFor } from '../data/themes.js';
    redirects, on this device. Still nothing on a server. */
 const DRAFT_KEY = 'battydev.brackets.draft';
 let draft = null;
+let publishing = false;
 
 function saveDraft() {
   try {
@@ -153,7 +154,7 @@ function stepGame() {
                 aria-pressed="${draft.gameId === game.id}">
           <span class="game-card-art">${raw(gameArt(game.id, { variant: 'hero' }))}</span>
           <div class="row" style="flex-wrap:nowrap">
-            <span class="avatar game-mark">${game.mark}</span>
+            ${raw(gameMark(game))}
             <div class="spacer">
               <b class="title-medium">${game.short}</b>
               <!-- Only when it says something the short name did not. Half these
@@ -635,9 +636,17 @@ function stepPublish(ctx, game) {
         </div>
       </div>`}
 
+    ${remote ? html`
+      <div class="banner banner-info" style="margin-bottom:16px">
+        ${raw(icon('check'))}
+        <div><b>This event will be published online.</b>
+          <p class="body-small" style="margin:4px 0 0">You will get a shareable invite code and link after the server confirms creation. The draft stays on this device if publishing fails.</p>
+        </div>
+      </div>` : ''}
+
     <button class="btn btn-filled btn-lg btn-block" data-act="wizard-publish"
-            ${raw(problems.length ? 'disabled' : '')}>
-      ${raw(icon('check'))} ${auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event'}
+            ${raw(problems.length || publishing ? 'disabled' : '')}>
+      ${raw(icon('check'))} ${publishing ? 'Creating…' : (auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event')}
     </button>
     <p class="body-small dim" style="text-align:center;margin-top:12px">
       Nothing here is final — every setting stays editable while the event is running.
@@ -656,6 +665,15 @@ function validate(game) {
   if (draft.venueType === 'online' && !draft.platforms.length) out.push('Pick at least one platform — an online event needs to know what people are playing on.');
   if (draft.capacity !== '' && (!Number.isInteger(Number(draft.capacity)) || Number(draft.capacity) < 2)) {
     out.push('Entrant capacity must be a whole number of at least 2.');
+  }
+  if (draft.capacity !== '' && Number(draft.capacity) > 256) {
+    out.push('Entrant capacity cannot exceed 256.');
+  }
+  if (auth.isRemote() && draft.capacity === '') {
+    out.push('Connected events need an entrant capacity (2–256).');
+  }
+  if (auth.isRemote() && draft.entryFee && Number(draft.entryFee) !== 0) {
+    out.push('Connected pilot events are free while payments are being built.');
   }
   if (draft.venueType === 'offline' && (!Number.isInteger(Number(draft.stationCount))
     || Number(draft.stationCount) < 1 || Number(draft.stationCount) > 64)) {
@@ -834,20 +852,61 @@ export function resumePendingPublish() {
   return true;
 }
 
-function publish() {
+function shareUrl(code) {
+  const url = new URL(window.location.href);
+  url.hash = '';
+  url.search = '';
+  url.searchParams.set('join', code);
+  return url.toString();
+}
+
+async function publish() {
   const game = gameById(draft.gameId);
-  if (!game || validate(game).length) return;
+  if (!game || validate(game).length || publishing) return;
 
   const me = auth.currentPlayer();
-  const id = store.uid('evt');
-  const code = auth.isRemote() ? store.inviteCode() : null;
+  const remote = auth.isRemote();
+  const id = remote ? (draft.pendingEventId || store.serverUid()) : store.uid('evt');
+  let code = null;
+
+  if (remote) {
+    draft.pendingEventId = id;
+    saveDraft();
+    publishing = true;
+    rerender();
+    try {
+      const stations = draft.venueType === 'offline'
+        ? Array.from({ length: Number(draft.stationCount) }, (_, i) => ({
+          label: `Station ${i + 1}`, platform: draft.platforms[0] || null,
+        }))
+        : [{ label: 'Online lobby', platform: draft.platforms[0] || null }];
+      const result = await store.createRemoteEvent(id, {
+        orgName: `${me.tag}'s events`,
+        name: draft.name.trim(), gameId: draft.gameId, format: draft.format,
+        venueType: draft.venueType, venue: draft.venue.trim(), platforms: draft.platforms,
+        startsAt: new Date(draft.startsAt).toISOString(),
+        capacity: draft.capacity ? Number(draft.capacity) : null,
+        entryFee: 0, currency: draft.currency,
+        visibility: draft.visibility === 'unlisted' ? 'unlisted' : 'public',
+        presetId: draft.presetId || game.presets[0].id,
+        overrides: draft.overrides, documents: draft.documents, stations,
+      });
+      code = result.inviteCode;
+    } catch (err) {
+      publishing = false;
+      rerender();
+      snack(`Could not create the event: ${String(err?.message || err)}`);
+      return;
+    }
+    publishing = false;
+  }
 
   /* An org is created on first publish rather than being a separate onboarding
      step. A TO running their first weekly does not want to fill in a "create
      your organisation" form; they want a bracket. The org exists so the second
      event has somewhere to belong, and so staff can be added later. */
   let orgId = me?.defaultOrgId;
-  if (!orgId) {
+  if (!remote && !orgId) {
     orgId = store.uid('org');
     store.apply('orgs', orgId, {
       id: orgId,
@@ -858,7 +917,7 @@ function publish() {
     if (me) store.apply('players', me.id, { defaultOrgId: orgId });
   }
 
-  store.apply('events', id, {
+  if (!remote) store.apply('events', id, {
     id, orgId,
     ownerId: me?.id || null,
     name: draft.name.trim(),
@@ -873,7 +932,7 @@ function publish() {
     currency: draft.currency,
     status: 'registration',
     visibility: draft.visibility === 'unlisted' ? 'unlisted' : 'public',
-    inviteCode: code,
+    inviteCode: null,
     presetId: draft.presetId || game.presets[0].id,
     overrides: draft.overrides,
     documents: draft.documents,
@@ -883,7 +942,7 @@ function publish() {
   /* The station count is deliberately entered by the TO. A hard-coded four
      looked convenient in a demo but created the wrong queue for a real room,
      which is worse than asking for the one fact only the organiser knows. */
-  if (draft.venueType === 'offline') {
+  if (!remote && draft.venueType === 'offline') {
     for (let i = 1; i <= Number(draft.stationCount); i += 1) {
       const stationId = store.uid('stn');
       store.apply('stations', stationId, {
@@ -899,11 +958,11 @@ function publish() {
   dialog({
     title: 'Event created',
     body: html`
-      ${auth.isRemote() ? html`
+      ${remote ? html`
         <p class="body-medium">${name} is live. Share this code with entrants who open the site.</p>
         <div class="card card-filled" style="text-align:center;margin:16px 0">
           <div class="invite-code">${code}</div>
-          <div class="body-small dim" style="margin-top:4px">battydev.com/brackets/?join=${code}</div>
+          <div class="body-small dim" style="margin-top:4px">${shareUrl(code)}</div>
         </div>` : html`
         <div class="banner banner-info local-device-note">
           ${raw(icon('station'))}
@@ -913,9 +972,9 @@ function publish() {
         </div>`}
       <p class="body-small dim">Next: add entrants — one at a time, or paste a spreadsheet of them.</p>`,
     actions: [
-      ...(auth.isRemote() ? [{ label: 'Copy the link', kind: 'text', onClick: async () => {
+      ...(remote ? [{ label: 'Copy the link', kind: 'text', onClick: async () => {
         const { copy } = await import('../lib/ui.js');
-        await copy(`https://battydev.com/brackets/?join=${code}`);
+        await copy(shareUrl(code));
         snack('Link copied');
         return false;
       } }] : []),

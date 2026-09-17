@@ -39,6 +39,20 @@ language sql volatile set search_path=pg_catalog as $$
  select replace(gen_random_uuid()::text||gen_random_uuid()::text,'-','')
 $$;
 
+-- Invite codes are spoken over a PA and copied from a phone. Twelve symbols
+-- from a 32-character ambiguity-free alphabet provide 60 bits of entropy;
+-- the per-account attempt throttle makes online guessing impractical. Private
+-- walk-up claim tokens keep the longer 256-bit representation above.
+create function bkt_private.new_invite_code() returns text
+language plpgsql volatile set search_path=pg_catalog as $$
+declare v_bytes bytea:=extensions.gen_random_bytes(12); v_alphabet constant text:='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; v_code text:=''; v_i integer;
+begin
+ for v_i in 0..11 loop
+   v_code:=v_code||substr(v_alphabet,(get_byte(v_bytes,v_i)%32)+1,1);
+ end loop;
+ return v_code;
+end $$;
+
 create function public.bkt_create_event(p_event_id uuid,p_event jsonb) returns jsonb
 language plpgsql security definer set search_path=pg_catalog as $$
 declare
@@ -152,7 +166,7 @@ begin
      insert into public.bkt_stations(event_id,number,label,platform)
        values(p_event_id,v_n,trim(v_item->>'label'),v_item->>'platform');
    end loop;
-   v_code:=bkt_private.new_token();
+   v_code:=bkt_private.new_invite_code();
    insert into bkt_private.invites values(sha256(convert_to(v_code,'UTF8')),p_event_id,now()+interval '30 days');
    insert into bkt_private.create_requests values(p_event_id,v_me,p_event,v_code);
  end if;
@@ -241,10 +255,10 @@ language plpgsql security definer set search_path=pg_catalog as $$
 declare v_me uuid:=bkt_private.require_me(); v_event uuid; v_exp timestamptz;
 begin
  if not bkt_private.attempt('invite') then return jsonb_build_object('error','rate_limited'); end if;
- if p_code is null or p_code !~ '^[0-9a-fA-F]{64}$' then return jsonb_build_object('error','invalid_code'); end if;
+ if p_code is null or upper(p_code) !~ '^[A-HJ-NP-Z2-9]{12}$' then return jsonb_build_object('error','invalid_code'); end if;
  select i.event_id,least(i.expires_at,now()+interval '24 hours') into v_event,v_exp
  from bkt_private.invites i join public.bkt_events e on e.id=i.event_id
- where i.token_hash=sha256(convert_to(lower(p_code),'UTF8')) and i.expires_at>now() and e.status<>'draft';
+ where i.token_hash=sha256(convert_to(upper(p_code),'UTF8')) and i.expires_at>now() and e.status<>'draft';
  if not found then return jsonb_build_object('error','invalid_code'); end if;
  insert into bkt_private.readers values(v_event,v_me,v_exp)
  on conflict(event_id,player_id) do update set expires_at=excluded.expires_at;
@@ -290,6 +304,6 @@ grant execute on function public.bkt_identity(text),public.bkt_create_event(uuid
  public.bkt_join_event(uuid,text,boolean),public.bkt_set_contact(uuid,text,boolean),
  public.bkt_read_contacts(uuid),public.bkt_event_by_code(text) to authenticated;
 grant execute on function public.bkt_read_event(uuid),public.bkt_list_events() to anon,authenticated;
-revoke all on function bkt_private.require_me(),bkt_private.new_token(),bkt_private.attempt(text)
+revoke all on function bkt_private.require_me(),bkt_private.new_token(),bkt_private.new_invite_code(),bkt_private.attempt(text)
  from public,anon,authenticated;
 commit;

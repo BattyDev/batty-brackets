@@ -12,7 +12,7 @@ assets/games/tokon/
 ```
 
 ```js
-// brackets/data/themes.js
+// data/themes.js
 tokon: {
   assets: {
     hero: 'hero.jpg',

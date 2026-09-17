@@ -2063,7 +2063,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 /* Local fight-night identity: poster typography, ticket edges and a bat crest.
    Personality belongs to welcome surfaces and section hierarchy. Operational
    copy, tables and status colors retain the shared readable system. */
-:root { --font-poster: Impact, 'Arial Narrow', 'Franklin Gothic Medium', var(--font); }
+:root { --font-poster: var(--font); }
 .lobby-heading {
   position: relative; padding: 28px 0 30px; margin-bottom: 28px;
   border-top: 4px solid var(--md-on-surface);
@@ -2082,7 +2082,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .lobby-deck { font-size: 1.1rem; font-weight: 550; }
 .eyebrow { font-family: var(--font-mono); letter-spacing: .08em; }
 .event-directory .section-heading h3, .host-home > .section-heading h3 {
-  font: 400 2rem/1.1 var(--font-poster); text-transform: uppercase; letter-spacing: .02em;
+  font: 750 2rem/1.15 var(--font-poster); text-transform: none; letter-spacing: -.025em;
 }
 .app .event-card {
   border: 1px solid var(--md-outline); border-left: 5px solid var(--md-primary);
@@ -2102,25 +2102,25 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 .player-door .door-icon { display: none; }
 .player-door h3, .host-door h3 {
   font-family: var(--font-poster); font-size: clamp(1.8rem, 2.7vw, 2.5rem);
-  font-weight: 400; text-transform: uppercase; letter-spacing: .015em; line-height: 1.08;
+  font-weight: 750; text-transform: none; letter-spacing: -.025em; line-height: 1.12;
 }
 .player-door .btn-filled { border: 1px solid #d5ff75; border-radius: 4px; box-shadow: 3px 3px 0 #0e1120; font-weight: 750; }
 .host-door { border-radius: 4px; border-top: 4px solid var(--md-primary); }
 .host-door .door-icon { border-radius: 4px; width: 40px; height: 40px; margin-bottom: 18px; }
 .workspace-heading h2, .player-greeting h2 {
-  font-family: var(--font-poster); text-transform: uppercase; letter-spacing: .015em;
-  font-weight: 400; font-size: clamp(2rem, 3.6vw, 3rem);
+  font-family: var(--font-poster); text-transform: none; letter-spacing: -.035em;
+  font-weight: 750; font-size: clamp(2rem, 3.6vw, 3rem);
 }
 .host-home .workspace-heading, .host-overview .workspace-heading {
   border-bottom: 2px solid var(--md-on-surface); padding-bottom: 24px;
 }
 .host-summary, .operations-pulse { border-radius: 4px; border-top: 3px solid var(--md-primary); }
-.host-summary b, .operations-pulse b { font-family: var(--font-poster); font-weight: 400; letter-spacing: .02em; }
+.host-summary b, .operations-pulse b { font-family: var(--font-poster); font-weight: 750; letter-spacing: -.02em; }
 .rail-logo { border-radius: 4px 14px 4px 14px; transform: rotate(-4deg); box-shadow: 3px 3px 0 var(--md-outline-variant); }
 .rail-identity span { font-family: var(--font-mono); font-size: .75rem; }
 .lobby-footer { border-top: 2px solid var(--md-on-surface); }
 .next-set { border-radius: 4px 20px 20px 4px !important; }
-.next-set .headline-small { font-family: var(--font-poster); text-transform: uppercase; letter-spacing: .02em; }
+.next-set .headline-small { font-family: var(--font-poster); text-transform: none; letter-spacing: -.015em; }
 @media (max-width: 599px) {
   .lobby-heading { padding-top: 20px; }
   .publication-wordmark { font-size: clamp(2.1rem, 8.5vw, 3rem); }
@@ -2128,9 +2128,31 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   .event-card-main .game-mark { font-size: .875rem; }
 }
 
-/* The top bar is utilities only; page identity belongs in the content. */
-.top-bar { justify-content: flex-end; }
-.top-bar > [aria-label="Back"] { margin-right: auto; }
+/* A solid product header keeps the app from opening on an empty utility strip.
+   Page titles still live in content; this is persistent product identity. */
+.top-bar {
+  justify-content: flex-start; min-height: 68px; padding-inline: 18px 22px;
+  background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);
+  box-shadow: 0 3px 16px color-mix(in srgb, var(--md-shadow) 14%, transparent);
+}
+.top-bar-brand {
+  display: inline-flex; align-items: center; gap: 10px; margin-right: auto;
+  color: var(--md-on-surface); text-decoration: none; min-height: 44px;
+}
+.top-bar-brand .brand-mark { width: 34px; height: 28px; color: var(--md-primary); }
+.top-bar-brand > span { display: grid; font-size: .96rem; line-height: 1.1; font-weight: 750; letter-spacing: -.01em; }
+.top-bar-brand .brand-credit { margin-top: 4px; color: var(--md-on-surface-variant); font: 650 .62rem/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.top-bar > [aria-label="Back"] { margin-right: 0; }
+
+.game-mark.game-cover { padding: 0; overflow: hidden; background: var(--md-surface-container-high); }
+.game-mark.game-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+@media (max-width: 599px) {
+  .top-bar { min-height: 60px; padding-inline: 10px 12px; }
+  .top-bar-brand > span { display: none; }
+  .top-bar-brand { margin-right: auto; }
+  .top-bar-brand .brand-mark { width: 30px; height: 24px; }
+}
 
 /* Extend the accepted identity to setup and records. Names remain system sans:
    condensed poster lettering is reserved for short, nonessential headings. */

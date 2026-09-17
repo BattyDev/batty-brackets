@@ -18,7 +18,7 @@
    pairing that only appears on a rarely-visited screen still cannot regress.
    --------------------------------------------------------------------------- */
 
-import { GAME_THEMES } from '../data/themes.js';
+import { GAME_THEMES, gameMark } from '../data/themes.js';
 import { GAMES } from '../data/games.js';
 
 let passed = 0;
@@ -180,6 +180,20 @@ for (const game of GAMES) {
   failed += 1;
   console.error(`  FAIL  ${game.id} (${game.short}) has no theme`);
 }
+
+/* Licensed art is opt-in and must resolve from the standalone site's root.
+   Keep the text mark as the fallback so a missing licence never becomes a
+   broken image in production. */
+const tokon = GAMES.find((game) => game.id === 'tokon');
+const fallbackMark = String(gameMark(tokon));
+if (fallbackMark.includes('>TK<') && !fallbackMark.includes('<img')) passed += 1;
+else { failed += 1; console.error('  FAIL  game mark fallback must remain text-only'); }
+
+GAME_THEMES.tokon.assets.icon = 'licensed-cover.webp';
+const licensedMark = String(gameMark(tokon));
+GAME_THEMES.tokon.assets.icon = null;
+if (licensedMark.includes('src="assets/games/tokon/licensed-cover.webp"')) passed += 1;
+else { failed += 1; console.error('  FAIL  licensed game art must resolve from assets/games'); }
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

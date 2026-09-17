@@ -189,7 +189,7 @@ export const GAME_THEMES = Object.fromEntries(
     motif: BESPOKE[id] || 'generic',
     identity: BESPOKE[id] ? 'bespoke' : 'placeholder',
     tagline: TAGLINES[id] || null,
-    /* Every path is relative to `brackets/assets/games/<id>/`. Leave a value
+    /* Every path is relative to `assets/games/<id>/`. Leave a value
        null and the drawn artwork is used; fill one in and it takes over with
        no other change. Read the README section "Official game artwork" first
        — the terms matter, and they are not this file's call. */
@@ -398,6 +398,10 @@ export function gameArt(gameId, { variant = 'hero', label = '' } = {}) {
    that fails contrast -- and it failed here before this existed. */
 export function gameMark(game, { size = '' } = {}) {
   if (!game) return html`<span class="avatar ${raw(size)}" aria-hidden="true">?</span>`;
+  const official = themeFor(game.id)?.assets?.icon;
+  if (official) return html`<span class="avatar game-mark game-cover ${raw(size)}" data-game="${game.id}" aria-hidden="true">
+    <img src="assets/games/${game.id}/${official}" alt="" loading="lazy" decoding="async">
+  </span>`;
   return html`<span class="avatar game-mark ${raw(size)}" data-game="${game.id}" aria-hidden="true">${game.mark}</span>`;
 }
 
@@ -413,7 +417,7 @@ export function gameHero(game, { title, subtitle, compact = false } = {}) {
     <div class="game-hero ${raw(compact ? 'compact' : '')}" data-game="${game.id}">
       <div class="game-hero-art" aria-hidden="true">
         ${official
-          ? html`<img src="../assets/games/${game.id}/${official}" alt="" loading="lazy" decoding="async">`
+          ? html`<img src="assets/games/${game.id}/${official}" alt="" loading="lazy" decoding="async">`
           : raw(gameArt(game.id, { variant: compact ? 'strip' : 'hero' }))}
       </div>
       <div class="game-hero-body">

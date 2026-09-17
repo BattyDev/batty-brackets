@@ -164,6 +164,26 @@ const TAB_VIEWS = {
 };
 
 export function view(ctx) {
+  if (auth.isRemote()) {
+    const connectedEvent = store.getEvent(ctx.params.eventId);
+    const connectedOrg = connectedEvent && store.getOrg(connectedEvent.orgId);
+    const ownsEvent = connectedEvent && (connectedEvent.ownerId
+      ? connectedEvent.ownerId === ctx.me?.id
+      : connectedOrg?.ownerId === ctx.me?.id);
+    return {
+      title: connectedEvent?.name || 'Host workspace',
+      back: connectedEvent ? `/e/${connectedEvent.id}` : '/host',
+      body: html`<div class="pane" style="max-width:720px">
+        <div class="banner ${raw(ownsEvent ? 'banner-info' : 'banner-error')}">${raw(icon(ownsEvent ? 'station' : 'alert'))}
+          <div><b>${ownsEvent ? 'Connected host controls are read-only for now.' : 'This event belongs to another organizer.'}</b>
+          <p class="body-small" style="margin:4px 0 0">${ownsEvent
+            ? 'Event creation and player registration are connected. Check-in, seeding, stations, results, and corrections stay disabled until their transactional server commands are ready.'
+            : 'You can follow the event as a player, but organizer controls are not available for this account.'}</p></div>
+        </div>
+        ${connectedEvent ? html`<a class="btn btn-filled" href="#/e/${connectedEvent.id}" style="margin-top:16px">Open the player view</a>` : ''}
+      </div>`,
+    };
+  }
   const eventId = ctx.params.eventId;
   const tab = TAB_VIEWS[ctx.params.tab] ? ctx.params.tab : 'overview';
   const data = contextFor(eventId);
@@ -322,6 +342,10 @@ function overviewTab(data, suggestions, ctx) {
   const played = (bracket?.matches || []).filter((m) => m.state).length;
   const total = (bracket?.matches || []).filter((m) => !m.cancelled).length;
   const at = FLOW.indexOf(event.status);
+  const joinUrl = new URL(window.location.href);
+  joinUrl.hash = '';
+  joinUrl.search = '';
+  joinUrl.searchParams.set('join', event.inviteCode || '');
 
   return html`
     <div class="pane host-overview">
@@ -343,7 +367,7 @@ function overviewTab(data, suggestions, ctx) {
           <b class="title-medium spacer">${FLOW_LABEL[event.status]}</b>
           ${store.syncState().configured && !event.demo ? html`
             <span class="code">${event.inviteCode}</span>
-            <button class="btn btn-icon" data-act="copy-text" data-text="https://battydev.com/brackets/?join=${event.inviteCode}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
+            <button class="btn btn-icon" data-act="copy-text" data-text="${joinUrl.toString()}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
         </div>
         <div class="row" style="gap:4px;margin-bottom:12px">
           ${list(FLOW.map((s, i) => html`

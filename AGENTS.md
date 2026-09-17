@@ -1,8 +1,7 @@
 # AGENTS.md — Batty Brackets
 
-A tournament bracket app for the fighting game community, served at
-`battydev.com/brackets`. Self-contained: nothing outside this directory shares
-code with it.
+A standalone tournament bracket app for the fighting game community, served at
+`battybrackets.com`.
 
 ## Running and testing
 
@@ -82,9 +81,8 @@ walls. Introducing a build step, a framework, or a dependency is a real option
 if it earns its place — it's a judgement call about tradeoffs, and worth saying
 out loud in the change, but it is not off limits.
 
-Two references reach outside this directory: the home button links to
-`../index.html`, and the artwork slot in `data/themes.js` reads
-`../assets/games/<id>/<file>`, a directory left empty for licensing reasons.
+The artwork slot in `data/themes.js` reads `assets/games/<id>/<file>`, a
+directory left empty for licensing reasons.
 
 ## Deploying
 

@@ -21,6 +21,7 @@ import * as auth from '../lib/auth.js';
 import { gameById, GAMES } from '../data/games.js';
 import { formatMoney } from '../lib/guidance.js';
 import { brandMark } from '../lib/brand.js';
+import { gameMark } from '../data/themes.js';
 
 const STATUS = {
   draft: { label: 'Draft', chip: '' },
@@ -30,6 +31,25 @@ const STATUS = {
   running: { label: 'Running now', chip: 'chip-ok' },
   complete: { label: 'Finished', chip: '' },
 };
+
+let codeLookup = { code: null, status: 'idle', error: null };
+const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+function ensureRemoteLookup(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!normalized || !auth.isRemote() || !auth.isSignedIn()) return;
+  if (codeLookup.code === normalized && ['loading', 'done'].includes(codeLookup.status)) return;
+  codeLookup = { code: normalized, status: 'loading', error: null };
+  Promise.resolve().then(async () => {
+    try {
+      await store.redeemRemoteCode(normalized);
+      codeLookup = { code: normalized, status: 'done', error: null };
+    } catch (err) {
+      codeLookup = { code: normalized, status: 'error', error: String(err?.message || err) };
+    }
+    rerender();
+  });
+}
 
 export function view(ctx) {
   const { me, params } = ctx;
@@ -57,7 +77,7 @@ function landing(ctx) {
     <div class="pane lobby publication">
       <header class="lobby-heading">
         <div><p class="eyebrow publication-edition">LOCAL SCENE. BIG SETS. · By BattyDev</p>
-          <h2 class="publication-wordmark">${raw(brandMark())}Batty Brackets<span>.</span></h2>
+          <h1 class="publication-wordmark">${raw(brandMark())}Batty Brackets<span>.</span></h1>
           <p class="lobby-deck">Find your local. Get your games in.</p></div>
         <a class="btn btn-filled" href="#/join">${raw(icon('key'))} Join with a code</a>
       </header>
@@ -91,7 +111,11 @@ function landing(ctx) {
 function hostHome(ctx) {
   // Match existing local ownership semantics; a mode switch does not grant
   // connected users access to somebody else's event or expose unlisted rows.
-  const events = store.listEvents({ all: true }).filter(e => !ctx.session || !e.ownerId || e.ownerId === ctx.me?.id);
+  const events = store.listEvents({ all: true }).filter((e) => {
+    if (!ctx.session) return true;
+    const org = store.getOrg(e.orgId);
+    return e.ownerId ? e.ownerId === ctx.me?.id : org?.ownerId === ctx.me?.id;
+  });
   const active = events.filter(e => e.status !== 'complete');
   const past = events.filter(e => e.status === 'complete');
   const demo = store.getEvent('evt_demo_tokon')?.demo;
@@ -176,13 +200,15 @@ function eventCard(event, ctx, isEntered = false) {
      local-only mode there is no ownership to check, so whoever is holding the
      device is the organiser -- which is exactly right for a TO running a
      weekly off one phone. */
-  const canAdmin = !ctx.session || !event.ownerId || event.ownerId === ctx.me?.id;
+  const canAdmin = !ctx.session || (event.ownerId
+    ? event.ownerId === ctx.me?.id
+    : org?.ownerId === ctx.me?.id);
 
   return html`
     <article class="card card-outlined event-card">
-      <a class="event-card-main" href="#/e/${event.id}${ctx.route === 'host' ? '/admin' : ''}">
+      <a class="event-card-main" href="#/e/${event.id}${ctx.route === 'host' && canAdmin ? '/admin' : ''}">
       <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
-        <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark || '?'}</span>
+        ${raw(gameMark(game))}
         <div class="spacer" style="min-width:0">
           <div class="row-tight" style="gap:8px">
             <b class="title-medium">${event.name}</b>
@@ -215,7 +241,9 @@ function eventCard(event, ctx, isEntered = false) {
    -------------------------------------------------------------------------- */
 
 function joinView(ctx, code) {
+  const normalizedCode = String(code || '').trim().toUpperCase();
   const event = code ? store.eventByInvite(code) : null;
+  if (!event) ensureRemoteLookup(normalizedCode);
   const game = event ? gameById(event.gameId) : null;
   const org = event ? store.getOrg(event.orgId) : null;
   const entries = event ? store.entriesFor(event.id) : [];
@@ -238,15 +266,22 @@ function joinView(ctx, code) {
           <button class="btn btn-filled btn-block" type="submit">Find it</button>
         </form>
 
-        ${code && !event ? html`
+        ${normalizedCode && !event && auth.isRemote() && !auth.isSignedIn() ? html`
+          <div class="banner banner-info" style="margin-top:16px">${raw(icon('person'))}
+            <div><b>Sign in to use this invitation.</b><p class="body-small" style="margin:4px 0 0">Your code stays in the address while you sign in.</p>
+              <button class="btn btn-filled btn-sm" data-act="sign-in" style="margin-top:10px">Sign in</button></div>
+          </div>` : ''}
+        ${normalizedCode && !event && auth.isRemote() && auth.isSignedIn() && codeLookup.code === normalizedCode && codeLookup.status === 'loading' ? html`
+          <div class="banner banner-info" style="margin-top:16px">${raw(icon('clock'))}<div>Finding your event…</div></div>` : ''}
+        ${normalizedCode && !event && (!auth.isRemote() || (codeLookup.code === normalizedCode && codeLookup.status === 'error')) ? html`
           <div class="banner banner-error" style="margin-top:16px">${raw(icon('alert'))}
-            <div>No event with the code <b>${code}</b>. Codes never use 0, O, 1 or I — check for a mistyped letter.</div>
+            <div>${auth.isRemote() ? codeLookup.error : `No event with the code <b>${normalizedCode}</b>. Codes never use 0, O, 1 or I — check for a mistyped letter.`}</div>
           </div>` : ''}
 
         ${event ? html`
           <div class="card card-elevated" style="margin-top:20px">
             <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
-              <span class="avatar game-mark" data-game="${event.gameId}">${game?.mark}</span>
+              ${raw(gameMark(game))}
               <div class="spacer">
                 <h2 class="title-large">${event.name}</h2>
                 ${org ? html`<p class="event-attribution">Organized by ${org.name}</p>` : ''}
@@ -301,6 +336,17 @@ on('join-event', async ({ event: eventId }) => {
 
   const me = auth.currentPlayer();
   if (store.entryFor(eventId, me.id)) { snack('You are already entered.'); return; }
+
+  if (auth.isRemote()) {
+    try {
+      const entry = await store.joinRemoteEvent(eventId);
+      snack(entry.waitlisted ? 'On the waitlist.' : `Entered ${event.name}.`);
+      window.location.hash = `#/e/${eventId}`;
+    } catch (err) {
+      snack(`Could not join: ${String(err?.message || err)}`);
+    }
+    return;
+  }
 
   const entries = store.entriesFor(eventId);
   const full = Boolean(event.capacity && entries.filter((entry) => !entry.waitlisted).length >= event.capacity);

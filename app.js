@@ -20,7 +20,8 @@
 
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
-import { brandMark } from './lib/brand.js';
+import { createBackend, isUuid } from './lib/backend.js';
+import { brandMark, brandSignature } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
@@ -48,7 +49,11 @@ async function connect() {
   if (!cfg.url || !cfg.key) return null;
   try {
     const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-    return createClient(cfg.url, cfg.key);
+    const client = createClient(cfg.url, cfg.key);
+    return {
+      client,
+      backend: createBackend({ rpc: (name, args) => client.rpc(name, args) }),
+    };
   } catch (err) {
     /* A CDN that is blocked or slow must not stop the app: everything works
        locally, it just will not sync. Saying so beats a blank page. */
@@ -229,6 +234,20 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)">
       ${raw(icon('station', 'icon-sm'))} Saved on this device</button>`;
   }
+  if (s.connected && s.localOnlyWrites) {
+    return html`<button type="button" class="sync pending" data-act="recovery-open"
+      aria-label="Connected RPC mode: ${s.localOnlyWrites} local-only controls"
+      title="This connected slice syncs identity, events and joins through explicit commands. Other host controls remain local-only until their server commands exist."
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
+  }
+  if (s.connected) {
+    return html`<button type="button" class="sync" data-act="recovery-open"
+      aria-label="Connected through explicit server commands"
+      title="Identity, event setup, event lookup and joining use the connected RPC boundary."
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('check', 'icon-sm'))}
+      Connected · RPC mode</button>`;
+  }
   if (!s.online) {
     return html`<button type="button" class="sync offline" data-act="recovery-open"
       aria-label="Backup and recovery: saved locally, offline"
@@ -269,7 +288,10 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
   // deterministic; visiting a player page must not leave host tools selected.
   const host = ['host', 'admin', 'new', 'recovery'].includes(route.name);
   const event = route.params.eventId && store.getEvent(route.params.eventId);
-  const canHost = !event || !auth.currentSession() || !event.ownerId || event.ownerId === me?.id;
+  const eventOrg = event && store.getOrg(event.orgId);
+  const canHost = !event || !auth.currentSession() || (event.ownerId
+    ? event.ownerId === me?.id
+    : eventOrg?.ownerId === me?.id);
   const navigation = host ? [
     { label: 'My events', icon: 'trophy', path: '/host', current: ['host', 'admin'].includes(route.name) },
     { label: 'Create event', icon: 'plus', path: '/new', current: route.name === 'new' },
@@ -287,6 +309,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
     <div class="app ${raw(host ? 'experience-host' : 'experience-player')} ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
       <header class="top-bar">
         ${back ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>` : ''}
+        <a class="top-bar-brand" href="#/" aria-label="Home">${raw(brandSignature())}</a>
         <nav class="experience-switch" aria-label="Experience">
           <a href="#${event ? `/e/${event.id}` : '/'}" ${raw(!host ? 'aria-current="true"' : '')}>Player</a>
           ${canHost ? html`<a href="#${event ? `/e/${event.id}/admin` : '/host'}" ${raw(host ? 'aria-current="true"' : '')}>Host</a>` : ''}
@@ -319,7 +342,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
       <main class="scaffold" id="main" tabindex="-1">
         <!-- Keep route identification for screen readers without duplicating
              the visible page branding in the utility bar. -->
-        <h1 class="sr-only">${title}</h1>
+        ${route.name === 'home' ? '' : html`<h1 class="sr-only">${title}</h1>`}
         ${raw(inner)}
         ${raw(tour.demoBanner())}
       </main>
@@ -332,6 +355,19 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
 
 const root = document.getElementById('app');
 let drawing = false;
+const routeHydration = new Map();
+
+function hydrateRemoteRoute(eventId) {
+  if (routeHydration.get(eventId)?.status === 'loading') return;
+  routeHydration.set(eventId, { status: 'loading', error: null });
+  store.readRemoteEvent(eventId).then(() => {
+    routeHydration.set(eventId, { status: 'done', error: null });
+    draw();
+  }).catch((error) => {
+    routeHydration.set(eventId, { status: 'error', error: String(error?.message || error) });
+    draw();
+  });
+}
 
 export function draw() {
   /* Guard against re-entrancy: a view's render can call store.apply (for
@@ -341,6 +377,23 @@ export function draw() {
   drawing = true;
   try {
     const route = parseRoute();
+    const missingRemoteEvent = route.params.eventId && store.syncState().connected
+      && isUuid(route.params.eventId) && !store.getEvent(route.params.eventId);
+    if (missingRemoteEvent) {
+      const hydration = routeHydration.get(route.params.eventId);
+      if (!hydration) Promise.resolve().then(() => hydrateRemoteRoute(route.params.eventId));
+      render(root, shell(html`<div class="pane"><div class="banner ${raw(hydration?.status === 'error' ? 'banner-error' : 'banner-info')}">
+        ${raw(icon(hydration?.status === 'error' ? 'alert' : 'clock'))}
+        <div><b>${hydration?.status === 'error' ? 'This event is unavailable.' : 'Loading the event…'}</b>
+        ${hydration?.error ? html`<p class="body-small" style="margin:4px 0 0">${hydration.error}</p>` : ''}</div>
+      </div><p><a class="btn btn-tonal" href="#/">Back to events</a></p></div>`, {
+        title: 'Event', back: '/',
+      }));
+      drawChrome();
+      announceRoute('Event');
+      focusMainIfNavigated(route.path);
+      return;
+    }
     const ctx = {
       state: store.get(),
       session: auth.currentSession(),
@@ -512,15 +565,22 @@ on('undo', () => {
   const cfg = window.BRACKETS_CONFIG || {};
   const configured = Boolean(cfg.url && cfg.key);
 
-  store.boot({ demo: !configured });
+  store.boot({
+    demo: !configured,
+    scope: configured ? { projectUrl: cfg.url, accountId: 'anonymous' } : null,
+  });
 
-  const client = await connect();
-  if (client) {
-    store.attach(client);
-    await auth.initAuth(client);
-    /* Now that auth has resolved, a signed-out visitor gets the demo too. */
-    if (!auth.isSignedIn()) store.seedDemo();
-    store.pull().then(draw);
+  const connection = await connect();
+  if (connection) {
+    const { client, backend } = connection;
+    /* The production boot path crosses the connected boundary exactly once:
+       an explicit RPC adapter. It never attaches the legacy generic outbox
+       and never performs a table pull. */
+    store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
+    await auth.initAuth(client, { connectedBackend: backend });
+    /* Pull only the public/account-visible list through bkt_list_events. A
+       signed-out connected visitor gets no local demo seed. */
+    await store.pull();
   } else {
     await auth.initAuth(null);
   }
@@ -531,7 +591,10 @@ on('undo', () => {
   tour.snapshot();
 
   store.subscribe(() => draw());
-  auth.onAuth(() => draw());
+  auth.onAuth(() => {
+    draw();
+    if (auth.isRemote()) store.pull().then(draw);
+  });
   window.addEventListener('brackets-recovery-change', draw);
   window.addEventListener('hashchange', draw);
 
@@ -572,8 +635,8 @@ on('undo', () => {
   const setup = await import('./views/setup.js');
   setup.resumePendingPublish();
 
-  /* Sets up the "brackets" search param -> invite code shortcut, so a QR code
-     on a flyer can be battydev.com/brackets/?join=TKN14B and land straight on
+  /* Sets up the "join" search param -> invite code shortcut, so a QR code
+     on a flyer can be battybrackets.com/?join=TKN14B and land straight on
      the join screen. Query params survive Discord's link handling better than
      a hash does. */
   const params = new URLSearchParams(window.location.search);

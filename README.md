@@ -1,7 +1,7 @@
 # Batty Brackets
 
 Tournament brackets for fighting games, built for the people running them.
-Served at [battydev.com/brackets](https://battydev.com/brackets).
+Served at [battybrackets.com](https://battybrackets.com/).
 
 Open it and a tournament is already running — a 28-entrant demo event seeded
 into your own browser, no sign-in, with a reset button. There is no backend
