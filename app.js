@@ -241,10 +241,22 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
       Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
   }
+  if (s.connected && s.lastServerError) {
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Connected save failed" title="${s.lastServerError}"
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · Save failed</button>`;
+  }
+  if (s.connected && s.pending) {
+    return html`<button type="button" class="sync pending" data-act="recovery-open"
+      aria-label="Connected event is saving"
+      style="border:0;cursor:pointer;font:var(--label-medium)"><span class="dot"></span>
+      Connected · Saving</button>`;
+  }
   if (s.connected) {
     return html`<button type="button" class="sync" data-act="recovery-open"
       aria-label="Connected through explicit server commands"
-      title="Identity, event setup, event lookup and joining use the connected RPC boundary."
+      title="Event setup, registration, organizer controls and results use versioned server commands."
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('check', 'icon-sm'))}
       Connected · RPC mode</button>`;
   }
@@ -377,9 +389,10 @@ export function draw() {
   drawing = true;
   try {
     const route = parseRoute();
-    const missingRemoteEvent = route.params.eventId && store.syncState().connected
-      && isUuid(route.params.eventId) && !store.getEvent(route.params.eventId);
-    if (missingRemoteEvent) {
+    const remoteEventRoute = route.params.eventId && store.syncState().connected
+      && isUuid(route.params.eventId);
+    const remoteHydration = remoteEventRoute && routeHydration.get(route.params.eventId);
+    if (remoteEventRoute && remoteHydration?.status !== 'done') {
       const hydration = routeHydration.get(route.params.eventId);
       if (!hydration) Promise.resolve().then(() => hydrateRemoteRoute(route.params.eventId));
       render(root, shell(html`<div class="pane"><div class="banner ${raw(hydration?.status === 'error' ? 'banner-error' : 'banner-info')}">
@@ -596,7 +609,11 @@ on('undo', () => {
     if (auth.isRemote()) store.pull().then(draw);
   });
   window.addEventListener('brackets-recovery-change', draw);
-  window.addEventListener('hashchange', draw);
+  window.addEventListener('hashchange', () => {
+    const eventId = parseRoute().params.eventId;
+    if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
+    draw();
+  });
 
   /* Live clocks: DQ timers and how long a set has been out.
      ------------------------------------------------------------------------

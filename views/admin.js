@@ -170,15 +170,13 @@ export function view(ctx) {
     const ownsEvent = connectedEvent && (connectedEvent.ownerId
       ? connectedEvent.ownerId === ctx.me?.id
       : connectedOrg?.ownerId === ctx.me?.id);
-    return {
+    if (!ownsEvent) return {
       title: connectedEvent?.name || 'Host workspace',
       back: connectedEvent ? `/e/${connectedEvent.id}` : '/host',
       body: html`<div class="pane" style="max-width:720px">
-        <div class="banner ${raw(ownsEvent ? 'banner-info' : 'banner-error')}">${raw(icon(ownsEvent ? 'station' : 'alert'))}
-          <div><b>${ownsEvent ? 'Connected host controls are read-only for now.' : 'This event belongs to another organizer.'}</b>
-          <p class="body-small" style="margin:4px 0 0">${ownsEvent
-            ? 'Event creation and player registration are connected. Check-in, seeding, stations, results, and corrections stay disabled until their transactional server commands are ready.'
-            : 'You can follow the event as a player, but organizer controls are not available for this account.'}</p></div>
+        <div class="banner banner-error">${raw(icon('alert'))}
+          <div><b>This event belongs to another organizer.</b>
+          <p class="body-small" style="margin:4px 0 0">You can follow the event as a player, but organizer controls are not available for this account.</p></div>
         </div>
         ${connectedEvent ? html`<a class="btn btn-filled" href="#/e/${connectedEvent.id}" style="margin-top:16px">Open the player view</a>` : ''}
       </div>`,
@@ -452,7 +450,7 @@ function entrantsTab(data) {
                  data-act-input="entrant-search" data-focus-key="entrant-search"
                  style="min-height:44px;padding:10px 12px" aria-label="Search entrants">
         </label>
-        <button class="btn btn-tonal btn-sm" data-act="import-open">${raw(icon('upload', 'icon-sm'))} Import</button>
+        ${auth.isRemote() ? '' : html`<button class="btn btn-tonal btn-sm" data-act="import-open">${raw(icon('upload', 'icon-sm'))} Import</button>`}
         <button class="btn btn-outlined btn-sm" data-act="export-entrants">${raw(icon('download', 'icon-sm'))} Export</button>
         <button class="btn btn-filled btn-sm" data-act="entrant-add">${raw(icon('plus', 'icon-sm'))} Add</button>
       </div>
@@ -544,9 +542,11 @@ function entrantsTab(data) {
                   <td>
                     <div class="row-tight" style="flex-wrap:nowrap">
                       ${raw(avatar(player, 'avatar-sm'))}
-                      <input type="text" value="${player?.tag || ''}" data-act-change="player-tag" data-id="${entry.playerId}"
+                      ${auth.isRemote()
+                        ? html`<span class="body-medium" style="min-width:120px">${player?.tag || 'Entrant'}</span>`
+                        : html`<input type="text" value="${player?.tag || ''}" data-act-change="player-tag" data-id="${entry.playerId}"
                              data-focus-key="tag-${entry.id}" style="min-width:120px"
-                             aria-label="Tag for ${player?.tag || 'entrant'}">
+                             aria-label="Tag for ${player?.tag || 'entrant'}">`}
                       ${player?.claimable ? html`<span class="chip chip-static chip-warn" style="min-height:20px;padding:0 6px;font:var(--label-small)" title="Added by an organiser — not claimed by an account yet">walk-up</span>` : ''}
                       ${entry.waitlisted ? html`<span class="chip chip-static chip-assist" style="min-height:20px;padding:0 6px;font:var(--label-small)">waitlist</span>` : ''}
                     </div>
@@ -586,7 +586,7 @@ function entrantsTab(data) {
           <p class="body-large">Nobody yet.</p>
           <p class="body-medium">Share the code <b>${event.inviteCode}</b>, or paste your sign-up sheet.</p>
           <div class="row" style="justify-content:center">
-            <button class="btn btn-filled" data-act="import-open">${raw(icon('upload'))} Paste a spreadsheet</button>
+            ${auth.isRemote() ? '' : html`<button class="btn btn-filled" data-act="import-open">${raw(icon('upload'))} Paste a spreadsheet</button>`}
             <button class="btn btn-outlined" data-act="entrant-add">${raw(icon('plus'))} Add one</button>
           </div>
         </div>`}
@@ -1293,7 +1293,21 @@ on('entrant-add', () => {
   });
 });
 
-function addWalkUp(eventId, tag, group) {
+async function addWalkUp(eventId, tag, group) {
+  if (auth.isRemote()) {
+    try {
+      const result = await store.createRemoteWalkup(eventId, tag, group);
+      snack(`${tag} added — claim code ${result.claimCode}`, { action: 'Copy', onAction: async () => {
+        const { copy } = await import('../lib/ui.js');
+        await copy(result.claimCode);
+      } });
+      rerender();
+      return { playerId: result.player.id, code: result.claimCode };
+    } catch (error) {
+      snack(error?.message || 'Could not add that entrant.');
+      return null;
+    }
+  }
   const event = store.getEvent(eventId);
   const { id: playerId, code } = auth.createClaimablePlayer({
     tag, orgId: event.orgId, createdBy: auth.currentPlayer()?.id,
@@ -2007,6 +2021,10 @@ on('copy-rules', async () => {
 
 on('delete-event', () => {
   const eventId = currentEventId();
+  if (auth.isRemote()) {
+    snack('Connected event deletion is not enabled yet. Contact support if this event must be removed.');
+    return;
+  }
   confirmDialog({
     title: 'Delete this event?',
     body: 'The event, its entrants and its bracket go. Results already played stay on players\' profiles.',

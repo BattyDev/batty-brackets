@@ -32,6 +32,16 @@ await assert.rejects(api.redeemCode('foo'), /not valid/);
 reply = { error: 'rate_limited' };
 await assert.rejects(api.redeemCode('ABCDEFGH2345'), /Too many/);
 await assert.rejects(api.claimPlayer('LOCAL123'), /not available/);
+reply = { event: { id, revision: 3 }, revision: 3, entries: [], players: [], stations: [], orgs: [], brackets: [], results: [] };
+await api.saveEventState(id, 2, { event: { id }, entries: [], players: [], stations: [], bracket: null, results: [] });
+assert.deepEqual(calls.pop(), { name: 'bkt_save_event_state', args: {
+  p_event_id: id, p_expected_revision: 2,
+  p_state: { event: { id }, entries: [], players: [], stations: [], bracket: null, results: [] },
+} });
+await assert.rejects(api.saveEventState(id, 0, {}), /Refresh/);
+reply = { entry: { id, event_id: id, player_id: id }, player: { id, tag: 'Door' }, claim_code: 'a'.repeat(64) };
+assert.equal((await api.createWalkup(id, ' Door ')).claimCode, 'a'.repeat(64));
+assert.deepEqual(calls.pop(), { name: 'bkt_create_walkup', args: { p_event_id: id, p_tag: 'Door' } });
 reply = { player_id: id };
 await api.claimPlayer('a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_claim_player', args: { p_code: 'a'.repeat(64) } });

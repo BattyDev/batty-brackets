@@ -18,8 +18,12 @@ assert.match(setup, /store\.createRemoteEvent\(id/,
   'connected event publication must use the explicit server command');
 assert.match(setup, /draft\.pendingEventId/,
   'connected event publication must keep an idempotency key across retries');
-assert.match(config, /url:\s*''/);
-assert.match(config, /key:\s*''/);
+assert.match(config, /location\.hostname/,
+  'production configuration must be host-scoped so local tests never touch live data');
+assert.match(config, /url:\s*'https:\/\/bbqauqqymjxqcyurxmna\.supabase\.co'/);
+assert.match(config, /key:\s*'sb_publishable_/);
+assert.doesNotMatch(config, /service_role|sb_secret_/,
+  'browser configuration must never contain privileged Supabase credentials');
 
 const memory = new Map();
 globalThis.localStorage = {
@@ -35,17 +39,36 @@ globalThis.window = { addEventListener() {} };
 
 const store = await import(`../lib/store.js?connected-boundary=${Date.now()}`);
 const projectUrl = 'https://example.supabase.co';
+const playerId = '10000000-0000-4000-8000-000000000001';
+const eventId = '20000000-0000-4000-8000-000000000002';
+const entryId = '30000000-0000-4000-8000-000000000003';
+const saves = [];
 const backend = {
   invalidate() {},
-  async identity() { return { id: '10000000-0000-4000-8000-000000000001', tag: 'A' }; },
+  async identity() { return { id: playerId, tag: 'A' }; },
   async listEvents() { return { events: [], orgs: [], players: [] }; },
+  async saveEventState(id, revision, state) {
+    saves.push({ id, revision, state });
+    return { revision: revision + 1, event: state.event, entries: state.entries,
+      players: state.players, stations: state.stations, orgs: [], brackets: [], results: state.results };
+  },
 };
 
 store.boot({ scope: { projectUrl, accountId: 'anonymous' } });
 store.attachBackend(backend, { projectUrl, accountId: 'anonymous' });
 store.useConnectedScope(projectUrl, 'account-a');
-store.cacheRemote({ players: [{ id: '10000000-0000-4000-8000-000000000001', tag: 'A' }] });
+store.cacheRemote({
+  players: [{ id: playerId, tag: 'A' }],
+  events: [{ id: eventId, name: 'Remote', gameId: 'mvci', revision: 1 }],
+  entries: [{ id: entryId, eventId, playerId, waitlisted: false }],
+});
 assert.equal(Object.keys(store.get().players).length, 1);
+store.apply('entries', entryId, { checkedInAt: '2026-09-16T12:00:00.000Z' });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(saves.length, 1, 'connected organizer writes use one versioned state command');
+assert.equal(saves[0].revision, 1);
+assert.equal(saves[0].state.entries[0].checkedInAt, '2026-09-16T12:00:00.000Z');
+assert.equal(store.syncState().localOnlyWrites, 0);
 
 const aKey = store.storageKeyForScope(projectUrl, 'account-a');
 const bKey = store.storageKeyForScope(projectUrl, 'account-b');
