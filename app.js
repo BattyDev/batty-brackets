@@ -82,6 +82,22 @@ const ROUTES = [
   { pattern: /^\/p\/([^/]+)$/, view: player, name: 'player', keys: ['playerId'] },
 ];
 
+/* Presentation memory only: it chooses the first navigation on a compact
+   phone, never event access or host authorization. */
+export const ROLE_PREFERENCE_KEY = 'battydev.brackets.experience';
+export function rolePreference() {
+  try {
+    const value = localStorage.getItem(ROLE_PREFERENCE_KEY);
+    return value === 'host' || value === 'player' ? value : null;
+  } catch { return null; }
+}
+export function rememberRole(role) {
+  const value = role === 'host' ? 'host' : 'player';
+  try { localStorage.setItem(ROLE_PREFERENCE_KEY, value); } catch { /* private mode */ }
+  return value;
+}
+function compactViewport() { return Boolean(window.matchMedia?.('(max-width: 599px)').matches); }
+
 function parseRoute() {
   const path = decodeURIComponent(window.location.hash.replace(/^#/, '')) || '/';
   for (const route of ROUTES) {
@@ -309,8 +325,8 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
     { label: 'Create event', icon: 'plus', path: '/new', current: route.name === 'new' },
     { label: 'Backups', icon: 'undo', path: '/recovery', current: route.name === 'recovery' },
   ] : [
-    { label: 'Events', icon: 'trophy', path: '/', current: ['home', 'event'].includes(route.name) },
-    { label: 'Join event', icon: 'key', path: '/join', current: route.name === 'join' },
+    { label: 'My tournaments', icon: 'trophy', path: '/', current: ['home', 'event'].includes(route.name) },
+    { label: 'Join with code', icon: 'key', path: '/join', current: route.name === 'join' },
     { label: 'My profile', icon: 'person', path: '/me', current: route.name === 'me' },
   ];
   /* Batty owns the navigation and working tools. Game accents belong to
@@ -318,7 +334,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
 
   return html`
     <a class="skip-link" href="#main">Skip to main content</a>
-    <div class="app ${raw(host ? 'experience-host' : 'experience-player')} ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
+    <div class="app ${raw(host ? 'experience-host' : 'experience-player')} ${raw(!host && compactViewport() ? 'mobile-player-shell' : '')} ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
       <header class="top-bar">
         ${back ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>` : ''}
         <a class="top-bar-brand" href="#/" aria-label="Home">${raw(brandSignature())}</a>
@@ -335,7 +351,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
                 aria-label="Switch to ${raw(resolvedTheme() === 'dark' ? 'light' : 'dark')} theme">${raw(icon('theme'))}</button>
       </header>
 
-      <nav class="nav" aria-label="Sections">
+      <nav class="nav ${raw(host ? 'host-navigation' : 'player-navigation')}" aria-label="${raw(host ? 'Host workspace navigation' : 'Player navigation')}" data-experience="${raw(host ? 'host' : 'player')}">
         <div class="rail-identity"><div class="rail-logo">${raw(brandMark())}</div><span>${host ? 'HOST WORKSPACE' : 'PLAYER LOUNGE'}</span></div>
         <!-- aria-current only where it is true. It previously marked "Events"
              on every route that was not the profile, which tells a screen
@@ -411,6 +427,8 @@ export function draw() {
       state: store.get(),
       session: auth.currentSession(),
       me: auth.currentPlayer(),
+      compact: compactViewport(),
+      rolePreference: rolePreference(),
       params: route.params,
       route: route.name,
       go,
@@ -461,6 +479,7 @@ function drawChrome() {
 on('go', ({ path }) => go(path));
 on('noop', () => {});
 on('recovery-open', () => go('/recovery'));
+on('choose-role', ({ role }) => { go(rememberRole(role) === 'host' ? '/host' : '/'); });
 
 /* The theme button toggles against what you can SEE, not against what is
    stored.
