@@ -33,7 +33,8 @@ do $$ declare t record; r text; v text; begin
  foreach v in array array['public.bkt_identity(text)','public.bkt_create_event(uuid,jsonb)',
    'public.bkt_join_event(uuid,text,boolean)','public.bkt_event_by_code(text)',
    'public.bkt_set_contact(uuid,text,boolean)','public.bkt_read_contacts(uuid)',
-   'public.bkt_create_walkup(uuid,text)','public.bkt_claim_player(text)'] loop
+   'public.bkt_create_walkup(uuid,text)','public.bkt_claim_player(text)',
+   'public.bkt_save_event_state(uuid,bigint,jsonb)'] loop
   perform pg_temp.assert_true(not has_function_privilege('anon',v,'EXECUTE'),'anon denied RPC '||v);
   perform pg_temp.assert_true(has_function_privilege('authenticated',v,'EXECUTE'),'authenticated RPC '||v);
  end loop;
@@ -129,6 +130,8 @@ select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
  '{"org_name":"Other","name":"Other event","game_id":"tokon","capacity":2}');
 select pg_temp.assert_true(public.bkt_join_event('10000000-0000-0000-0000-000000000001')->>'waitlisted'='true','overflow waitlisted');
 select pg_temp.assert_true(public.bkt_read_contacts('10000000-0000-0000-0000-000000000001')='[]'::jsonb,'other organizer no contact');
+select pg_temp.fails($q$select public.bkt_save_event_state('10000000-0000-0000-0000-000000000001',1,
+ '{"event":{},"entries":[],"players":[],"stations":[],"bracket":null,"results":[]}'::jsonb)$q$);
 select pg_temp.denied($q$insert into public.bkt_entries(event_id,player_id,waitlisted,seed)
  values('10000000-0000-0000-0000-000000000003','00000000-0000-0000-0000-000000000001',false,1)$q$);
 select pg_temp.assert_true(public.bkt_claim_player(:'walkup'::jsonb->>'claim_code')->>'error'='invalid_code','consumed token not transferable');
@@ -146,6 +149,29 @@ reset role;
 set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
 set local role authenticated;
 select pg_temp.assert_true(public.bkt_read_contacts('10000000-0000-0000-0000-000000000001')='[]'::jsonb,'revocation removes contact');
+select revision::text as op_revision from public.bkt_events where id='10000000-0000-0000-0000-000000000001' \gset
+select jsonb_build_object(
+ 'event',jsonb_build_object('id',e.id,'name',e.name,'format',e.format,'venueType',e.venue_type,
+   'venue',e.venue,'platforms',to_jsonb(e.platforms),'startsAt',e.starts_at,'capacity',e.capacity,
+   'presetId',e.preset_id,'overrides',e.overrides,'documents',e.documents,'visibility',e.visibility,
+   'status','checkin','checkInOpensAt',now()),
+ 'entries',(select jsonb_agg(jsonb_build_object('id',x.id,'eventId',x.event_id,'playerId',x.player_id,
+   'seed',x.seed,'waitlisted',x.waitlisted,'checkedInAt',case when x.player_id=:'owner_id'::uuid then now() else x.checked_in_at end,
+   'registeredAt',x.registered_at,'group',x.crew,'source',x.source,'signedDocuments',to_jsonb(x.signed_documents)))
+   from public.bkt_entries x where x.event_id=e.id),
+ 'players',(select jsonb_agg(jsonb_build_object('id',p.id,'tag',p.tag)) from public.bkt_players p
+   where exists(select 1 from public.bkt_entries x where x.event_id=e.id and x.player_id=p.id)),
+ 'stations',(select jsonb_agg(jsonb_build_object('id',s.id,'eventId',s.event_id,'number',s.number,'label',s.label,
+   'platform',s.platform,'matchId',s.match_id,'closed',s.closed)) from public.bkt_stations s where s.event_id=e.id),
+ 'bracket',null,'results','[]'::jsonb) as op_state
+from public.bkt_events e where e.id='10000000-0000-0000-0000-000000000001' \gset
+select public.bkt_save_event_state('10000000-0000-0000-0000-000000000001',:'op_revision'::bigint,:'op_state'::jsonb) as op_saved \gset
+select pg_temp.assert_true((:'op_saved'::jsonb->>'revision')::bigint=:'op_revision'::bigint+1,'operation increments revision');
+select pg_temp.assert_true(:'op_saved'::jsonb->'event'->>'status'='checkin','operation updates status');
+select pg_temp.assert_true(exists(select 1 from public.bkt_entries where event_id='10000000-0000-0000-0000-000000000001'
+ and player_id=:'owner_id'::uuid and checked_in_at is not null),'operation updates check-in');
+select pg_temp.fails(format('select public.bkt_save_event_state(%L,%s,%L::jsonb)',
+ '10000000-0000-0000-0000-000000000001',:'op_revision',:'op_state'));
 reset role;
 select pg_temp.assert_true((select count(*) from public.bkt_entries where event_id='10000000-0000-0000-0000-000000000001' and not waitlisted)=2,'capacity invariant');
 select pg_temp.assert_true(not exists(select 1 from information_schema.columns where table_schema='public' and table_name like 'bkt_%'
