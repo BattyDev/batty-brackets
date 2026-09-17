@@ -32,8 +32,44 @@ const STATUS = {
   complete: { label: 'Finished', chip: '' },
 };
 
+const ROLE_PREFERENCE_KEY = 'battydev.brackets.experience';
+const GUEST_TAG_MAX = 32;
+
 let codeLookup = { code: null, status: 'idle', error: null };
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+function rememberPlayerExperience() {
+  try { localStorage.setItem(ROLE_PREFERENCE_KEY, 'player'); } catch { /* private mode */ }
+}
+
+async function temporarySession(tag) {
+  if (typeof auth.createTemporaryPlayer === 'function') return auth.createTemporaryPlayer({ tag });
+  const session = auth.signInLocal({ tag, via: 'guest' });
+  if (session) { session.temporary = true; store.setSession(session); }
+  return session;
+}
+
+const shownGuestOffers = new Set();
+async function offerGuestUpgrade(event) {
+  const me = auth.currentPlayer();
+  if (!me || !auth.currentSession()?.temporary) return;
+  const key = `${event.id}:${me.id}`;
+  if (shownGuestOffers.has(key)) return;
+  shownGuestOffers.add(key);
+  const { dialog } = await import('../lib/ui.js');
+  const { openGuestUpgrade } = await import('./auth.js');
+  dialog({
+    title: 'You’re in — save your record',
+    body: html`<p class="body-large">You joined <b>${event.name}</b> as <b>${me.tag}</b>.</p>
+      <p class="body-medium">Create an account later to keep this fight record on another phone and customise your player profile. You can keep playing as a guest for now.</p>
+      ${!auth.isRemote() ? html`<p class="body-small dim">This guest profile is saved on this device until you choose to upgrade it.</p>` : ''}`,
+    actions: [
+      { label: 'Maybe later', kind: 'text' },
+      { label: 'Customize profile', kind: 'tonal', onClick: () => { window.location.hash = '#/me'; } },
+      { label: 'Create account', kind: 'filled', onClick: () => openGuestUpgrade(() => rerender()) },
+    ],
+  });
+}
 
 function ensureRemoteLookup(code) {
   const normalized = String(code || '').trim().toUpperCase();
@@ -57,11 +93,28 @@ export function view(ctx) {
   if (ctx.route === 'join') return joinView(ctx, params.code);
   if (ctx.route === 'host') return { title: 'Host workspace', subtitle: 'Your events. Your room.', body: hostHome(ctx) };
 
+  if (ctx.route === 'home' && ctx.compact && !me && !ctx.rolePreference) {
+    return { title: 'Choose your experience', subtitle: 'Batty Brackets', body: roleChoice() };
+  }
+
   return {
     title: 'Batty Brackets',
     subtitle: me ? `Signed in as ${me.tag}` : 'Tournaments for fighting games',
     body: me ? dashboard(ctx) : landing(ctx),
   };
+}
+
+function roleChoice() {
+  return html`<div class="pane role-choice" aria-labelledby="role-choice-heading">
+    <section class="role-choice-card card card-elevated">
+      <p class="eyebrow">WELCOME TO BATTY BRACKETS</p><h1 id="role-choice-heading" class="headline-large">I'm a…</h1>
+      <p class="body-large role-choice-intro">Start with the view that fits tonight. You can switch any time — this remembers your preferred layout, never what you’re allowed to do.</p>
+      <div class="role-choice-options">
+        <button class="role-choice-option role-choice-player" type="button" data-act="choose-role" data-role="player"><span class="role-choice-icon">${raw(icon('esports'))}</span><span class="role-choice-copy"><b>Player</b><span>Join a tournament, check in, and find your next set.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+        <button class="role-choice-option role-choice-host" type="button" data-act="choose-role" data-role="host"><span class="role-choice-icon">${raw(icon('tune'))}</span><span class="role-choice-copy"><b>Host</b><span>Run your bracket, manage arrivals, and keep the room moving.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+      </div>
+      <p class="role-choice-footnote">Have a tournament code? <a href="#/join">Join directly</a> — you won’t need to choose a role first.</p>
+    </section></div>`;
 }
 
 /* --------------------------------------------------------------------------
