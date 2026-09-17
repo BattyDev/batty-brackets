@@ -451,9 +451,13 @@ export function openSetPassword() {
       <p class="body-medium">This adds a second way into the same account. Your Discord login keeps working.</p>
       <label class="field" style="margin-top:16px">
         <span class="field-label">New password</span>
-        <input type="password" id="password" autocomplete="new-password">
+        <input type="password" id="password" autocomplete="new-password" minlength="8" required>
       </label>
-      <p class="field-help" id="note">At least 8 characters.</p>`,
+      <label class="field" style="margin-top:12px">
+        <span class="field-label">Confirm password</span>
+        <input type="password" id="password-confirm" autocomplete="new-password" minlength="8" required>
+      </label>
+      <p class="field-help" id="note" role="status" aria-live="polite">Use at least 8 characters. Both entries must match.</p>`,
     actions: [
       { label: 'Not now', kind: 'text' },
       {
@@ -461,8 +465,15 @@ export function openSetPassword() {
         kind: 'filled',
         onClick: async (dlg) => {
           const password = dlg.querySelector('#password').value;
+          const confirmation = dlg.querySelector('#password-confirm').value;
           const note = dlg.querySelector('#note');
           if (password.length < 8) { note.textContent = 'At least 8 characters.'; return false; }
+          if (password !== confirmation) {
+            note.textContent = 'Those passwords do not match. Try them again.';
+            dlg.querySelector('#password-confirm').focus();
+            return false;
+          }
+          note.textContent = 'Saving your password…';
           try {
             await auth.addPasswordFallback(password);
             snack('Password set — you can now sign in either way.');
