@@ -43,8 +43,9 @@ const playerId = '10000000-0000-4000-8000-000000000001';
 const eventId = '20000000-0000-4000-8000-000000000002';
 const entryId = '30000000-0000-4000-8000-000000000003';
 const saves = [];
+let invalidations = 0;
 const backend = {
-  invalidate() {},
+  invalidate() { invalidations += 1; },
   async identity() { return { id: playerId, tag: 'A' }; },
   async listEvents() { return { events: [], orgs: [], players: [] }; },
   async saveEventState(id, revision, state) {
@@ -81,5 +82,10 @@ assert.equal(memory.has(aKey), false, 'switching accounts clears the previous pr
 store.clearConnectedSession();
 assert.equal(store.storageScope().accountId, 'anonymous');
 assert.deepEqual(store.get().players, {}, 'sign-out returns to an isolated anonymous cache');
+const invalidationsAfterSignOut = invalidations;
+assert.equal(store.clearConnectedSession(), false,
+  'a duplicate anonymous sign-out is a no-op');
+assert.equal(invalidations, invalidationsAfterSignOut,
+  'a duplicate anonymous sign-out must not invalidate an in-flight public pull');
 
 console.log('PASS connected boundary: RPC boot, blank config, fail-closed publish, and account isolation');
