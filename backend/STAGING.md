@@ -29,8 +29,8 @@ psql --set=ON_ERROR_STOP=1 --dbname=batty_brackets_test --file=run.sql
 dropdb batty_brackets_test
 ```
 
-`run.sql` commits the five staging migrations and runs adversarial assertions
-inside a rollback-only transaction. A pass ends with:
+`run.sql` commits the staging migrations and runs adversarial assertions
+inside rollback-only test transactions. A pass ends with:
 
 ```text
 Backend security regression assertions passed (transaction rolled back).
@@ -45,7 +45,8 @@ enabled.
 1. Confirm the selected project is dedicated staging and has no `bkt_` objects.
 2. In one explicitly selected SQL session, set `bkt.staging = 'on'`.
 3. Apply `100_foundation.sql`, `101_commands.sql`, `102_claims.sql`,
-   `103_operations.sql`, `104_hardening.sql`, then `105_guest_join.sql`.
+   `103_operations.sql`, `104_hardening.sql`, `105_guest_join.sql`, then
+   `106_admin.sql`.
    The first migration refuses legacy or partially installed Batty objects.
 4. Adapt the assertions in `test/backend/security.sql` to real test users and
    JWT-backed API requests. Do not run `bootstrap.sql`; Supabase already owns
@@ -60,16 +61,25 @@ enabled.
    rejected guest event creation, and an email/Discord upgrade that preserves
    the player UUID. Add CAPTCHA or equivalent edge abuse controls before any
    public production rollout; the database throttle is per account.
-8. Delete the staging test data or discard the project. Never use real
+8. Seed a disposable `bkt_private.admin_members` row for each test role and
+   exercise the admin RPCs with a JWT whose top-level `aal` claim is `aal2`.
+   Confirm an AAL1 session, inactive member, analyst moderation attempt, and
+   anonymous call are all rejected. Confirm result replacement supersedes the
+   old row, restore reactivates the original, and lock blocks organizer writes.
+   For the production bootstrap, create a dedicated email/password Auth user,
+   copy its Auth UUID, and insert that UUID with role `super_admin` from a
+   reviewed operator SQL session. Never expose the operator or service-role
+   credential to `platform-admin.html`.
+9. Delete the staging test data or discard the project. Never use real
    participant contact information.
 
 ## Still required after SQL passes
 
-- Integrate `lib/backend.js` only after authenticated cache/account isolation is
-  implemented; never attach the legacy generic outbox.
+- Re-verify authenticated cache/account isolation whenever the connected client
+  boundary changes; never attach the legacy generic outbox.
 - Exercise create/list/redeem/join/read from independent laptop, phone and TV
   contexts, including expiration, sign-out, reconnect and access revocation.
 - Add transactional report/correct/station-release commands with operation IDs
   and expected revisions before calling connected tournament operation ready.
-- Review a separate production migration and rollback plan. Production config
-  stays blank until those gates pass.
+- Review a separate production migration and rollback plan. Do not activate the
+  admin RPCs or seed production membership until those gates pass.

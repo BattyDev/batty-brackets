@@ -14,10 +14,11 @@ const claims = read('sql/staging/102_claims.sql');
 const operations = read('sql/staging/103_operations.sql');
 const hardening = read('sql/staging/104_hardening.sql');
 const guest = read('sql/staging/105_guest_join.sql');
+const admin = read('sql/staging/106_admin.sql');
 const run = read('test/backend/run.sql');
 const adapter = read('lib/backend.js');
 
-assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*security\.sql/,
+assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
   'the disposable harness must apply staging migrations in order before assertions');
 assert.doesNotMatch(run, /001_schema\.sql/, 'the unsafe historical schema must never enter the staging harness');
 
@@ -28,7 +29,7 @@ for (const name of rpc) {
   assert.match(adapter, new RegExp(`call\\('${name}'`), `${name} client call missing`);
 }
 
-for (const sql of [foundation, commands, claims, operations, guest]) {
+for (const sql of [foundation, commands, claims, operations, guest, admin]) {
   const declarations = [...sql.matchAll(/create function\s+([\w.]+)([\s\S]*?)\bas\s+\$\$/gi)];
   const definers = declarations.filter(([, , declaration]) => /security definer/i.test(declaration));
   assert.ok(definers.length, 'each migration that defines commands must expose definer functions to inspect');
@@ -64,4 +65,46 @@ assert.match(guest, /grant execute on function[\s\S]*public\.bkt_self_check_in\(
 assert.match(adapter, /call\('bkt_self_check_in'/, 'the client must use the reviewed self check-in command');
 assert.match(adapter, /call\('bkt_sign_document'/, 'the client must use the reviewed signature command');
 
-console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, and grant boundary');
+const adminRpc = ['bkt_admin_access', 'bkt_admin_queue', 'bkt_admin_content',
+  'bkt_admin_moderate', 'bkt_admin_audit', 'bkt_admin_metrics'];
+for (const name of adminRpc) {
+  assert.match(admin, new RegExp(`create function public\\.${name}\\b`), `${name} SQL function missing`);
+  assert.match(adapter, new RegExp(`call\\('${name}'`), `${name} client call missing`);
+  const declaration = admin.match(new RegExp(`create function public\\.${name}\\b([\\s\\S]*?)\\bas\\s+\\$\\$`, 'i'))?.[1] || '';
+  assert.match(declaration, /security definer/i, `${name} must be a reviewed definer boundary`);
+  assert.match(declaration, /set search_path\s*=\s*pg_catalog/i, `${name} must pin its search path`);
+}
+assert.match(admin, /create table bkt_private\.admin_members/, 'private admin membership table missing');
+assert.match(admin, /create table bkt_private\.moderation_queue/, 'private moderation queue missing');
+assert.match(admin, /create table bkt_private\.admin_audit/, 'private append-only audit missing');
+assert.match(admin, /alter table bkt_private\.admin_members enable row level security;[\s\S]*alter table bkt_private\.admin_audit enable row level security;/,
+  'admin private tables require RLS');
+assert.match(admin, /revoke all on all tables in schema bkt_private from public,anon,authenticated;/,
+  'new private tables must reset inherited grants');
+assert.match(admin, /revoke all on function public\.bkt_admin_access\(\),[\s\S]*grant execute on function public\.bkt_admin_access\(\),[\s\S]*to authenticated;/,
+  'admin RPCs need an authenticated-only grant boundary');
+assert.match(admin, /coalesce\(\(select auth\.jwt\(\)->>\'aal\'\),\'aal1\'\)\s*<>\s*\'aal2\'/,
+  'every admin path must enforce an AAL2 JWT');
+assert.doesNotMatch(admin, /auth\.jwt\(\)[^\n]*user_metadata/i,
+  'JWT user metadata must never drive admin authorization');
+assert.match(admin, /moderation_state not in \(\'hidden\',\'quarantined\'\)/,
+  'quarantine/hide must be absent from ordinary result reads');
+assert.match(admin, /create trigger bkt_admin_audit_append_only\s*\nbefore update or delete/i,
+  'audit rows must be append-only');
+assert.doesNotMatch(admin, /from\s+bkt_private\.contacts/i,
+  'private contacts must stay outside admin content queries');
+assert.match(admin, /replacement_result_id uuid references public\.bkt_results\(id\)/,
+  'result replacement must retain a corrective-row pointer');
+assert.match(admin, /select 'result',coalesce\(q\.target_id,r\.id\),'record',to_jsonb\(r\)[\s\S]*where not r\.superseded/,
+  'the content feed must expose only active results through their canonical moderation target');
+assert.match(admin, /v_kind='result'[\s\S]*replacement_result_id=v_id\)\) then[\s\S]*return null;/,
+  'organizer replay must preserve held result corrections without blocking unrelated writes');
+const moderateBody = admin.match(/create function public\.bkt_admin_moderate\([\s\S]*?end \$\$;/i)?.[0] || '';
+assert.match(moderateBody, /set_config\('bkt\.admin_override','on',true\)[\s\S]*set_config\('bkt\.admin_override','off',true\)/,
+  'only the audited moderation transaction may bypass a content hold');
+assert.match(admin, /if p_reason is null or length\(trim\(p_reason\)\) not between 1 and 2000/,
+  'every moderation decision requires a bounded reason');
+assert.match(admin, /auth\.jwt\(\)->>'is_anonymous'/,
+  'anonymous Auth accounts must never qualify as platform administrators');
+
+console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, admin AAL2 boundary, and private moderation data');

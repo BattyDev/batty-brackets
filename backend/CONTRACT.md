@@ -119,3 +119,56 @@ manual identity linking in Supabase, configure CAPTCHA/edge abuse protection,
 and rehearse email verification and OAuth linking on the production callback
 domain. The per-account invitation throttle cannot stop one device from making
 many anonymous accounts.
+
+## Site administration contract (staging migration 106)
+
+The site-wide console is a separate capability from event staff. The private
+`bkt_private.admin_members` table maps an Auth account UUID to exactly one
+active role: `moderator`, `analyst`, or `super_admin`. A client cannot read or
+write that table. The first production super-admin membership must be seeded by
+the reviewed deployment operator; the browser never receives a service-role
+credential.
+
+Every admin RPC checks all three conditions at call time: `auth.uid()` is
+present, the matching membership is active and has an allowed role, and the
+issuer-controlled top-level JWT `aal` claim is `aal2`. No `user_metadata` value
+is used for authorization. A stale or AAL1 session receives a denial and must
+complete MFA before retrying.
+
+### RPC boundary
+
+All six functions are `SECURITY DEFINER` with `search_path = pg_catalog`, have
+PUBLIC/anon execution revoked, and grant execution only to `authenticated`.
+They return JSON objects and never expose a private table directly.
+
+| RPC | Roles | Arguments | Response |
+|---|---|---|---|
+| `bkt_admin_access` | all active admin roles | none | `{active, role, aal, can_moderate, can_analyze, can_queue, can_content, can_audit}` |
+| `bkt_admin_queue` | moderator, super_admin | `p_state text = null, p_limit integer = 100` | `{role, items, next_cursor}` |
+| `bkt_admin_content` | moderator, super_admin | `p_target_kind text = null, p_limit integer = 200` | `{role, items, next_cursor}` |
+| `bkt_admin_moderate` | moderator, super_admin | `p_action, p_target_kind, p_target_id, p_target_field = null, p_replacement = null, p_reason` (required, 1–2000 characters) | `{action_id, action, target_kind, target_id, target_field, content, queue}` |
+| `bkt_admin_audit` | moderator, super_admin | `p_limit integer = 100, p_before timestamptz = null` | `{role, items, next_cursor}` |
+| `bkt_admin_metrics` | all active admin roles | `p_from timestamptz = null, p_to timestamptz = null` | `{role, from, to, generated_at, totals, statuses, moderation, daily}` |
+
+Analysts are deliberately metrics-only. Moderators can review and change
+content but cannot manage membership; `super_admin` is the escalation role.
+
+### Moderation and privacy
+
+The private `moderation_queue` stores one original snapshot per whitelisted
+target field and the current decision. Targets are player `tag`, organisation
+`name`, event `name`/`venue`, entry `crew`, station `label`, and a result
+`record`. `hide` and `quarantine` replace public text with a short
+placeholder; result rows are hidden by RLS and the event bundle while remaining
+durable. `restore` reads the private snapshot. `replace` on text stores the
+replacement; `replace` on a result marks the prior row `superseded` and inserts
+a corrective result row, so history is never overwritten. Every active
+moderation decision holds its target against organiser UPDATE/DELETE attempts
+through target-table triggers; a moderator or super admin can restore or issue
+a further correction only through the audited AAL2 moderation RPC.
+
+`bkt_private.admin_audit` is append-only (client roles have zero schema/table
+grants and an UPDATE/DELETE trigger rejects even accidental definer mutation).
+It records the actor role, action, target, before/after values, required reason, and
+timestamp. Private contacts are not a moderation target and are excluded from
+the content feed, audit payloads, and metrics.

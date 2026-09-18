@@ -56,6 +56,31 @@ assert.deepEqual(calls.pop(), { name: 'bkt_create_walkup', args: { p_event_id: i
 reply = { player_id: id };
 await api.claimPlayer('a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_claim_player', args: { p_code: 'a'.repeat(64) } });
+reply = { active: true, role: 'moderator', aal: 'aal2', can_moderate: true };
+assert.equal((await api.adminAccess()).role, 'moderator');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_access', args: {} });
+reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id, target_field: 'tag' }], next_cursor: 'next' };
+assert.equal((await api.adminQueue({ state: 'hidden', limit: 20 })).items[0].targetKind, 'player');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_queue', args: { p_state: 'hidden', p_limit: 20 } });
+reply = { role: 'moderator', items: [{ target_kind: 'event', target_id: id, target_field: 'name', value: 'Weekly' }] };
+await api.adminContent({ targetKind: 'event', limit: 10 });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_content', args: { p_target_kind: 'event', p_limit: 10 } });
+reply = { action_id: id, action: 'replace', target_kind: 'player', target_id: id, target_field: 'tag', queue: { target_kind: 'player' } };
+await api.adminModerate({ action: 'replace', targetKind: 'player', targetId: id, targetField: 'tag', replacement: 'Batty', reason: 'reviewed' });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_moderate', args: {
+  p_action: 'replace', p_target_kind: 'player', p_target_id: id, p_target_field: 'tag',
+  p_replacement: 'Batty', p_reason: 'reviewed',
+} });
+reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id }], next_cursor: null };
+await api.adminAudit({ limit: 5 });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_audit', args: { p_limit: 5, p_before: null } });
+reply = { role: 'moderator', totals: { events: 2 }, statuses: [], daily: [] };
+assert.equal((await api.adminMetrics()).totals.events, 2);
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_metrics', args: { p_from: null, p_to: null } });
+await assert.rejects(api.adminQueue({ limit: 0 }), /limit/);
+await assert.rejects(api.adminModerate({ action: 'delete', targetKind: 'player', targetId: id, targetField: 'tag' }), /action/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'event', targetId: id, targetField: 'bad', reason: 'invalid field probe' }), /field/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'player', targetId: id, targetField: 'tag' }), /reason/);
 reply = null;
 await assert.rejects(api.identity(), /acknowledgement/);
 const failing = createBackend({ async rpc() { return { error: { message: 'Permission denied' } }; } });

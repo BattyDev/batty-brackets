@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10131d">
+  <title>Platform Admin · Batty Brackets</title>
+  <meta name="description" content="Restricted Batty Brackets platform administration console.">
+  <link rel="icon" type="image/svg+xml" href="assets/brand/bracket-badge.svg?v=2">
+  <link rel="stylesheet" href="platform-admin.css">
+</head>
+<body>
+  <div id="platform-admin-app">
+    <main class="admin-shell" aria-labelledby="page-title">
+      <section class="admin-card admin-card--loading" aria-live="polite">
+        <p class="eyebrow">BattyDev</p>
+        <h1 id="page-title">Platform Admin</h1>
+        <p class="muted">Checking the secure administration connection…</p>
+      </section>
+    </main>
+  </div>
+
+  <!-- Kept outside the replaceable app so screen readers receive stable,
+       polite announcements while the console changes views. -->
+  <div id="admin-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="admin-alert" class="sr-only" role="alert" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- config.js is public by design. A blank config is a deliberate fail-closed
+       state for this privileged page; it is not a local/offline admin mode. -->
+  <script src="config.js"></script>
+  <script type="module" src="platform-admin.js"></script>
+</body>
+</html>
