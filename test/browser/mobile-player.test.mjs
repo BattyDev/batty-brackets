@@ -54,28 +54,20 @@ async function exercise(width) {
   report.ok(`${width}px: invite screen fits`, (await fits(page)).overflow <= 2,
     JSON.stringify(await fits(page)));
 
-  await page.locator('[data-act="join-event"]').click();
-  await page.waitForSelector('dialog.m3[open]');
-  const authCopy = await page.locator('dialog.m3').innerText();
-  report.ok(`${width}px: sign-in names the pending join`,
-    /sign in to join this event/i.test(authCopy) && /confirm your entry/i.test(authCopy), authCopy.slice(0, 240));
-  report.ok(`${width}px: local boundary is explicit`,
-    /no server is connected|does not sync anywhere|another phone/i.test(authCopy), authCopy.slice(0, 240));
-  report.ok(`${width}px: local mode does not offer fake email auth`,
-    await page.locator('#sign-email').isDisabled());
-
-  await page.locator('#sign-local').click();
-  await page.locator('#tag').fill(`Phone ${width}`);
-  await clickDialog(page, 'Continue');
-  await page.waitForFunction(() => location.hash === '#/join/TKN14B');
-  report.ok(`${width}px: sign-in preserves the invite route`, page.url().endsWith('#/join/TKN14B'));
-  report.ok(`${width}px: sign-in alone creates no entry`, !(await entryForMe(page)));
-  report.ok(`${width}px: entry still requires explicit confirmation`,
-    /Enter this event/i.test(await page.locator('[data-act="join-event"]').innerText()));
-
-  await page.locator('[data-act="join-event"]').click();
+  report.ok(`${width}px: invite deep link bypasses role chooser`, await page.locator('.role-choice').count() === 0);
+  report.ok(`${width}px: guest join asks for nickname before login`, await page.locator('[data-act-submit="guest-join"] input[name="tag"]').count() === 1);
+  await page.locator('[data-act-submit="guest-join"] input[name="tag"]').fill(`Phone ${width}`);
+  await page.locator('[data-act-submit="guest-join"] button[type="submit"]').click();
   await page.waitForURL(`**/#/e/${DEMO_EVENT}`);
-  report.ok(`${width}px: confirmation creates the entrant`, Boolean(await entryForMe(page)));
+  report.ok(`${width}px: nickname confirmation creates the entrant`, Boolean(await entryForMe(page)));
+  report.ok(`${width}px: entry and session remain explicitly temporary`, await page.evaluate(async (eventId) => {
+    const store = await import('./lib/store.js');
+    const auth = await import('./lib/auth.js');
+    const entry = store.entryFor(eventId, auth.currentPlayer().id);
+    return auth.currentSession()?.temporary === true && entry?.source === 'guest' && entry?.temporary === true;
+  }, DEMO_EVENT));
+  await page.waitForTimeout(350);
+  if (await page.getByRole('button', { name: 'Maybe later', exact: true }).count()) await clickDialog(page, 'Maybe later');
 
   const deskText = await page.locator('.player-now').innerText();
   report.ok(`${width}px: entrant status and next task are immediate`,
@@ -150,6 +142,7 @@ async function exercise(width) {
   const profile = await page.locator('.player-passport').innerText();
   report.ok(`${width}px: passport repeats the urgent station call`,
     profile.includes('Called now') && profile.includes(call.station), profile.slice(0, 350));
+  report.ok(`${width}px: guest profile offers durable account upgrade`, /playing as a guest/i.test(profile) && /Save my record/i.test(profile));
 
   for (const [label, hash] of [
     ['event desk', `#/e/${DEMO_EVENT}`],
@@ -167,6 +160,16 @@ async function exercise(width) {
 }
 
 try {
+  {
+    const { ctx, page } = await openApp(browser, { base, width: 390, height: 844, reducedMotion: 'reduce', errors: [] });
+    report.ok('first mobile visit asks whether this is a player or host', /I'm a/i.test(await page.locator('main').innerText())
+      && await page.getByRole('button', { name: /Player/ }).count() === 1
+      && await page.getByRole('button', { name: /Host/ }).count() === 1);
+    await page.getByRole('button', { name: /Player/ }).click();
+    report.ok('player choice is navigation preference, not a permission grant', await page.evaluate(() => localStorage.getItem('battydev.brackets.experience')) === 'player'
+      && page.url().endsWith('#/'));
+    await ctx.close();
+  }
   for (const width of [390, 320]) await exercise(width);
 } finally {
   await browser.close();

@@ -510,7 +510,7 @@ function rulesTab({ event, game, ruleset }) {
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
 
-on('self-checkin', ({ entry: entryId }) => {
+on('self-checkin', async ({ entry: entryId }) => {
   const entry = store.get().entries[entryId];
   const event = store.getEvent(entry.eventId);
   const required = (event.documents || []).filter((d) => d.required);
@@ -521,9 +521,14 @@ on('self-checkin', ({ entry: entryId }) => {
     snack(`Sign ${unsigned[0].title} first.`);
     return;
   }
-  store.apply('entries', entryId, { checkedInAt: new Date().toISOString() });
-  snack('Checked in');
-  rerender();
+  try {
+    if (auth.isRemote()) await store.selfCheckInRemote(event.id);
+    else store.apply('entries', entryId, { checkedInAt: new Date().toISOString() });
+    snack('Checked in');
+    rerender();
+  } catch (err) {
+    snack(`Could not check in: ${String(err?.message || err)}`);
+  }
 });
 
 /* Signing. Deliberately a real acceptance -- the person's name typed, the
@@ -558,20 +563,29 @@ on('sign-doc', ({ entry: entryId, doc: docId }) => {
       </p>`,
     actions: [
       { label: 'Cancel', kind: 'text' },
-      { label: 'Agree and sign', kind: 'filled', onClick: (dlg) => {
+      { label: 'Agree and sign', kind: 'filled', onClick: async (dlg) => {
         const name = dlg.querySelector('#signature').value.trim();
         if (!name) return false;
-        const sigId = store.uid('sig');
-        store.apply('signatures', sigId, {
-          id: sigId, entryId, eventId: entry.eventId, playerId: entry.playerId,
-          documentId: docId, documentVersion: doc?.version ?? 1,
-          typedName: name, signedAt: new Date().toISOString(),
-        });
-        store.apply('entries', entryId, {
-          signedDocuments: [...new Set([...(entry.signedDocuments || []), docId])],
-        });
-        snack('Signed');
-        rerender();
+        try {
+          if (auth.isRemote()) await store.signDocumentRemote(entry.eventId, docId, doc?.version ?? 1, name);
+          else {
+            const sigId = store.uid('sig');
+            store.apply('signatures', sigId, {
+              id: sigId, entryId, eventId: entry.eventId, playerId: entry.playerId,
+              documentId: docId, documentVersion: doc?.version ?? 1,
+              typedName: name, signedAt: new Date().toISOString(),
+            });
+            store.apply('entries', entryId, {
+              signedDocuments: [...new Set([...(entry.signedDocuments || []), docId])],
+            });
+          }
+          snack('Signed');
+          rerender();
+        } catch (err) {
+          snack(`Could not sign: ${String(err?.message || err)}`);
+          return false;
+        }
+        return true;
       } },
     ],
   });

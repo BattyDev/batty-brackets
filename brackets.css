@@ -474,6 +474,37 @@ a { color: var(--md-primary); }
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+.role-choice { min-height:calc(100dvh - 144px);display:grid;place-items:start center;max-width:640px;padding-top:clamp(28px,9vh,96px) }
+.role-choice-card { width:100%;padding:clamp(24px,6vw,40px);border:1px solid var(--md-outline-variant) }
+.role-choice-card h1 { font-weight:800;letter-spacing:-.04em }
+.role-choice-intro { max-width:48ch;margin:12px 0 28px;color:var(--md-on-surface-variant) }
+.role-choice-options { display:grid;gap:12px }
+.role-choice-option { display:grid;grid-template-columns:48px minmax(0,1fr) 24px;align-items:center;gap:14px;width:100%;min-height:96px;padding:16px;border:1px solid var(--md-outline-variant);border-radius:14px;background:var(--md-surface-container-low);color:var(--md-on-surface);text-align:left;cursor:pointer;font:inherit }
+.role-choice-option:hover,.role-choice-option:focus-visible { border-color:var(--md-primary);box-shadow:0 4px 12px rgb(20 28 75 / .12) }
+.role-choice-player { border-color:var(--md-primary);background:var(--md-primary-container);color:var(--md-on-primary-container) }
+.role-choice-icon { display:grid;place-items:center;width:48px;height:48px;border-radius:14px;background:var(--md-surface-container-high);color:var(--md-primary) }
+.role-choice-player .role-choice-icon { background:var(--md-primary);color:var(--md-on-primary) }
+.role-choice-copy { display:grid;gap:3px;min-width:0 }
+.role-choice-copy b { font:var(--title-large) }
+.role-choice-copy span { font:var(--body-medium);color:var(--md-on-surface-variant) }
+.role-choice-player .role-choice-copy span { color:var(--md-on-primary-container) }
+.role-choice-arrow { display:grid;place-items:center;color:var(--md-primary) }
+.role-choice-footnote { margin:24px 0 0;color:var(--md-on-surface-variant);font:var(--body-small) }
+.guest-entry-form { padding:18px }
+.guest-entry-form .field-help { margin:8px 0 0 }
+.guest-entry-form > button { margin-top:12px }
+.captcha-slot { min-height:78px;margin-top:16px;color:var(--md-on-surface-variant);font:var(--body-small) }
+.captcha-slot[data-captcha-error] { min-height:0;padding:12px;border:1px solid var(--md-error);border-radius:12px;color:var(--md-error) }
+.mobile-player-shell .player-navigation { background:var(--md-surface-container-low) }
+
+@media (max-width: 599px) {
+  .role-choice { min-height:calc(100dvh - 116px);padding:18px 14px 96px }
+  .role-choice-card { padding:22px 18px }
+  .role-choice-option { min-height:88px;padding:14px;grid-template-columns:44px minmax(0,1fr) 20px }
+  .role-choice-icon { width:44px;height:44px }
+  .guest-entry-form { padding:16px }
+}
 @media (min-width: 600px) {
   .nav {
     flex-direction: column; align-items: center;

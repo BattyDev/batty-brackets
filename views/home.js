@@ -18,6 +18,7 @@ import { html, raw, list, icon, esc, avatar, formatDateTime, relativeTime, snack
 import { on } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
+import * as captcha from '../lib/captcha.js';
 import { gameById, GAMES } from '../data/games.js';
 import { formatMoney } from '../lib/guidance.js';
 import { brandMark } from '../lib/brand.js';
@@ -32,8 +33,44 @@ const STATUS = {
   complete: { label: 'Finished', chip: '' },
 };
 
+const ROLE_PREFERENCE_KEY = 'battydev.brackets.experience';
+const GUEST_TAG_MAX = 32;
+
 let codeLookup = { code: null, status: 'idle', error: null };
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+function rememberPlayerExperience() {
+  try { localStorage.setItem(ROLE_PREFERENCE_KEY, 'player'); } catch { /* private mode */ }
+}
+
+async function temporarySession(tag, captchaToken) {
+  if (typeof auth.createTemporaryPlayer === 'function') return auth.createTemporaryPlayer({ tag, captchaToken });
+  const session = auth.signInLocal({ tag, via: 'guest' });
+  if (session) { session.temporary = true; store.setSession(session); }
+  return session;
+}
+
+const shownGuestOffers = new Set();
+async function offerGuestUpgrade(event) {
+  const me = auth.currentPlayer();
+  if (!me || !auth.currentSession()?.temporary) return;
+  const key = `${event.id}:${me.id}`;
+  if (shownGuestOffers.has(key)) return;
+  shownGuestOffers.add(key);
+  const { dialog } = await import('../lib/ui.js');
+  const { openGuestUpgrade } = await import('./auth.js');
+  dialog({
+    title: 'You’re in — save your record',
+    body: html`<p class="body-large">You joined <b>${event.name}</b> as <b>${me.tag}</b>.</p>
+      <p class="body-medium">Create an account later to keep this fight record on another phone and customise your player profile. You can keep playing as a guest for now.</p>
+      ${!auth.isRemote() ? html`<p class="body-small dim">This guest profile is saved on this device until you choose to upgrade it.</p>` : ''}`,
+    actions: [
+      { label: 'Maybe later', kind: 'text' },
+      { label: 'Customize profile', kind: 'tonal', onClick: () => { window.location.hash = '#/me'; } },
+      { label: 'Create account', kind: 'filled', onClick: () => openGuestUpgrade(() => rerender()) },
+    ],
+  });
+}
 
 function ensureRemoteLookup(code) {
   const normalized = String(code || '').trim().toUpperCase();
@@ -57,11 +94,28 @@ export function view(ctx) {
   if (ctx.route === 'join') return joinView(ctx, params.code);
   if (ctx.route === 'host') return { title: 'Host workspace', subtitle: 'Your events. Your room.', body: hostHome(ctx) };
 
+  if (ctx.route === 'home' && ctx.compact && !me && !ctx.rolePreference) {
+    return { title: 'Choose your experience', subtitle: 'Batty Brackets', body: roleChoice() };
+  }
+
   return {
     title: 'Batty Brackets',
     subtitle: me ? `Signed in as ${me.tag}` : 'Tournaments for fighting games',
     body: me ? dashboard(ctx) : landing(ctx),
   };
+}
+
+function roleChoice() {
+  return html`<div class="pane role-choice" aria-labelledby="role-choice-heading">
+    <section class="role-choice-card card card-elevated">
+      <p class="eyebrow">WELCOME TO BATTY BRACKETS</p><h1 id="role-choice-heading" class="headline-large">I'm a…</h1>
+      <p class="body-large role-choice-intro">Start with the view that fits tonight. You can switch any time — this remembers your preferred layout, never what you’re allowed to do.</p>
+      <div class="role-choice-options">
+        <button class="role-choice-option role-choice-player" type="button" data-act="choose-role" data-role="player"><span class="role-choice-icon">${raw(icon('esports'))}</span><span class="role-choice-copy"><b>Player</b><span>Join a tournament, check in, and find your next set.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+        <button class="role-choice-option role-choice-host" type="button" data-act="choose-role" data-role="host"><span class="role-choice-icon">${raw(icon('tune'))}</span><span class="role-choice-copy"><b>Host</b><span>Run your bracket, manage arrivals, and keep the room moving.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+      </div>
+      <p class="role-choice-footnote">Have a tournament code? <a href="#/join">Join directly</a> — you won’t need to choose a role first.</p>
+    </section></div>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -266,11 +320,7 @@ function joinView(ctx, code) {
           <button class="btn btn-filled btn-block" type="submit">Find it</button>
         </form>
 
-        ${normalizedCode && !event && auth.isRemote() && !auth.isSignedIn() ? html`
-          <div class="banner banner-info" style="margin-top:16px">${raw(icon('person'))}
-            <div><b>Sign in to use this invitation.</b><p class="body-small" style="margin:4px 0 0">Your code stays in the address while you sign in.</p>
-              <button class="btn btn-filled btn-sm" data-act="sign-in" style="margin-top:10px">Sign in</button></div>
-          </div>` : ''}
+        ${normalizedCode && !event && auth.isRemote() && !auth.isSignedIn() ? guestForm(null, false, normalizedCode) : ''}
         ${normalizedCode && !event && auth.isRemote() && auth.isSignedIn() && codeLookup.code === normalizedCode && codeLookup.status === 'loading' ? html`
           <div class="banner banner-info" style="margin-top:16px">${raw(icon('clock'))}<div>Finding your event…</div></div>` : ''}
         ${normalizedCode && !event && (!auth.isRemote() || (codeLookup.code === normalizedCode && codeLookup.status === 'error')) ? html`
@@ -301,8 +351,9 @@ function joinView(ctx, code) {
                 <div>You are already entered — seed ${already.seed ?? 'not set'}.</div>
               </div>
               <a class="btn btn-tonal btn-block" href="#/e/${event.id}" style="margin-top:12px">Open the event</a>`
-            : event.status !== 'registration' ? html`
+            : !['registration', 'checkin'].includes(event.status) ? html`
               <div class="banner banner-warn" style="margin-top:16px"><div>Registration is closed. Check with the organiser.</div></div>`
+            : !ctx.me ? guestForm(event, full, normalizedCode)
             : full ? html`
               <div class="banner banner-warn" style="margin-top:16px">${raw(icon('alert'))}
                 <div>This event is full at ${event.capacity}. Join anyway to go on the waitlist — organisers usually get a few drop-outs.</div>
@@ -310,11 +361,30 @@ function joinView(ctx, code) {
               <button class="btn btn-outlined btn-block" data-act="join-event" data-event="${event.id}" style="margin-top:12px">Join the waitlist</button>`
             : html`
               <button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}" style="margin-top:16px">
-                ${ctx.me ? 'Enter this event' : 'Sign in to continue'}
+                Enter this event
               </button>`}
           </div>` : ''}
       </div>`,
   };
+}
+
+function guestForm(event, waitlisted = false, code = '') {
+  const hasDocuments = Boolean(event?.documents?.some((doc) => doc.required));
+  const label = waitlisted ? 'Join the waitlist'
+    : hasDocuments ? 'Join and start check-in' : 'Join and check in';
+  return html`<form class="guest-entry-form card card-outlined" data-act-submit="guest-join" style="margin-top:16px">
+    ${event ? html`<input type="hidden" name="event" value="${event.id}">` : ''}
+    <input type="hidden" name="code" value="${code}">
+    <p class="eyebrow">PLAY AS A GUEST</p>
+    <label class="field"><span class="field-label">Player nickname</span>
+      <input name="tag" maxlength="${GUEST_TAG_MAX}" autocomplete="nickname" required placeholder="What should the bracket call you?">
+    </label>
+    <p class="field-help body-small dim">No login needed. You can save your record and customise your profile after you’re in.</p>
+    ${captcha.enabled() ? html`
+      <div class="captcha-slot" data-hcaptcha-widget><span class="body-small dim">Loading anti-bot check…</span></div>
+      <p class="field-help body-small dim">Complete this quick check before joining.</p>` : ''}
+    <button class="btn btn-filled btn-block" type="submit">${label}</button>
+  </form>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -326,12 +396,71 @@ on('join-lookup', (data, form) => {
   window.location.hash = `#/join/${String(code || '').trim().toUpperCase()}`;
 });
 
+on('guest-join', async (_data, form) => {
+  const values = new FormData(form);
+  const tag = String(values.get('tag') || '').trim();
+  const code = String(values.get('code') || '').trim().toUpperCase();
+  let eventId = String(values.get('event') || '');
+  if (!tag || tag.length > GUEST_TAG_MAX) { snack(`Enter a nickname up to ${GUEST_TAG_MAX} characters.`); return; }
+  const captchaToken = captcha.token(form);
+  if (captcha.enabled() && !captchaToken) { snack('Complete the anti-bot checkbox before joining.'); return; }
+
+  // Claim the lookup while auth redraws so the same code is not redeemed twice.
+  if (code) codeLookup = { code, status: 'loading', error: null };
+  try {
+    await temporarySession(tag, captchaToken);
+    let event = eventId ? store.getEvent(eventId) : null;
+    if (!event && code && auth.isRemote()) {
+      const result = await store.redeemRemoteCode(code);
+      event = result.event;
+      eventId = event?.id || '';
+      codeLookup = { code, status: 'done', error: null };
+    } else if (!event && code) {
+      event = store.eventByInvite(code);
+      eventId = event?.id || '';
+    }
+    if (!event || !['registration', 'checkin'].includes(event.status)) throw new Error('Registration is closed or the event is unavailable.');
+
+    let entry;
+    if (auth.isRemote()) {
+      entry = await store.joinRemoteEvent(eventId);
+      if (event.status === 'checkin' && !entry.waitlisted && !(event.documents || []).some((doc) => doc.required)) {
+        entry = await store.selfCheckInRemote(eventId);
+      }
+    } else {
+      const me = auth.currentPlayer();
+      entry = store.entryFor(eventId, me.id);
+      if (!entry) {
+        const entries = store.entriesFor(eventId);
+        const full = Boolean(event.capacity && entries.filter((item) => !item.waitlisted).length >= event.capacity);
+        const id = store.uid('ent');
+        entry = {
+          id, eventId, playerId: me.id, seed: entries.length + 1,
+          group: me.homeVenue || null, registeredAt: new Date().toISOString(),
+          checkedInAt: event.status === 'checkin' && !full && !(event.documents || []).some((doc) => doc.required) ? new Date().toISOString() : null,
+          source: 'guest', temporary: true, signedDocuments: [], waitlisted: full,
+        };
+        store.apply('entries', id, entry);
+      }
+    }
+    rememberPlayerExperience();
+    snack(entry.waitlisted ? 'On the waitlist.' : entry.checkedInAt ? 'Joined and checked in.' : `Entered ${event.name}.`);
+    window.location.hash = `#/e/${eventId}`;
+    setTimeout(() => offerGuestUpgrade(event), 250);
+  } catch (err) {
+    captcha.reset(form);
+    codeLookup = { code, status: 'error', error: String(err?.message || err) };
+    snack(`Could not join: ${codeLookup.error}`);
+    rerender();
+  }
+});
+
 on('join-event', async ({ event: eventId }) => {
   const { openSignIn } = await import('./auth.js');
   // Recheck current state at the action boundary: an old button can outlive
   // registration. Signing in only redraws this route; entry needs a new click.
   const event = store.getEvent(eventId);
-  if (!event || event.status !== 'registration') { snack('Registration is closed. Check with the organiser.'); return; }
+  if (!event || !['registration', 'checkin'].includes(event.status)) { snack('Registration is closed. Check with the organiser.'); return; }
   if (!auth.isSignedIn()) { openSignIn(() => window.dispatchEvent(new HashChangeEvent('hashchange'))); return; }
 
   const me = auth.currentPlayer();
@@ -339,8 +468,11 @@ on('join-event', async ({ event: eventId }) => {
 
   if (auth.isRemote()) {
     try {
-      const entry = await store.joinRemoteEvent(eventId);
-      snack(entry.waitlisted ? 'On the waitlist.' : `Entered ${event.name}.`);
+      let entry = await store.joinRemoteEvent(eventId);
+      if (event.status === 'checkin' && !entry.waitlisted && !(event.documents || []).some((doc) => doc.required)) {
+        entry = await store.selfCheckInRemote(eventId);
+      }
+      snack(entry.waitlisted ? 'On the waitlist.' : entry.checkedInAt ? 'Joined and checked in.' : `Entered ${event.name}.`);
       window.location.hash = `#/e/${eventId}`;
     } catch (err) {
       snack(`Could not join: ${String(err?.message || err)}`);
@@ -361,6 +493,7 @@ on('join-event', async ({ event: eventId }) => {
     group: me.homeVenue || null,
     registeredAt: new Date().toISOString(),
     source: 'self',
+    checkedInAt: event.status === 'checkin' && !full && !(event.documents || []).some((doc) => doc.required) ? new Date().toISOString() : null,
     signedDocuments: [],
     waitlisted: full,
   });

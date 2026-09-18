@@ -22,6 +22,8 @@ assert.match(config, /location\.hostname/,
   'production configuration must be host-scoped so local tests never touch live data');
 assert.match(config, /url:\s*'https:\/\/bbqauqqymjxqcyurxmna\.supabase\.co'/);
 assert.match(config, /key:\s*'sb_publishable_/);
+assert.match(config, /captchaSiteKey:\s*'[0-9a-f-]+'/,
+  'production configuration includes only the public hCaptcha sitekey');
 assert.doesNotMatch(config, /service_role|sb_secret_/,
   'browser configuration must never contain privileged Supabase credentials');
 

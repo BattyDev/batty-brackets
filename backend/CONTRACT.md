@@ -34,6 +34,8 @@ Responses are JSON objects unless noted otherwise.
 | `bkt_list_events` | anonymous or authenticated | none | `{events, orgs, players}` (newest 100 visible events) |
 | `bkt_event_by_code` | authenticated identity | `p_code text` | `{event, access}` or `{error}` |
 | `bkt_join_event` | authenticated identity | `p_event_id uuid, p_contact text = null, p_share_contact boolean = false` | entry |
+| `bkt_sign_document` | authenticated identity with an entry | `p_event_id uuid, p_document_id text, p_document_version integer, p_typed_name text` | `{entry, changed}` |
+| `bkt_self_check_in` | authenticated identity with an entry | `p_event_id uuid` | `{entry, changed}` |
 | `bkt_read_event` | anonymous or authenticated reader | `p_event_id uuid` | `{event, entries, players, stations, orgs, brackets, results, revision}` |
 
 `p_event` accepts only: `org_name`, `name`, `game_id`, `capacity`, `format`,
@@ -50,6 +52,26 @@ unique by event and authenticated player. The event row is locked before
 capacity is counted, so admitted places cannot exceed capacity; overflow joins
 are waitlisted. Clients cannot supply player identity, seed, paid state,
 waitlist state, timestamps or ownership.
+
+## Guest player contract
+
+A “guest” is a Supabase anonymous Auth user. Supabase gives that session the
+`authenticated` database role; it is not the unauthenticated `anon` role shown
+in the matrix below. The app immediately resolves the Auth UUID through
+`bkt_identity`, so entries point at the same durable player UUID before and
+after account upgrade.
+
+Guests may redeem a code, join, read their event, and check in their own entry.
+They may not own an organization or create an event. That distinction uses the
+trusted JWT `is_anonymous` claim, never editable user metadata. Self check-in
+locks the caller's entry, rejects waitlisted players, requires the event to be
+in check-in, and verifies every required document signature server-side. A
+retry is idempotent and returns `changed: false`.
+
+Upgrade must link credentials to the active anonymous Auth user. Discord uses
+identity linking; email uses a verification-first user update. Ordinary sign-up
+and sign-in are blocked while a guest record is active because switching Auth
+UUIDs would split tournament history.
 
 ## Visibility and private data
 
@@ -77,7 +99,8 @@ do not reveal whether an unlisted event or consumed credential exists.
 | List/read public event | yes | yes | yes |
 | Read unlisted event before redemption/entry | no | no | yes |
 | Redeem invitation and join | no | yes | yes |
-| Create event | no | yes | yes |
+| Self check in | no | own admitted entry only | own admitted entry only |
+| Create event | no | durable account only | yes |
 | Set own event contact | no | own entry only | own entry only |
 | Read opted-in contacts | no | own contact only | that event only |
 | Direct table write/private-schema read | no | no | no |
@@ -90,3 +113,9 @@ Supabase staging project. Verify the effective grants there, repeat the
 simultaneous-capacity test from two sessions, and rehearse an organizer laptop,
 player phone and separate TV. The schema has not passed those gates merely by
 existing in this repository.
+
+Before guest access is enabled in production, enable anonymous sign-ins and
+manual identity linking in Supabase, configure CAPTCHA/edge abuse protection,
+and rehearse email verification and OAuth linking on the production callback
+domain. The per-account invitation throttle cannot stop one device from making
+many anonymous accounts.

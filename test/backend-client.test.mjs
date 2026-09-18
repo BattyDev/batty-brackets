@@ -22,6 +22,17 @@ await api.joinEvent(id, { contact: 'private@example.com', shareContact: false, s
 assert.deepEqual(calls.pop(), { name: 'bkt_join_event', args: { p_event_id: id, p_contact: null, p_share_contact: false } });
 await api.joinEvent(id, { contact: 'ok@example.com', shareContact: true });
 assert.equal(calls.pop().args.p_contact, 'ok@example.com');
+reply = { entry: { id, event_id: id, player_id: id, checked_in_at: '2026-09-17T01:00:00Z' }, changed: true };
+const checked = await api.selfCheckIn(id);
+assert.equal(checked.entry.checkedInAt, '2026-09-17T01:00:00Z');
+assert.equal(checked.changed, true);
+assert.deepEqual(calls.pop(), { name: 'bkt_self_check_in', args: { p_event_id: id } });
+reply = { entry: { id, event_id: id, player_id: id, signed_documents: ['conduct'] }, changed: true };
+const signed = await api.signDocument(id, 'conduct', 1, '  Batty  ');
+assert.deepEqual(signed.entry.signedDocuments, ['conduct']);
+assert.deepEqual(calls.pop(), { name: 'bkt_sign_document', args: {
+  p_event_id: id, p_document_id: 'conduct', p_document_version: 1, p_typed_name: 'Batty',
+} });
 reply = { event: { id, org_id: id }, org: { id }, stations: [], invite_code: 'ABCDEFGH2345' };
 assert.equal((await api.createEvent(id, { name: 'Weekly' })).inviteCode, 'ABCDEFGH2345');
 assert.equal(calls.pop().args.p_event_id, id);

@@ -13,10 +13,11 @@ const commands = read('sql/staging/101_commands.sql');
 const claims = read('sql/staging/102_claims.sql');
 const operations = read('sql/staging/103_operations.sql');
 const hardening = read('sql/staging/104_hardening.sql');
+const guest = read('sql/staging/105_guest_join.sql');
 const run = read('test/backend/run.sql');
 const adapter = read('lib/backend.js');
 
-assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*security\.sql/,
+assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*security\.sql/,
   'the disposable harness must apply staging migrations in order before assertions');
 assert.doesNotMatch(run, /001_schema\.sql/, 'the unsafe historical schema must never enter the staging harness');
 
@@ -27,7 +28,7 @@ for (const name of rpc) {
   assert.match(adapter, new RegExp(`call\\('${name}'`), `${name} client call missing`);
 }
 
-for (const sql of [foundation, commands, claims, operations]) {
+for (const sql of [foundation, commands, claims, operations, guest]) {
   const declarations = [...sql.matchAll(/create function\s+([\w.]+)([\s\S]*?)\bas\s+\$\$/gi)];
   const definers = declarations.filter(([, , declaration]) => /security definer/i.test(declaration));
   assert.ok(definers.length, 'each migration that defines commands must expose definer functions to inspect');
@@ -53,5 +54,14 @@ assert.match(operations, /grant execute on function public\.bkt_save_event_state
   'only authenticated clients may invoke organizer writes');
 assert.match(hardening, /alter table bkt_private\.identities enable row level security;[\s\S]*alter table bkt_private\.signatures enable row level security;/,
   'private tables require defense-in-depth RLS even though the schema is hidden');
+assert.match(guest, /auth\.jwt\(\)->>'is_anonymous'/, 'guest privilege decisions must use the trusted JWT claim');
+assert.doesNotMatch(guest, /->>\s*'user_metadata'/i, 'guest privilege decisions must not trust editable user metadata');
+assert.match(guest, /create trigger bkt_orgs_durable_owner[\s\S]*reject_anonymous_org_owner/, 'guests cannot become organization owners');
+assert.match(guest, /create function public\.bkt_sign_document[\s\S]*player_id=v_me for update/, 'players can sign only their own entry');
+assert.match(guest, /where event_id=p_event_id and player_id=v_me for update/, 'self check-in locks only the caller entry');
+assert.match(guest, /checked_in_at is null[\s\S]*v_changed:=true/, 'self check-in is idempotent');
+assert.match(guest, /grant execute on function[\s\S]*public\.bkt_self_check_in\(uuid\) to authenticated/, 'only authenticated identities can invoke check-in');
+assert.match(adapter, /call\('bkt_self_check_in'/, 'the client must use the reviewed self check-in command');
+assert.match(adapter, /call\('bkt_sign_document'/, 'the client must use the reviewed signature command');
 
 console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, and grant boundary');

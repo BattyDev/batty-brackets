@@ -34,7 +34,8 @@ do $$ declare t record; r text; v text; begin
    'public.bkt_join_event(uuid,text,boolean)','public.bkt_event_by_code(text)',
    'public.bkt_set_contact(uuid,text,boolean)','public.bkt_read_contacts(uuid)',
    'public.bkt_create_walkup(uuid,text)','public.bkt_claim_player(text)',
-   'public.bkt_save_event_state(uuid,bigint,jsonb)'] loop
+   'public.bkt_save_event_state(uuid,bigint,jsonb)','public.bkt_sign_document(uuid,text,integer,text)',
+   'public.bkt_self_check_in(uuid)'] loop
   perform pg_temp.assert_true(not has_function_privilege('anon',v,'EXECUTE'),'anon denied RPC '||v);
   perform pg_temp.assert_true(has_function_privilege('authenticated',v,'EXECUTE'),'authenticated RPC '||v);
  end loop;
@@ -173,6 +174,25 @@ select pg_temp.assert_true(exists(select 1 from public.bkt_entries where event_i
 select pg_temp.fails(format('select public.bkt_save_event_state(%L,%s,%L::jsonb)',
  '10000000-0000-0000-0000-000000000001',:'op_revision',:'op_state'));
 reset role;
+
+-- Anonymous Auth users may join, sign and check in, but may not acquire host
+-- ownership. Required signatures are written and verified privately.
+set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000002';
+set local request.jwt.claim.is_anonymous='true';
+set local role authenticated;
+select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000004',
+ '{"org_name":"Guest","name":"Forbidden","game_id":"tokon","capacity":2}')$q$);
+select pg_temp.fails($q$select public.bkt_self_check_in('10000000-0000-0000-0000-000000000001')$q$);
+select public.bkt_sign_document('10000000-0000-0000-0000-000000000001','conduct',1,'Entrant') as guest_signed \gset
+select pg_temp.assert_true((:'guest_signed'::jsonb->>'changed')::boolean,'guest signs own required document');
+select pg_temp.assert_true(not (public.bkt_sign_document('10000000-0000-0000-0000-000000000001','conduct',1,'Entrant')->>'changed')::boolean,'signature retry is idempotent');
+select public.bkt_self_check_in('10000000-0000-0000-0000-000000000001') as guest_checked \gset
+select pg_temp.assert_true((:'guest_checked'::jsonb->>'changed')::boolean,'guest first self check-in changes entry');
+select pg_temp.assert_true(not (public.bkt_self_check_in('10000000-0000-0000-0000-000000000001')->>'changed')::boolean,'guest self check-in retry is idempotent');
+select pg_temp.assert_true(exists(select 1 from public.bkt_entries where event_id='10000000-0000-0000-0000-000000000001'
+ and player_id=:'entrant_id'::uuid and checked_in_at is not null),'guest checks in own entry');
+reset role;
+set local request.jwt.claim.is_anonymous='false';
 select pg_temp.assert_true((select count(*) from public.bkt_entries where event_id='10000000-0000-0000-0000-000000000001' and not waitlisted)=2,'capacity invariant');
 select pg_temp.assert_true(not exists(select 1 from information_schema.columns where table_schema='public' and table_name like 'bkt_%'
  and column_name in ('auth_user_id','contact','email','claim_code','invite_code','paid_at','typed_name')),'secrets never public columns');

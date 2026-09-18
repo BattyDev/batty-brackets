@@ -29,7 +29,7 @@ psql --set=ON_ERROR_STOP=1 --dbname=batty_brackets_test --file=run.sql
 dropdb batty_brackets_test
 ```
 
-`run.sql` commits the three staging migrations and runs adversarial assertions
+`run.sql` commits the five staging migrations and runs adversarial assertions
 inside a rollback-only transaction. A pass ends with:
 
 ```text
@@ -44,7 +44,8 @@ enabled.
 
 1. Confirm the selected project is dedicated staging and has no `bkt_` objects.
 2. In one explicitly selected SQL session, set `bkt.staging = 'on'`.
-3. Apply `100_foundation.sql`, `101_commands.sql`, then `102_claims.sql`.
+3. Apply `100_foundation.sql`, `101_commands.sql`, `102_claims.sql`,
+   `103_operations.sql`, `104_hardening.sql`, then `105_guest_join.sql`.
    The first migration refuses legacy or partially installed Batty objects.
 4. Adapt the assertions in `test/backend/security.sql` to real test users and
    JWT-backed API requests. Do not run `bootstrap.sql`; Supabase already owns
@@ -54,7 +55,12 @@ enabled.
 6. Race the last available place from two authenticated sessions. Exactly one
    entry must be admitted and the other waitlisted. Retry both commands and
    confirm no duplicate entry or revision change.
-7. Delete the staging test data or discard the project. Never use real
+7. Enable anonymous sign-ins and manual identity linking in staging. Verify a
+   code-to-nickname join, required-document rejection, idempotent self check-in,
+   rejected guest event creation, and an email/Discord upgrade that preserves
+   the player UUID. Add CAPTCHA or equivalent edge abuse controls before any
+   public production rollout; the database throttle is per account.
+8. Delete the staging test data or discard the project. Never use real
    participant contact information.
 
 ## Still required after SQL passes
