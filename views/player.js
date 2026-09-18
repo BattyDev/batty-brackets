@@ -143,6 +143,14 @@ function profile(player, ctx, isMe) {
           <span class="chip chip-static chip-assist">${new Set(history.map((r) => r.eventId)).size} events</span>
         </div>
 
+        ${isMe && ctx.session?.temporary ? html`
+          <div class="banner banner-info" style="margin-top:16px">
+            ${raw(icon('person'))}<div class="spacer"><b>You’re playing as a guest</b>
+              <div class="body-small">This record works now. Save it to use it on another phone and keep your history long-term.</div>
+              <button class="btn btn-filled btn-sm" data-act="save-guest-record" style="margin-top:8px">Save my record</button>
+            </div>
+          </div>` : ''}
+
         ${isMe && ctx.session?.needsPasswordFallback ? html`
           <div class="banner banner-warn" style="margin-top:16px">
             ${raw(icon('key'))}
@@ -334,6 +342,11 @@ function connectionsSection(player) {
    -------------------------------------------------------------------------- */
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+on('save-guest-record', async () => {
+  const { openGuestUpgrade } = await import('./auth.js');
+  openGuestUpgrade(rerender);
+});
 
 on('set-connection', ({ connection }, el) => {
   const me = auth.currentPlayer();

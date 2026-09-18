@@ -51,8 +51,45 @@ function validReturnPath(value) {
 
 export function openSignIn(onDone, why = null) {
   redraw = onDone || (() => {});
+  if (auth.currentSession()?.temporary) { openGuestUpgrade(redraw); return; }
   context = why || joinIntent();
   chooseStep();
+}
+
+export function openGuestUpgrade(onDone) {
+  redraw = onDone || (() => {});
+  const me = auth.currentPlayer();
+  const local = !auth.isRemote();
+  const el = dialog({
+    title: 'Save your player record',
+    body: html`<p class="body-medium">Keep your tournaments, fight record, and profile attached to this same player identity.</p>
+      ${local ? html`<div class="banner banner-info" style="margin-top:16px">${raw(icon('station'))}<div><b>This profile is device-only for now.</b><p class="body-small" style="margin:4px 0 0">Connect a server before upgrading; your guest record will keep working on this device.</p></div></div>` : html`
+        <div class="stack" style="margin-top:16px">
+          <label class="field"><span class="field-label">Email address</span><input id="guest-email" type="email" autocomplete="email" required></label>
+          <label class="field"><span class="field-label">Player nickname</span><input id="guest-tag" maxlength="32" value="${me?.tag || ''}" autocomplete="nickname"></label>
+          <p id="guest-upgrade-note" class="field-help" role="status" aria-live="polite">We’ll verify your email first, then let you add a password. Your player ID will not change.</p>
+        </div>`}`,
+    actions: local ? [{ label: 'Keep playing as guest', kind: 'filled' }] : [
+      { label: 'Maybe later', kind: 'text' },
+      { label: 'Use Discord', kind: 'tonal', onClick: async (dlg) => {
+        try {
+          await auth.upgradeTemporaryWithDiscord();
+          dlg.close();
+          return true;
+        } catch (err) { dlg.querySelector('#guest-upgrade-note').textContent = err.message; return false; }
+      } },
+      { label: 'Email me a link', kind: 'filled', onClick: async (dlg) => {
+        const note = dlg.querySelector('#guest-upgrade-note');
+        try {
+          await auth.upgradeTemporaryWithEmail(dlg.querySelector('#guest-email').value, dlg.querySelector('#guest-tag').value);
+          try { sessionStorage.setItem('brackets.guestSetPassword', '1'); } catch { /* private mode */ }
+          note.textContent = 'Verification sent. Open that link on this device; then you can add a password to the same player record.';
+          return false;
+        } catch (err) { note.textContent = err.message; return false; }
+      } },
+    ],
+  });
+  return el;
 }
 
 /* --------------------------------------------------------------------------
@@ -395,13 +432,16 @@ export async function resumeAfterRedirect(onDone) {
   let pending = null;
   let claimCode = null;
   let returnPath = null;
+  let guestSetPassword = null;
   try {
     pending = sessionStorage.getItem('brackets.afterAuth');
     claimCode = sessionStorage.getItem('brackets.pendingClaim');
     returnPath = validReturnPath(sessionStorage.getItem(RETURN_AFTER_AUTH));
+    guestSetPassword = sessionStorage.getItem('brackets.guestSetPassword');
     sessionStorage.removeItem('brackets.afterAuth');
     sessionStorage.removeItem('brackets.pendingClaim');
     sessionStorage.removeItem(RETURN_AFTER_AUTH);
+    if (guestSetPassword && auth.isSignedIn() && !auth.currentSession()?.temporary) sessionStorage.removeItem('brackets.guestSetPassword');
   } catch { /* private mode */ }
 
   if (claimCode && auth.isSignedIn()) {
@@ -413,6 +453,7 @@ export async function resumeAfterRedirect(onDone) {
   }
 
   if (pending === 'set-password' && auth.isSignedIn()) openSetPassword();
+  if (guestSetPassword && auth.isSignedIn() && !auth.currentSession()?.temporary) openSetPassword();
 
   /* Route restoration happens after the account exists and after any claim
      waiting on it. It only redraws the invite; the join action still requires
@@ -434,7 +475,8 @@ auth.onAuth(() => {
   try {
     hasWork = Boolean(sessionStorage.getItem(RETURN_AFTER_AUTH)
       || sessionStorage.getItem('brackets.afterAuth')
-      || sessionStorage.getItem('brackets.pendingClaim'));
+      || sessionStorage.getItem('brackets.pendingClaim')
+      || sessionStorage.getItem('brackets.guestSetPassword'));
   } catch { /* private mode */ }
   if (!hasWork) return;
   resumeScheduled = true;

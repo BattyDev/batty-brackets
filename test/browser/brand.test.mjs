@@ -94,20 +94,20 @@ try {
       return event.inviteCode;
     }, DEMO_EVENT);
     await goTo(page, base, `#/join/${code}`);
-    report.ok('waitlisted entrants do not consume admitted capacity', (await page.locator('[data-act="join-event"]').textContent()).includes('Sign in to continue'));
-    await page.locator('[data-act="join-event"]').click();
-    await page.locator('#sign-local').click();
-    await page.locator('#tag').fill('Brand join probe');
-    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    report.ok('waitlisted entrants do not consume admitted capacity', (await page.locator('[data-act-submit="guest-join"] button').textContent()).includes('Join and start check-in'));
+    await page.locator('[data-act-submit="guest-join"] input[name="tag"]').fill('Brand join probe');
     const entryState = () => page.evaluate(async (id) => {
       const store = await import('./lib/store.js');
       const auth = await import('./lib/auth.js');
-      return store.entryFor(id, auth.currentPlayer().id);
+      const me = auth.currentPlayer();
+      return me ? store.entryFor(id, me.id) : null;
     }, DEMO_EVENT);
-    report.ok('sign-in preserves join route and requires confirmation', page.url().endsWith(`#/join/${code}`) && !(await entryState()));
-    await page.locator('[data-act="join-event"]').click();
+    report.ok('nickname is collected before guest entry', page.url().endsWith(`#/join/${code}`) && !(await entryState()));
+    await page.locator('[data-act-submit="guest-join"] button[type="submit"]').click();
     await page.waitForURL(`**/#/e/${DEMO_EVENT}`);
-    report.ok('explicit confirmation admits into available capacity', (await entryState())?.waitlisted === false);
+    report.ok('guest confirmation admits into available capacity', (await entryState())?.waitlisted === false);
+    await page.waitForTimeout(350);
+    if (await page.getByRole('button', { name: 'Maybe later', exact: true }).count()) await page.getByRole('button', { name: 'Maybe later', exact: true }).click();
     // A second person encounters a genuinely full event.
     await page.evaluate(async () => { const auth = await import('./lib/auth.js'); auth.signInLocal({ tag: 'Brand waitlist probe' }); });
     await goTo(page, base, `#/join/${code}`);
