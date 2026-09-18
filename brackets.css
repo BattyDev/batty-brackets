@@ -494,6 +494,8 @@ a { color: var(--md-primary); }
 .guest-entry-form { padding:18px }
 .guest-entry-form .field-help { margin:8px 0 0 }
 .guest-entry-form > button { margin-top:12px }
+.captcha-slot { min-height:78px;margin-top:16px;color:var(--md-on-surface-variant);font:var(--body-small) }
+.captcha-slot[data-captcha-error] { min-height:0;padding:12px;border:1px solid var(--md-error);border-radius:12px;color:var(--md-error) }
 .mobile-player-shell .player-navigation { background:var(--md-surface-container-low) }
 
 @media (max-width: 599px) {

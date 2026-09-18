@@ -26,4 +26,6 @@ const production = ['battybrackets.com', 'www.battybrackets.com'].includes(locat
 window.BRACKETS_CONFIG = production ? {
   url: 'https://bbqauqqymjxqcyurxmna.supabase.co',
   key: 'sb_publishable_0wB8tbr7yclMFE3uXqJblg_-etHxkiL',
+  /* Public sitekey only. The matching secret lives in Supabase Auth. */
+  captchaSiteKey: '565e9866-a23e-4fc8-a2c0-419c881c62c4',
 } : { url: '', key: '' };

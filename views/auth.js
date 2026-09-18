@@ -11,6 +11,7 @@
 'use strict';
 
 import * as auth from '../lib/auth.js';
+import * as captcha from '../lib/captcha.js';
 import { dialog, html, raw, esc, icon, snack } from '../lib/ui.js';
 
 let redraw = () => {};
@@ -293,6 +294,9 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
         <input type="password" id="password" autocomplete="${raw(signup ? 'new-password' : 'current-password')}">
       </label>
       <p class="field-help" id="pw-note">${signup ? 'At least 8 characters.' : ''}</p>
+      ${captcha.enabled() ? html`
+        <div class="captcha-slot" data-hcaptcha-widget><span class="body-small dim">Loading anti-bot check…</span></div>
+        <p class="field-help body-small dim">Complete this check to continue.</p>` : ''}
       ${signup ? '' : html`<button class="btn btn-text" id="forgot" style="margin-top:8px">Forgot it?</button>`}`,
     actions: [
       { label: 'Back', kind: 'text', onClick: () => { setTimeout(() => emailStep(email), 0); } },
@@ -303,14 +307,17 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
           const password = dlg.querySelector('#password').value;
           const note = dlg.querySelector('#pw-note');
           if (password.length < 8) { note.textContent = 'At least 8 characters.'; return false; }
+          const captchaToken = captcha.token(dlg);
+          if (captcha.enabled() && !captchaToken) { note.textContent = 'Complete the anti-bot checkbox first.'; return false; }
           try {
             rememberJoinIntent();
-            if (signup) await auth.signUpWithEmail(email, password, dlg.querySelector('#tag')?.value);
-            else await auth.signInWithEmail(email, password);
+            if (signup) await auth.signUpWithEmail(email, password, dlg.querySelector('#tag')?.value, captchaToken);
+            else await auth.signInWithEmail(email, password, captchaToken);
             dlg.close();
             redraw();
             snack(signup ? 'Account created' : 'Signed in');
           } catch (err) {
+            captcha.reset(dlg);
             note.textContent = err.message;
             return false;
           }
@@ -320,11 +327,19 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
     ],
   });
 
+  captcha.mount(el);
+
   el.querySelector('#forgot')?.addEventListener('click', async () => {
+    const captchaToken = captcha.token(el);
+    if (captcha.enabled() && !captchaToken) {
+      el.querySelector('#pw-note').textContent = 'Complete the anti-bot checkbox first.';
+      return;
+    }
     try {
-      await auth.sendPasswordReset(email);
+      await auth.sendPasswordReset(email, captchaToken);
       snack('Reset link sent, if that address has an account.');
     } catch (err) { snack(err.message); }
+    finally { captcha.reset(el); }
   });
   el.querySelector(signup ? '#tag' : '#password')?.focus();
 }

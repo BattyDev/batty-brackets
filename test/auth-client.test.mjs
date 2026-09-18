@@ -83,8 +83,10 @@ const guestClient = { auth: {
 } };
 const guestAuth = await import(`../lib/auth.js?guest-auth=${Date.now()}`);
 await guestAuth.initAuth(guestClient, { connectedBackend: backend });
-await guestAuth.createTemporaryPlayer({ tag: '  Rushdown  ' });
-assert.deepEqual(guestCalls[0], ['anonymous', { options: { data: { full_name: 'Rushdown' } } }]);
+await guestAuth.createTemporaryPlayer({ tag: '  Rushdown  ', captchaToken: 'captcha-guest-token' });
+assert.deepEqual(guestCalls[0], ['anonymous', {
+  options: { data: { full_name: 'Rushdown' }, captchaToken: 'captcha-guest-token' },
+}]);
 assert.equal(guestAuth.currentSession().temporary, true);
 assert.equal(guestAuth.currentPlayer().id, playerId, 'guest auth UUID resolves to a durable player identity');
 await assert.rejects(guestAuth.signUpWithEmail('new@example.test', 'password123', 'Rushdown'), /upgrade option/);

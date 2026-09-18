@@ -18,6 +18,7 @@ import { html, raw, list, icon, esc, avatar, formatDateTime, relativeTime, snack
 import { on } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
+import * as captcha from '../lib/captcha.js';
 import { gameById, GAMES } from '../data/games.js';
 import { formatMoney } from '../lib/guidance.js';
 import { brandMark } from '../lib/brand.js';
@@ -42,8 +43,8 @@ function rememberPlayerExperience() {
   try { localStorage.setItem(ROLE_PREFERENCE_KEY, 'player'); } catch { /* private mode */ }
 }
 
-async function temporarySession(tag) {
-  if (typeof auth.createTemporaryPlayer === 'function') return auth.createTemporaryPlayer({ tag });
+async function temporarySession(tag, captchaToken) {
+  if (typeof auth.createTemporaryPlayer === 'function') return auth.createTemporaryPlayer({ tag, captchaToken });
   const session = auth.signInLocal({ tag, via: 'guest' });
   if (session) { session.temporary = true; store.setSession(session); }
   return session;
@@ -379,6 +380,9 @@ function guestForm(event, waitlisted = false, code = '') {
       <input name="tag" maxlength="${GUEST_TAG_MAX}" autocomplete="nickname" required placeholder="What should the bracket call you?">
     </label>
     <p class="field-help body-small dim">No login needed. You can save your record and customise your profile after you’re in.</p>
+    ${captcha.enabled() ? html`
+      <div class="captcha-slot" data-hcaptcha-widget><span class="body-small dim">Loading anti-bot check…</span></div>
+      <p class="field-help body-small dim">Complete this quick check before joining.</p>` : ''}
     <button class="btn btn-filled btn-block" type="submit">${label}</button>
   </form>`;
 }
@@ -398,11 +402,13 @@ on('guest-join', async (_data, form) => {
   const code = String(values.get('code') || '').trim().toUpperCase();
   let eventId = String(values.get('event') || '');
   if (!tag || tag.length > GUEST_TAG_MAX) { snack(`Enter a nickname up to ${GUEST_TAG_MAX} characters.`); return; }
+  const captchaToken = captcha.token(form);
+  if (captcha.enabled() && !captchaToken) { snack('Complete the anti-bot checkbox before joining.'); return; }
 
   // Claim the lookup while auth redraws so the same code is not redeemed twice.
   if (code) codeLookup = { code, status: 'loading', error: null };
   try {
-    await temporarySession(tag);
+    await temporarySession(tag, captchaToken);
     let event = eventId ? store.getEvent(eventId) : null;
     if (!event && code && auth.isRemote()) {
       const result = await store.redeemRemoteCode(code);
@@ -442,6 +448,7 @@ on('guest-join', async (_data, form) => {
     window.location.hash = `#/e/${eventId}`;
     setTimeout(() => offerGuestUpgrade(event), 250);
   } catch (err) {
+    captcha.reset(form);
     codeLookup = { code, status: 'error', error: String(err?.message || err) };
     snack(`Could not join: ${codeLookup.error}`);
     rerender();

@@ -20,6 +20,7 @@
 
 import * as store from './lib/store.js';
 import * as auth from './lib/auth.js';
+import * as captcha from './lib/captcha.js';
 import { createBackend, isUuid } from './lib/backend.js';
 import { brandMark, brandSignature } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
@@ -455,6 +456,7 @@ export function draw() {
       </div>`, { title: 'Brackets' }));
   } finally {
     drawing = false;
+    captcha.mount(root);
   }
 }
 
