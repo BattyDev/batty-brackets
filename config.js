@@ -13,10 +13,9 @@
  * server, and the app says so plainly in the corner ("On this device") rather
  * than pretending to be signed in to something.
  *
- * It also means the demo data in data/demo.js seeds itself, so opening the
- * page shows a working tournament instead of an empty state. The moment a
- * project is named below, demo seeding stops: an account with a real backend
- * must look empty when it is empty.
+ * On a connected deployment, signed-out visitors get the demo locally only
+ * when no active public events are available. Signed-in accounts don't get
+ * fictional rows mixed into their event list.
  *
  * Both values are public by design and safe to commit. The url is an endpoint;
  * the publishable key only ever grants what RLS allows. Do NOT put a service
