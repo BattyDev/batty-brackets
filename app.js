@@ -251,16 +251,15 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)">
       ${raw(icon('station', 'icon-sm'))} Saved on this device</button>`;
   }
-  if (s.connected && s.localOnlyWrites) {
-    return html`<button type="button" class="sync pending" data-act="recovery-open"
-      aria-label="Connected RPC mode: ${s.localOnlyWrites} local-only controls"
-      title="This connected slice syncs identity, events and joins through explicit commands. Other host controls remain local-only until their server commands exist."
-      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
-      Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
-  }
-  if (s.connected && s.lastServerError) {
+  if (s.connected && s.conflicts) {
     return html`<button type="button" class="sync offline" data-act="recovery-open"
-      aria-label="Connected save failed" title="${s.lastServerError}"
+      aria-label="Connected event has conflicting changes" title="A newer server revision needs review"
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · Conflict</button>`;
+  }
+  if (s.connected && s.failed) {
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Connected save failed" title="${s.lastServerError || 'Retry in Backup and recovery'}"
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
       Connected · Save failed</button>`;
   }
@@ -270,12 +269,19 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)"><span class="dot"></span>
       Connected · Saving</button>`;
   }
+  if (s.connected && s.localOnlyWrites) {
+    return html`<button type="button" class="sync pending" data-act="recovery-open"
+      aria-label="Connected RPC mode: ${s.localOnlyWrites} local-only controls"
+      title="This connected slice syncs identity, events and joins through explicit commands. Other host controls remain local-only until their server commands exist."
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
+  }
   if (s.connected) {
     return html`<button type="button" class="sync" data-act="recovery-open"
-      aria-label="Connected through explicit server commands"
+      aria-label="Connected changes saved"
       title="Event setup, registration, organizer controls and results use versioned server commands."
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('check', 'icon-sm'))}
-      Connected · RPC mode</button>`;
+      Connected · Saved</button>`;
   }
   if (!s.online) {
     return html`<button type="button" class="sync offline" data-act="recovery-open"

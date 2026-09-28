@@ -1075,7 +1075,7 @@ function settingsTab(data) {
         <b class="title-medium" style="color:var(--md-error)">Danger</b>
         <div class="row" style="margin-top:12px">
           <button class="btn btn-danger-text btn-sm" data-act="clear-bracket">Clear the bracket</button>
-          <button class="btn btn-danger-text btn-sm" data-act="delete-event">Delete the event</button>
+          ${!store.syncState().connected || event.demo ? html`<button class="btn btn-danger-text btn-sm" data-act="delete-event">Delete the event</button>` : ''}
         </div>
       </section>
     </div>`;

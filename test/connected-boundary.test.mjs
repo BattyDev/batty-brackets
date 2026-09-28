@@ -90,4 +90,64 @@ assert.equal(store.clearConnectedSession(), false,
 assert.equal(invalidations, invalidationsAfterSignOut,
   'a duplicate anonymous sign-out must not invalidate an in-flight public pull');
 
+/* Reproduced failure: an edit rejected by the server used to vanish after a
+   list refresh, with no retryable work left in the store. */
+const recoveryProject = 'https://recovery.supabase.co';
+let serverRevision = 1;
+let serverName = 'Server name';
+let rejectSave = true;
+const recoverySaves = [];
+const recoveryBackend = {
+  invalidate() {},
+  async identity() { return { id: playerId, tag: 'A' }; },
+  async listEvents() { return { events: [{ id: eventId, name: serverName, gameId: 'mvci', revision: serverRevision }], orgs: [], players: [] }; },
+  async readEvent() { return { event: { id: eventId, name: serverName, gameId: 'mvci', revision: serverRevision }, revision: serverRevision,
+    entries: [], players: [], stations: [], orgs: [], brackets: [], results: [] }; },
+  async saveEventState(id, revision, data) {
+    recoverySaves.push({ id, revision, name: data.event.name });
+    if (rejectSave) throw new Error('Network rejected save');
+    assert.equal(revision, serverRevision);
+    serverRevision += 1;
+    serverName = data.event.name;
+    return { revision: serverRevision };
+  },
+};
+const recovery = await import(`../lib/store.js?recovery=${Date.now()}`);
+recovery.boot({ scope: { projectUrl: recoveryProject, accountId: 'host-a' } });
+recovery.attachBackend(recoveryBackend, { projectUrl: recoveryProject, accountId: 'host-a' });
+recovery.cacheRemote(await recoveryBackend.listEvents());
+recovery.apply('events', eventId, { name: 'Unsaved name' });
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(recovery.syncState().failed, 1);
+await recovery.pull();
+await recovery.readRemoteEvent(eventId);
+assert.equal(recovery.getEvent(eventId).name, 'Unsaved name', 'incoming reads preserve failed edits');
+assert.equal(recovery.syncState().failed, 1, 'refresh retains the failed status');
+
+const reloaded = await import(`../lib/store.js?reload=${Date.now()}`);
+reloaded.boot({ scope: { projectUrl: recoveryProject, accountId: 'host-a' } });
+reloaded.attachBackend(recoveryBackend, { projectUrl: recoveryProject, accountId: 'host-a' });
+assert.equal(reloaded.getEvent(eventId).name, 'Unsaved name', 'reload retains the local edit');
+assert.equal(reloaded.syncState().failed, 1, 'reload retains retry state');
+rejectSave = false;
+assert.equal(await reloaded.retryConnectedSave(eventId), true);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(serverName, 'Unsaved name');
+assert.equal(reloaded.syncState().pending, 0);
+assert.equal(reloaded.syncState().failed, 0);
+
+rejectSave = true;
+reloaded.apply('events', eventId, { name: 'Second local edit' });
+await new Promise(resolve => setTimeout(resolve, 0));
+serverRevision += 1;
+serverName = 'Newer server edit';
+await reloaded.pull();
+assert.equal(reloaded.syncState().conflicts, 1);
+assert.equal(reloaded.getEvent(eventId).name, 'Second local edit');
+const attemptsBeforeRetry = recoverySaves.length;
+assert.equal(await reloaded.retryConnectedSave(eventId), false);
+assert.equal(recoverySaves.length, attemptsBeforeRetry, 'stale retry never sends an overwrite');
+reloaded.useConnectedScope(recoveryProject, 'host-b');
+assert.equal(reloaded.getEvent(eventId), null, 'another account cannot see host-a pending work');
+
 console.log('PASS connected boundary: RPC boot, blank config, fail-closed publish, and account isolation');

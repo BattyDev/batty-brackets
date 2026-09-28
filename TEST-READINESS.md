@@ -46,6 +46,18 @@ and pools/top-cut are outside this pilot's critical path.
    until supported. The button at `views/admin.js:1078` currently leads to an
    unavailable message; the handler at line 2022 correctly blocks deletion.
 
+   **Provisional task 1 checkpoint (September 28):** The connected host store
+   now persists per-event pending saves in the account-scoped local snapshot,
+   preserves them across event/list reads and reload, and checks the server
+   revision before retry. The header and recovery view show saving, saved,
+   failed, and conflict states; connected event deletion is hidden. The
+   focused mocked-backend boundary check passed for failure, refresh, reload,
+   retry, stale revision, and account isolation. The local recovery browser
+   suite passed with installed Chrome, and `git diff --check` passed. These
+   checks do not establish live connected acceptance: no disposable staging
+   backend is configured, and manual verification was skipped. Conflicts keep
+   the local edit available for backup and require manual reconciliation.
+
 2. **Keep player and TV screens current.**
    Event hydration in `app.js:389` runs on entry/navigation. The timers at the
    end of that file update clocks and local overview rendering, not server
