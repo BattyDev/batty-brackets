@@ -1,98 +1,112 @@
-# AGENTS.md — Batty Brackets
+# Batty Brackets agent workflow
 
-A standalone tournament bracket app for the fighting game community, served at
-`battybrackets.com`. Self-contained: nothing outside this directory shares
-code with it.
+## Scope and prototype mode
 
-## Running and testing
+Work in this checkout only. Do not search sibling worktrees, the old website,
+backups, or docs/history unless the task specifically needs them. Inspect the
+working diff first and preserve unrelated unfinished work.
 
-No build step. Serve the directory statically:
+Prototype mode stays active until the user explicitly asks to harden the product.
+A demo, next-week tester, or pilot is still prototype work; it is not permission
+to expand into a release-hardening project.
+Implement the requested outcome and necessary supporting changes, then stop.
+Do not add regression/smoke suites, broad refactors, dependencies, expanded
+documentation, or adjacent cleanup by default. Record deferred verification
+briefly; do not claim unperformed checks passed. Extract modules only when the
+feature benefits directly. Search for relevant symbols and read bounded sections
+rather than repeatedly loading large files or the whole repository.
+
+## Product focus
+
+Optimize for three working views: a snappy desktop host workspace (including
+100-entrant events), a minimal mobile player screen, and a readable live TV.
+The host can assume reliable internet. Players need fast signup, their next
+opponent/station, result submission, and withdrawal on unreliable connections.
+Keep profile customization, history, and other secondary content out of the
+player's critical path. Keep the showcase demo separate from real event work
+and isolated from real event data and sessions.
+
+Complete one observable workflow at a time. Prefer existing vanilla modules
+and narrow server commands over new frameworks or broad rewrites. Do not add
+platform-admin features, integrations, or generalized infrastructure unless
+requested or needed for the current workflow. Local/demo checks do not prove
+cross-device sync; distinguish local, mocked-backend, and live-server evidence.
+
+## Verification budget
+
+- Copy/style changes: inspect the diff; check the affected screen when useful.
+- UI interactions: exercise the changed path once OR run a relevant existing suite.
+- Bracket calculations, persistence, undo: run focused existing tests.
+- Authentication, permissions, production data: retain focused boundary checks.
+- No mandatory bug reintroduction or new test for every prototype feature.
+- After relevant checks pass, stop. Repeat only after relevant code changes or
+  new evidence of a problem. Do not repair unrelated failures; report them.
+- Before a tester handoff, check the affected end-to-end paths once and state
+  known gaps. Run the broader regression/accessibility suites once when the
+  user requests an integrated readiness review or release. Keep the CI gate.
+
+## Delegation
+
+These instructions apply equally to Codex and Claude; use the user's configured
+model. Work in one agent by default to keep cost and coordination low. Delegate
+only when requested or when a clearly independent task saves meaningful time;
+use at most one delegate by default. Never assign concurrent edits to the same
+shared file (especially views/admin.js, brackets.css, or lib/store.js).
+
+Give delegates a self-contained brief instead of full conversation history when
+supported. The supervisor identifies scope, reviews the resulting diff, and
+resolves integration issues without repeating completed exploration or checks.
+After two unsuccessful attempts at the same blocker, delegates return the error
+and attempted fixes for supervisor diagnosis rather than continuing a retry loop.
+
+Reusable delegate brief:
+- Outcome and observable acceptance criteria:
+- Checkout, owned files, relevant symbols, and necessary context:
+- Excluded work and verification allowance:
+- Return changed files, checks run/skipped, and blockers in a short handoff.
+
+## Commands and map
+
+No build step; serve this directory with `python -m http.server 8000`.
 
 ```
-python3 -m http.server 8000
-# http://localhost:8000/
+node test/run.mjs tv roster    # selected suites; quiet summaries by default
+node test/run.mjs bracket     # Node-only selection avoids browser startup
+node test/run.mjs --verbose tv # stream full diagnostics when needed
+node test/run.mjs              # full suite for integration/release
+node test/backend/contract-static.test.mjs # only for relevant contract changes
 ```
 
-```
-node test/run.mjs              # everything: 3 Node suites + 17 browser suites
-node test/run.mjs tv roster    # only suites matching those names
-node test/backend/contract-static.test.mjs # staging/client contract drift
-```
+Browser suites require Playwright and axe (`cd test`, `npm install`, then
+`npx playwright install chromium`). Missing Playwright skips selected browser
+suites explicitly; a successful exit does not prove they ran. Read test/README.md
+only when choosing a suite or diagnosing the harness.
+On Windows, an installed Chrome/Edge can be selected through
+`$env:BRACKETS_CHROMIUM='C:/Program Files/Google/Chrome/Application/chrome.exe'`
+before the test command; verify the path exists instead of installing another
+browser by default.
 
-The Node half (bracket engine, colour palettes, backend client) needs nothing
-installed. The browser half needs Playwright and axe — `cd test && npm install
-&& npx playwright install chromium` — and skips with a note when they are
-missing, so a green run does not necessarily mean a full run. Check which half
-actually executed before concluding a UI change works.
+- app.js: boot, hash router, chrome
+- views/: screen modules; views/admin.js: organizer tabs and event operations
+- brackets.css: shared design system
+- lib/: bracket engine, store, auth, guidance, CSV, UI helpers
+- data/: games, rulesets, themes, demo seed
+- sql/staging/, backend/: reviewed migrations and contracts
+- docs/history/: optional historical context, possibly outdated
 
-That matters more here than usual: most bugs this project has shipped were
-invisible to unit tests. A tour card rebuilding itself once a second, `opacity`
-dimming text below contrast, a bracket pane unscrollable without a mouse, a TV
-screen drawing eight perfectly sized empty columns. `test/README.md` covers the
-suites and the convention they follow.
+Vanilla ES modules, tagged-template html helper in lib/ui.js, delegated data-act
+events, inline SVG icons. Follow surrounding patterns; no architectural rewrite
+for token savings. Localhost is deliberately device-only for development.
 
-## Two things that are actually load-bearing
+## Boundaries and release
 
-Everything else in this file is description. These two are not:
+config.js contains only public browser configuration; never add service-role
+keys, CAPTCHA secrets, or passwords. sql/001_schema.sql is historical, not an
+install script; use the reviewed staging migration path for backend work.
+Preserve accessible controls and contrast; do not weaken accessibility assertions
+to hide regressions. Full accessibility sweeps are milestone checks, not required
+for every small prototype edit.
 
-1. **`config.js` holds only a public project URL and publishable key.** A
-   service role key or database password there bypasses row-level security
-   completely, and this is a static page whose source anyone can read. The
-   values are blank right now, which is a working mode, not a broken one.
-
-2. **The accessibility tests are load-bearing, not decoration.** `a11y` and
-   `wcag22` hold the app at zero axe violations and WCAG 2.2 AA. If a change
-   turns them red, the change is what's wrong. Contrast has been broken twice
-   here by using `opacity` to de-emphasise text, hence an explicit colour token
-   in those spots.
-
-Also worth knowing before touching the backend: `sql/001_schema.sql` is a
-historical design, not a safe install script. The reviewed replacement is in
-`sql/staging/` with its contract under `backend/`. The setup notes in
-`config.js` point at that reviewed staging path.
-
-## How it's currently built
-
-Described so you can find your way around — not a specification to preserve.
-If a change is better served by a different approach, that is a normal
-engineering call, not a violation.
-
-```
-app.js          boot, hash router, chrome
-brackets.css    the whole design system
-data/           games, rulesets, themes, demo seed
-lib/            bracket engine, store, auth, guidance, CSV, UI helpers
-views/          one module per screen
-sql/, backend/  schema, policies, staging contract
-test/           see test/README.md
-docs/history/   the original design record
-```
-
-Today it is ~12k lines of vanilla ES modules with zero runtime dependencies —
-no framework, no bundler, no TypeScript step. Material 3 is hand-rolled in
-`brackets.css` rather than pulled from `@material/web`, icons are inline SVG,
-rendering goes through a tagged-template `html` helper in `lib/ui.js`, and
-events are delegated via `data-act` attributes instead of per-element
-listeners. The bracket is CSS grid with border connectors, not SVG.
-
-Those choices came from wanting the deployed thing to *be* the source, and from
-venue wifi being the original complaint. They're still reasonable defaults and
-following them keeps a diff consistent with its surroundings. They are not
-walls. Introducing a build step, a framework, or a dependency is a real option
-if it earns its place — it's a judgement call about tradeoffs, and worth saying
-out loud in the change, but it is not off limits.
-
-The artwork slot in `data/themes.js` reads `assets/games/<id>/<file>`, a
-directory left empty for licensing reasons.
-
-## Deploying
-
-This repository publishes directly to GitHub Pages at `battybrackets.com`.
-A push to `main` runs the full test job and the Pages deployment only runs when
-that job succeeds. The custom domain lives in the repository's Pages settings;
-DNS is managed in Cloudflare. Work on a branch and require green tests before
-merging.
-
-`docs/history/design-record.md` is the old detailed README: the reasoning trail
-for why things look the way they do. It is searchable context when a decision
-seems strange, not required reading, and parts of it are out of date.
+Work on a branch. Main publishes to battybrackets.com through GitHub Pages after
+the full CI test job succeeds. Require green CI before merging; do not duplicate
+the whole CI run locally unless investigating a failure or preparing a milestone.

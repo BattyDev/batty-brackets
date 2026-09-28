@@ -26,6 +26,7 @@ import { gameHero, gameMark } from '../data/themes.js';
 import { standings } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
 import { readinessFor } from '../lib/auth.js';
+import { reportButton } from './report.js';
 
 export function view(ctx) {
   const event = store.getEvent(ctx.params.eventId);
@@ -62,7 +63,7 @@ export function view(ctx) {
     back: '/',
     gameId: event.gameId,
     body: html`
-      <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span></div>
+      <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span>${raw(reportButton('event', event.id))}</div>
       <!-- On a phone, "what do I do now?" must arrive before a full bracket.
            The information navigation follows the personal desk on its home
            route, while detail routes keep it at the top for an obvious way

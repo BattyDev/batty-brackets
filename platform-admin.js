@@ -15,8 +15,9 @@ const STORAGE_KEY = 'batty-brackets-platform-admin';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 const ADMIN_ROLES = new Set(['analyst', 'moderator', 'super_admin']);
 const MODERATOR_ROLES = new Set(['moderator', 'super_admin']);
-const TARGET_KINDS = ['player', 'org', 'event', 'entry', 'station', 'result'];
+const TARGET_KINDS = ['player', 'org', 'event', 'entry', 'station', 'bracket', 'result'];
 const QUEUE_STATES = ['open', 'quarantined', 'hidden', 'replaced', 'restored'];
+const REPORT_STATES = ['open', 'reviewing', 'resolved', 'dismissed'];
 const MODERATION_ACTIONS = ['hide', 'quarantine', 'restore', 'replace', 'lock'];
 
 const VIEW_META = {
@@ -39,6 +40,11 @@ const VIEW_META = {
     description: 'Read the append-only record of platform moderation decisions.',
     capability: 'can_audit',
   },
+  reports: {
+    label: 'User reports',
+    description: 'Review player-submitted reports and record a triage outcome.',
+    capability: 'can_queue',
+  },
   metrics: {
     label: 'Metrics',
     description: 'Measure platform activity over a bounded reporting window.',
@@ -55,10 +61,15 @@ const state = {
   queue: null,
   content: null,
   audit: null,
+  reports: null,
   filters: {
     queueState: '',
+    queueSearch: '',
     contentKind: '',
     contentSearch: '',
+    auditSearch: '',
+    reportStatus: '',
+    reportSearch: '',
     metricsFrom: '',
     metricsTo: '',
   },
@@ -439,8 +450,11 @@ function moderationButtons(item) {
   const targetId = item?.target_id || item?.targetId || '';
   const field = item?.target_field || item?.targetField || '';
   if (!kind || !targetId) return '<span class="subtle">No action target</span>';
+  const actions = kind === 'station' && field === 'match_id'
+    ? MODERATION_ACTIONS.filter((action) => action !== 'replace')
+    : MODERATION_ACTIONS;
   return `<div class="action-list" aria-label="Moderation actions for ${escapeAttribute(kind)}">
-    ${MODERATION_ACTIONS.map((action) => `<button class="button button--secondary button--small" type="button" data-act="moderate" data-action="${action}" data-target-kind="${escapeAttribute(kind)}" data-target-id="${escapeAttribute(targetId)}" data-target-field="${escapeAttribute(field)}">${escapeHtml(prettyToken(action))}</button>`).join('')}
+    ${actions.map((action) => `<button class="button button--secondary button--small" type="button" data-act="moderate" data-action="${action}" data-target-kind="${escapeAttribute(kind)}" data-target-id="${escapeAttribute(targetId)}" data-target-field="${escapeAttribute(field)}">${escapeHtml(prettyToken(action))}</button>`).join('')}
   </div>`;
 }
 
@@ -463,41 +477,33 @@ function renderQueue(data) {
   const options = [['', 'All states'], ...QUEUE_STATES.map((value) => [value, prettyToken(value)])];
   const next = data?.nextCursor ? `<button class="button button--secondary button--small" type="button" data-act="queue-more">Load more</button>` : '';
   return `<section class="panel-grid"><div class="panel panel--span-12">
-    <div class="toolbar"><div class="toolbar__filters"><div class="field"><label for="queue-state">Queue state</label><select id="queue-state" data-filter="queue-state">${options.map(([value, label]) => `<option value="${escapeAttribute(value)}" ${stateValue === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div></div><div class="toolbar__actions"><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></div>
+    <form class="toolbar" data-form="queue-search"><div class="toolbar__filters"><div class="field"><label for="queue-state">Queue state</label><select id="queue-state" name="state" data-filter="queue-state">${options.map(([value, label]) => `<option value="${escapeAttribute(value)}" ${stateValue === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div><div class="field"><label for="queue-search">Search queue</label><input id="queue-search" name="search" type="search" maxlength="200" autocomplete="off" placeholder="Search reason, target, or value" value="${escapeAttribute(state.filters.queueSearch)}"></div></div><div class="toolbar__actions"><button class="button button--primary" type="submit" data-submit>Search</button><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></form>
     ${queueTable(data?.items || [])}
   </div></section>`;
 }
 
 function contentItemId(item) { return item?.target_id || item?.targetId || ''; }
 
-function filteredContentItems(items = []) {
-  const term = state.filters.contentSearch.trim().toLowerCase();
-  if (!term) return items;
-  return items.filter((item) => [item.target_kind, item.target_field, item.target_id, displayValue(item.value), displayValue(item.moderation)]
-    .some((value) => String(value || '').toLowerCase().includes(term)));
-}
-
 function contentTable(items = []) {
-  const filtered = filteredContentItems(items);
-  if (!filtered.length) return emptyState(items.length ? 'No matching content' : 'No public content rows', items.length ? 'Try a different search phrase.' : 'The whitelisted content feed is empty.');
-  return `<div class="table-wrap"><table class="data-table"><caption>Searchable public content</caption><thead><tr><th scope="col">Kind</th><th scope="col">Field</th><th scope="col">Target ID</th><th scope="col">Value</th><th scope="col">Moderation</th><th scope="col">Actions</th></tr></thead><tbody>${filtered.map((item) => {
+  if (!items.length) return emptyState('No matching content', 'Try a different search phrase or content kind.');
+  return `<div class="table-wrap"><table class="data-table"><caption>Searchable public content</caption><thead><tr><th scope="col">Kind</th><th scope="col">Field</th><th scope="col">Target ID</th><th scope="col">Value</th><th scope="col">Moderation</th><th scope="col">Actions</th></tr></thead><tbody>${items.map((item) => {
     const kind = item.target_kind || item.targetKind || 'target';
     const field = item.target_field || item.targetField || '';
     const id = contentItemId(item);
     const moderation = item.moderation || {};
     const moderationState = moderation.state || 'none';
-    return `<tr><td>${escapeHtml(prettyToken(kind))}</td><td>${escapeHtml(field || 'record')}</td><td class="mono">${escapeHtml(id)}</td><td><div class="value-preview">${escapeHtml(displayValue(item.value))}</div></td><td>${moderationState === 'none' ? '<span class="subtle">No decision</span>' : `<span class="status-pill state-pill--${escapeAttribute(moderationState)}">${escapeHtml(prettyToken(moderationState))}</span>`}</td><td>${moderationButtons({ target_kind: kind, target_id: id, target_field: field })}</td></tr>`;
+    const structured = ['documents', 'overrides', 'record', 'seeding_report', 'signed_documents'].includes(field);
+    const context = item.context || item.event_name || item.eventName || '';
+    return `<tr><td>${escapeHtml(prettyToken(kind))}</td><td>${escapeHtml(field || 'record')}</td><td class="mono">${escapeHtml(id)}${context ? `<span class="subline">${escapeHtml(context)}</span>` : ''}</td><td><div class="value-preview${structured ? ' value-preview--structured' : ''}">${escapeHtml(displayValue(item.value))}</div></td><td>${moderationState === 'none' ? '<span class="subtle">No decision</span>' : `<span class="status-pill state-pill--${escapeAttribute(moderationState)}">${escapeHtml(prettyToken(moderationState))}</span>`}</td><td>${moderationButtons({ target_kind: kind, target_id: id, target_field: field })}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
 function renderContent(data) {
   const kindValue = state.filters.contentKind;
   const options = [['', 'All content'], ...TARGET_KINDS.map((value) => [value, prettyToken(value)])];
-  const visible = filteredContentItems(data?.items || []);
-  const count = visible.length;
   const next = data?.nextCursor ? `<button class="button button--secondary button--small" type="button" data-act="content-more">Load more</button>` : '';
   return `<section class="panel-grid"><div class="panel panel--span-12">
-    <div class="toolbar"><div class="toolbar__filters"><div class="field"><label for="content-search">Search content</label><input id="content-search" type="search" autocomplete="off" placeholder="Search value, kind, field, or ID" value="${escapeAttribute(state.filters.contentSearch)}" data-filter="content-search"></div><div class="field"><label for="content-kind">Content kind</label><select id="content-kind" data-filter="content-kind">${options.map(([value, label]) => `<option value="${escapeAttribute(value)}" ${kindValue === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div></div><div class="toolbar__actions"><span class="subtle" aria-live="polite">${escapeHtml(number(count))} shown</span><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></div>
+    <form class="toolbar" data-form="content-search"><div class="toolbar__filters"><div class="field"><label for="content-search">Search content</label><input id="content-search" name="search" type="search" maxlength="200" autocomplete="off" placeholder="Search public value, kind, field, or ID" value="${escapeAttribute(state.filters.contentSearch)}"></div><div class="field"><label for="content-kind">Content kind</label><select id="content-kind" name="kind" data-filter="content-kind">${options.map(([value, label]) => `<option value="${escapeAttribute(value)}" ${kindValue === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div></div><div class="toolbar__actions"><button class="button button--primary" type="submit" data-submit>Search</button><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></form>
     ${contentTable(data?.items || [])}
   </div></section>`;
 }
@@ -515,8 +521,31 @@ function auditTable(items = []) {
 function renderAudit(data) {
   const next = data?.nextCursor ? `<button class="button button--secondary button--small" type="button" data-act="audit-more">Load older</button>` : '';
   return `<section class="panel-grid"><div class="panel panel--span-12">
-    <div class="toolbar"><div><p class="muted">Append-only records returned by the platform audit RPC.</p></div><div class="toolbar__actions"><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></div>
+    <form class="toolbar" data-form="audit-search"><div class="toolbar__filters"><div class="field"><label for="audit-search">Search audit log</label><input id="audit-search" name="search" type="search" maxlength="200" autocomplete="off" placeholder="Search actor, action, target, or reason" value="${escapeAttribute(state.filters.auditSearch)}"><p class="field-help">Audit entries stay append-only; search runs on the server.</p></div></div><div class="toolbar__actions"><button class="button button--primary" type="submit" data-submit>Search</button><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></form>
     ${auditTable(data?.items || [])}
+  </div></section>`;
+}
+
+function reportTable(items = []) {
+  if (!items.length) return emptyState('No reports match', 'Submitted reports will appear here as players flag public content.');
+  return `<div class="table-wrap"><table class="data-table"><caption>Player-submitted content reports</caption><thead><tr><th scope="col">Submitted</th><th scope="col">Target</th><th scope="col">Report</th><th scope="col">Status</th><th scope="col">Review</th></tr></thead><tbody>${items.map((item) => {
+    const id = item.id || item.report_id || '';
+    const kind = item.target_kind || item.targetKind || 'target';
+    const targetId = item.target_id || item.targetId || '';
+    const field = item.target_field || item.targetField || 'record';
+    const status = item.status || 'open';
+    const targetValue = item.target_value ?? item.targetValue ?? item.current_value ?? item.value;
+    const reviewNote = item.triage_note || item.triageNote || '';
+    return `<tr><td>${escapeHtml(dateTime(item.submitted_at || item.created_at || item.createdAt))}<span class="subline mono">${escapeHtml(id)}</span></td><td><strong>${escapeHtml(prettyToken(kind))}</strong><span class="subline">${escapeHtml(field)}</span><span class="subline mono">${escapeHtml(targetId)}</span>${targetValue !== undefined ? `<div class="value-preview report-target-preview">${escapeHtml(displayValue(targetValue))}</div>` : ''}</td><td><div class="value-preview">${escapeHtml(item.reason || '—')}</div></td><td><span class="status-pill state-pill--${escapeAttribute(status)}">${escapeHtml(prettyToken(status))}</span>${reviewNote ? `<span class="subline">${escapeHtml(reviewNote)}</span>` : ''}</td><td><button class="button button--secondary button--small" type="button" data-act="review-report" data-report-id="${escapeAttribute(id)}" data-report-status="${escapeAttribute(status)}" data-report-note="${escapeAttribute(reviewNote)}">Update review</button></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+function renderReports(data) {
+  const options = [['', 'All statuses'], ...REPORT_STATES.map((value) => [value, prettyToken(value)])];
+  const next = data?.nextCursor ? `<button class="button button--secondary button--small" type="button" data-act="reports-more">Load more</button>` : '';
+  return `<section class="panel-grid"><div class="panel panel--span-12">
+    <form class="toolbar" data-form="reports-search"><div class="toolbar__filters"><div class="field"><label for="report-status">Report status</label><select id="report-status" name="status" data-filter="report-status">${options.map(([value, label]) => `<option value="${escapeAttribute(value)}" ${state.filters.reportStatus === value ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></div><div class="field"><label for="report-search">Search reports</label><input id="report-search" name="search" type="search" maxlength="200" autocomplete="off" placeholder="Search report reason, target, or field" value="${escapeAttribute(state.filters.reportSearch)}"></div></div><div class="toolbar__actions"><button class="button button--primary" type="submit" data-submit>Search</button><button class="button button--secondary" type="button" data-act="refresh-view">Refresh</button>${next}</div></form>
+    ${reportTable(data?.items || [])}
   </div></section>`;
 }
 
@@ -609,13 +638,31 @@ function createLocalTestClient() {
     moderation: { open: 2, quarantined: 1, hidden: 0, replaced: 2, restored: 1, locked: 1 },
     daily: [{ day: new Date().toISOString(), events: 2, entries: 17, results: 12 }],
   };
-  const queue = [{
-    id: '00000000-0000-4000-8000-000000000101', target_kind: 'player', target_id: '00000000-0000-4000-8000-000000000201', target_field: 'tag', state: 'open', current_value: 'Example', updated_at: new Date().toISOString(), reason: null,
-  }];
-  const content = [{
-    target_kind: 'player', target_id: '00000000-0000-4000-8000-000000000201', target_field: 'tag', value: 'Example', moderation: null,
-  }];
+  const queue = [
+    { id: '00000000-0000-4000-8000-000000000101', target_kind: 'player', target_id: '00000000-0000-4000-8000-000000000201', target_field: 'tag', state: 'open', current_value: 'Example', updated_at: '2026-09-20T12:00:00Z', reason: null },
+    { id: '00000000-0000-4000-8000-000000000102', target_kind: 'event', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'documents', state: 'open', current_value: [{ id: 'conduct', version: 1 }], updated_at: '2026-09-19T12:00:00Z', reason: 'Report received' },
+    { id: '00000000-0000-4000-8000-000000000103', target_kind: 'bracket', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'record', state: 'quarantined', current_value: { matches: [] }, updated_at: '2026-09-18T12:00:00Z', reason: 'Malformed progression' },
+  ];
+  const content = [
+    { target_kind: 'player', target_id: '00000000-0000-4000-8000-000000000201', target_field: 'tag', value: 'Example', moderation: null },
+    { target_kind: 'event', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'documents', value: [{ id: 'conduct', version: 1 }], moderation: null },
+    { target_kind: 'event', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'overrides', value: { matchFormat: { firstTo: 2 } }, moderation: null },
+    { target_kind: 'bracket', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'record', value: { matches: [{ id: 'final', winner: 'Example' }] }, moderation: null },
+    { target_kind: 'bracket', target_id: '00000000-0000-4000-8000-000000000203', target_field: 'record', value: { matches: [{ id: 'semifinal', winner: 'Challenger' }] }, moderation: null },
+    { target_kind: 'bracket', target_id: '00000000-0000-4000-8000-000000000204', target_field: 'record', value: { matches: [{ id: 'losers' }] }, moderation: null },
+  ];
   const audit = [];
+  const reports = [{
+    id: '00000000-0000-4000-8000-000000000301', target_kind: 'event', target_id: '00000000-0000-4000-8000-000000000202', target_field: 'documents',
+    reason: 'The conduct document contains an outdated policy.', status: 'open', submitted_at: '2026-09-18T10:00:00Z', target_value: [{ id: 'conduct' }], triage_note: null,
+  }];
+  const pageRows = (items, args = {}, searchFields = []) => {
+    const term = String(args.p_search || '').trim().toLowerCase();
+    const filtered = items.filter((item) => !term || searchFields.map((field) => item[field]).some((value) => JSON.stringify(value ?? '').toLowerCase().includes(term)));
+    const offset = Math.max(0, Number(args.p_cursor?.offset) || 0);
+    const page = filtered.slice(offset, offset + 2);
+    return { items: page, next_cursor: offset + page.length < filtered.length ? { offset: offset + page.length } : null };
+  };
   const auth = {
     async getSession() { return { data: { session }, error: null }; },
     onAuthStateChange(listener) { listeners.add(listener); return { data: { subscription: { unsubscribe: () => listeners.delete(listener) } } }; },
@@ -639,9 +686,24 @@ function createLocalTestClient() {
       calls.push({ name, args });
       if (name === 'bkt_admin_access') return { data: { active: true, role, aal: 'aal2', can_moderate: MODERATOR_ROLES.has(role), can_analyze: true, can_queue: MODERATOR_ROLES.has(role), can_content: MODERATOR_ROLES.has(role), can_audit: MODERATOR_ROLES.has(role) }, error: null };
       if (name === 'bkt_admin_metrics') return { data: { ...metrics, from: args.p_from || metrics.from, to: args.p_to || metrics.to }, error: null };
-      if (name === 'bkt_admin_queue') return { data: { role, items: args.p_state ? queue.filter((item) => item.state === args.p_state) : queue, next_cursor: null }, error: null };
-      if (name === 'bkt_admin_content') return { data: { role, items: args.p_target_kind ? content.filter((item) => item.target_kind === args.p_target_kind) : content, next_cursor: null }, error: null };
-      if (name === 'bkt_admin_audit') return { data: { role, items: audit, next_cursor: null }, error: null };
+      if (name === 'bkt_admin_queue') {
+        const filtered = args.p_state ? queue.filter((item) => item.state === args.p_state) : queue;
+        return { data: { role, ...pageRows(filtered, args, ['target_kind', 'target_id', 'target_field', 'state', 'reason', 'current_value']) }, error: null };
+      }
+      if (name === 'bkt_admin_content') {
+        const filtered = args.p_target_kind ? content.filter((item) => item.target_kind === args.p_target_kind) : content;
+        return { data: { role, ...pageRows(filtered, args, ['target_kind', 'target_id', 'target_field', 'value']) }, error: null };
+      }
+      if (name === 'bkt_admin_audit') return { data: { role, ...pageRows(audit, args, ['action', 'target_kind', 'target_id', 'target_field', 'reason', 'admin_auth_user_id']) }, error: null };
+      if (name === 'bkt_admin_reports') {
+        const filtered = args.p_status ? reports.filter((item) => item.status === args.p_status) : reports;
+        return { data: { role, ...pageRows(filtered, args, ['target_kind', 'target_id', 'target_field', 'reason', 'status']) }, error: null };
+      }
+      if (name === 'bkt_admin_review_report') {
+        const report = reports.find((item) => item.id === args.p_report_id);
+        if (report) { report.status = args.p_status; report.triage_note = args.p_note; }
+        return { data: report || {}, error: null };
+      }
       if (name === 'bkt_admin_moderate') {
         audit.unshift({ id: `local-audit-${Date.now()}`, actor_role: role, action: args.p_action, target_kind: args.p_target_kind, target_id: args.p_target_id, target_field: args.p_target_field, reason: args.p_reason, created_at: new Date().toISOString() });
         return { data: { action_id: `local-action-${Date.now()}`, ...args, content: null, queue: null }, error: null };
@@ -697,6 +759,7 @@ function clearAuthenticatedState() {
   state.queue = null;
   state.content = null;
   state.audit = null;
+  state.reports = null;
   state.authFlow = null;
   state.authFlowKey = null;
   state.mfaPending = null;
@@ -864,7 +927,16 @@ async function adminRpc(name, args = {}) {
   return data;
 }
 
-async function loadView(view, { before = null } = {}) {
+function pageResult(data, existing = null, append = false) {
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return {
+    ...data,
+    items: append && Array.isArray(existing?.items) ? [...existing.items, ...items] : items,
+    nextCursor: data?.next_cursor ?? data?.nextCursor ?? null,
+  };
+}
+
+async function loadView(view, { cursor = null, append = false } = {}) {
   if (!state.access || !canView(view)) return;
   const generation = ++state.viewGeneration;
   const target = document.getElementById('admin-view-content');
@@ -881,17 +953,40 @@ async function loadView(view, { before = null } = {}) {
       if (generation !== state.viewGeneration || state.view !== view) return;
       renderViewContent(renderMetrics(state.metrics));
     } else if (view === 'queue') {
-      state.queue = await adminRpc('bkt_admin_queue', { p_state: state.filters.queueState || null, p_limit: 100 });
+      const data = await adminRpc('bkt_admin_queue', {
+        p_state: state.filters.queueState || null,
+        p_search: state.filters.queueSearch.trim() || null,
+        p_limit: 100, p_cursor: cursor,
+      });
       if (generation !== state.viewGeneration || state.view !== view) return;
+      state.queue = pageResult(data, state.queue, append);
       renderViewContent(renderQueue(state.queue));
     } else if (view === 'content') {
-      state.content = await adminRpc('bkt_admin_content', { p_target_kind: state.filters.contentKind || null, p_limit: 200 });
+      const data = await adminRpc('bkt_admin_content', {
+        p_target_kind: state.filters.contentKind || null,
+        p_search: state.filters.contentSearch.trim() || null,
+        p_limit: 100, p_cursor: cursor,
+      });
       if (generation !== state.viewGeneration || state.view !== view) return;
+      state.content = pageResult(data, state.content, append);
       renderViewContent(renderContent(state.content));
     } else if (view === 'audit') {
-      state.audit = await adminRpc('bkt_admin_audit', { p_limit: 100, p_before: before });
+      const data = await adminRpc('bkt_admin_audit', {
+        p_search: state.filters.auditSearch.trim() || null,
+        p_limit: 100, p_cursor: cursor,
+      });
       if (generation !== state.viewGeneration || state.view !== view) return;
+      state.audit = pageResult(data, state.audit, append);
       renderViewContent(renderAudit(state.audit));
+    } else if (view === 'reports') {
+      const data = await adminRpc('bkt_admin_reports', {
+        p_status: state.filters.reportStatus || null,
+        p_search: state.filters.reportSearch.trim() || null,
+        p_limit: 100, p_cursor: cursor,
+      });
+      if (generation !== state.viewGeneration || state.view !== view) return;
+      state.reports = pageResult(data, state.reports, append);
+      renderViewContent(renderReports(state.reports));
     }
     announce(`${VIEW_META[view].label} loaded.`);
   } catch (error) {
@@ -929,11 +1024,12 @@ function openModerationDialog({ action, targetKind, targetId, targetField }) {
   const dialog = document.createElement('dialog');
   dialog.className = 'admin-dialog';
   dialog.setAttribute('aria-labelledby', 'moderation-dialog-title');
-  const replaceHelp = targetKind === 'result'
-    ? 'Enter a JSON object matching the result record.'
-    : 'Enter the replacement public text.';
+  const jsonField = ['documents', 'overrides', 'platforms', 'signed_documents', 'seeding_report', 'record'].includes(targetField);
+  const replaceHelp = jsonField
+    ? 'Enter valid JSON matching this structured field. This change is audited.'
+    : 'Enter a replacement value for this public field.';
   const replacement = action === 'replace'
-    ? `<div class="field"><label for="moderation-replacement">Replacement ${targetKind === 'result' ? 'JSON' : 'text'}</label>${targetKind === 'result' ? '<textarea id="moderation-replacement" name="replacement" spellcheck="false" required></textarea>' : '<input id="moderation-replacement" name="replacement" type="text" required>'}<p class="field-help">${replaceHelp}</p></div>`
+    ? `<div class="field"><label for="moderation-replacement">Replacement ${jsonField ? 'JSON' : 'value'}</label>${jsonField ? '<textarea id="moderation-replacement" name="replacement" spellcheck="false" required></textarea>' : '<input id="moderation-replacement" name="replacement" type="text" required>'}<p class="field-help">${replaceHelp}</p></div>`
     : '';
   dialog.innerHTML = `<form method="dialog" class="admin-card" data-form="moderation"><p class="eyebrow">Moderation decision</p><h2 id="moderation-dialog-title">${escapeHtml(prettyToken(action))} ${escapeHtml(prettyToken(targetKind))}</h2><p class="muted">This decision is recorded in the append-only audit log and applied through the secure moderation RPC.</p><div class="notice notice--info" role="status"><div class="notice__content"><strong>Target</strong><br><span class="mono">${escapeHtml(targetId)}</span> · ${escapeHtml(targetField || 'record')}</div></div>${replacement}<div class="field"><label for="moderation-reason">Reason</label><textarea id="moderation-reason" name="reason" maxlength="2000" placeholder="Why is this decision being made?" required></textarea></div><div class="button-row"><button class="button button--quiet" type="button" data-act="close-dialog">Cancel</button><button class="button button--primary" type="submit" data-submit>Apply ${escapeHtml(prettyToken(action))}</button></div><p class="sr-only" data-dialog-status role="alert" aria-live="assertive"></p></form>`;
   document.body.append(dialog);
@@ -952,7 +1048,7 @@ function openModerationDialog({ action, targetKind, targetId, targetField }) {
       if (action === 'replace') {
         const raw = String(form.elements.replacement?.value || '').trim();
         if (!raw) throw new Error('Enter a replacement value.');
-        if (targetKind === 'result') {
+        if (jsonField) {
           try { replacementValue = JSON.parse(raw); } catch { throw new Error('Replacement JSON is not valid.'); }
         } else replacementValue = raw;
       }
@@ -1047,6 +1143,19 @@ async function handleRootSubmit(event) {
     if (form.dataset.form === 'login') await submitLogin(form);
     else if (form.dataset.form === 'mfa') await verifyMfaCode(form);
     else if (form.dataset.form === 'metrics') await submitMetrics(form);
+    else if (form.dataset.form === 'queue-search') {
+      state.filters.queueSearch = String(form.elements.search?.value || '').trim();
+      await loadView('queue');
+    } else if (form.dataset.form === 'content-search') {
+      state.filters.contentSearch = String(form.elements.search?.value || '').trim();
+      await loadView('content');
+    } else if (form.dataset.form === 'audit-search') {
+      state.filters.auditSearch = String(form.elements.search?.value || '').trim();
+      await loadView('audit');
+    } else if (form.dataset.form === 'reports-search') {
+      state.filters.reportSearch = String(form.elements.search?.value || '').trim();
+      await loadView('reports');
+    }
   } catch (error) {
     const message = errorMessage(error);
     const note = form.closest('.admin-card')?.querySelector('.notice--error') || form.querySelector('[data-dialog-status]');
@@ -1083,11 +1192,18 @@ async function handleRootClick(event) {
   const refresh = event.target.closest('[data-act="refresh-view"]');
   if (refresh) { await loadView(state.view); return; }
   const moreQueue = event.target.closest('[data-act="queue-more"]');
-  if (moreQueue) { await loadView('queue'); return; }
+  if (moreQueue) { await loadView('queue', { cursor: state.queue?.nextCursor || null, append: true }); return; }
   const moreContent = event.target.closest('[data-act="content-more"]');
-  if (moreContent) { await loadView('content'); return; }
+  if (moreContent) { await loadView('content', { cursor: state.content?.nextCursor || null, append: true }); return; }
   const moreAudit = event.target.closest('[data-act="audit-more"]');
-  if (moreAudit) { await loadView('audit', { before: state.audit?.nextCursor || null }); return; }
+  if (moreAudit) { await loadView('audit', { cursor: state.audit?.nextCursor || null, append: true }); return; }
+  const moreReports = event.target.closest('[data-act="reports-more"]');
+  if (moreReports) { await loadView('reports', { cursor: state.reports?.nextCursor || null, append: true }); return; }
+  const reviewReport = event.target.closest('[data-act="review-report"]');
+  if (reviewReport) {
+    openReportReviewDialog({ reportId: reviewReport.dataset.reportId, status: reviewReport.dataset.reportStatus, note: reviewReport.dataset.reportNote || '' });
+    return;
+  }
   const moderate = event.target.closest('[data-act="moderate"]');
   if (moderate) {
     event.preventDefault();
@@ -1100,19 +1216,60 @@ function handleRootChange(event) {
   if (!filter) return;
   if (filter.dataset.filter === 'queue-state') {
     state.filters.queueState = filter.value;
+    state.filters.queueSearch = String(filter.form?.elements.search?.value || '').trim();
     loadView('queue');
   } else if (filter.dataset.filter === 'content-kind') {
     state.filters.contentKind = filter.value;
+    state.filters.contentSearch = String(filter.form?.elements.search?.value || '').trim();
     loadView('content');
+  } else if (filter.dataset.filter === 'report-status') {
+    state.filters.reportStatus = filter.value;
+    state.filters.reportSearch = String(filter.form?.elements.search?.value || '').trim();
+    loadView('reports');
   }
 }
 
+function openReportReviewDialog({ reportId, status = 'open', note = '' }) {
+  if (!reportId) return;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'admin-dialog';
+  dialog.setAttribute('aria-labelledby', 'report-review-title');
+  dialog.innerHTML = `<form method="dialog" class="admin-card" data-form="report-review"><p class="eyebrow">User report</p><h2 id="report-review-title">Update report review</h2><p class="muted">This triage update is recorded in the append-only admin audit log.</p><div class="notice notice--info" role="status"><div class="notice__content"><strong>Report</strong><br><span class="mono">${escapeHtml(reportId)}</span></div></div><div class="field"><label for="report-review-status">Review status</label><select id="report-review-status" name="status">${REPORT_STATES.map((value) => `<option value="${value}" ${status === value ? 'selected' : ''}>${escapeHtml(prettyToken(value))}</option>`).join('')}</select></div><div class="field"><label for="report-review-note">Staff note <span class="subtle">(optional)</span></label><textarea id="report-review-note" name="note" maxlength="1200" placeholder="Record the triage outcome or context">${escapeHtml(note)}</textarea></div><div class="button-row"><button class="button button--quiet" type="button" data-act="close-dialog">Cancel</button><button class="button button--primary" type="submit" data-submit>Save review</button></div><p class="sr-only" data-dialog-status role="alert" aria-live="assertive"></p></form>`;
+  document.body.append(dialog);
+  dialog.addEventListener('cancel', () => closeDialog(dialog));
+  dialog.addEventListener('click', (event) => { if (event.target === dialog) closeDialog(dialog); });
+  dialog.querySelector('[data-act="close-dialog"]')?.addEventListener('click', () => closeDialog(dialog));
+  dialog.querySelector('form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = form.querySelector('[data-submit]');
+    const noteNode = form.querySelector('[data-dialog-status]');
+    submit.disabled = true;
+    submit.setAttribute('aria-busy', 'true');
+    try {
+      await adminRpc('bkt_admin_review_report', {
+        p_report_id: reportId,
+        p_status: String(form.elements.status?.value || 'open'),
+        p_note: String(form.elements.note?.value || '').trim() || null,
+      });
+      closeDialog(dialog);
+      announce('Report review updated.');
+      if (state.view === 'reports') await loadView('reports');
+    } catch (error) {
+      submit.disabled = false;
+      submit.removeAttribute('aria-busy');
+      noteNode.textContent = errorMessage(error, 'The report review could not be saved.');
+    }
+  });
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  focusSelector('#report-review-status');
+}
+
 function handleRootInput(event) {
-  const input = event.target.closest('[data-filter="content-search"]');
-  if (!input || state.view !== 'content' || !state.content) return;
-  state.filters.contentSearch = input.value;
-  renderViewContent(renderContent(state.content));
-  focusSelector('#content-search');
+  /* Search is submitted explicitly so each query runs against the full
+     server-side feed, not only the current page held in the browser. */
+  void event;
 }
 
 function handleAuthStateChange(event, session) {

@@ -575,11 +575,41 @@ textarea[aria-invalid="true"] { border-color: var(--admin-danger); }
   white-space: pre-wrap;
 }
 
+.value-preview--structured,
+.report-target-preview {
+  max-height: 12rem;
+  overflow: auto;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface-raised);
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.report-target-preview { margin-top: 8px; }
+
 .state-pill--open { color: var(--admin-warning); border-color: var(--admin-warning); }
 .state-pill--quarantined { color: var(--admin-danger); border-color: var(--admin-danger); }
 .state-pill--hidden { color: var(--admin-subtle); border-color: var(--admin-subtle); }
 .state-pill--replaced { color: var(--admin-info); border-color: var(--admin-info); }
 .state-pill--restored { color: var(--admin-success); border-color: var(--admin-success); }
+.state-pill--reviewing { color: var(--admin-info); border-color: var(--admin-info); }
+.state-pill--resolved { color: var(--admin-success); border-color: var(--admin-success); }
+.state-pill--dismissed { color: var(--admin-subtle); border-color: var(--admin-subtle); }
+
+.admin-dialog {
+  width: min(100% - 28px, 680px);
+  max-height: min(90dvh, 900px);
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  color: var(--admin-text);
+  padding: 0;
+}
+
+.admin-dialog::backdrop { background: rgb(5 8 14 / 0.76); }
+.admin-dialog .admin-card { width: 100%; margin: 0; }
 
 .empty-state {
   display: grid;

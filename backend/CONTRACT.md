@@ -137,18 +137,22 @@ complete MFA before retrying.
 
 ### RPC boundary
 
-All six functions are `SECURITY DEFINER` with `search_path = pg_catalog`, have
-PUBLIC/anon execution revoked, and grant execution only to `authenticated`.
-They return JSON objects and never expose a private table directly.
+The public-facing admin and report RPCs are `SECURITY DEFINER` with
+`search_path = pg_catalog`. PUBLIC/anon execution is revoked; only
+`authenticated` can execute them. Each admin RPC checks the current private
+membership and AAL2 claim independently. No private table is exposed directly.
 
 | RPC | Roles | Arguments | Response |
 |---|---|---|---|
 | `bkt_admin_access` | all active admin roles | none | `{active, role, aal, can_moderate, can_analyze, can_queue, can_content, can_audit}` |
-| `bkt_admin_queue` | moderator, super_admin | `p_state text = null, p_limit integer = 100` | `{role, items, next_cursor}` |
-| `bkt_admin_content` | moderator, super_admin | `p_target_kind text = null, p_limit integer = 200` | `{role, items, next_cursor}` |
+| `bkt_admin_queue` | moderator, super_admin | `p_state text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_content` | moderator, super_admin | `p_target_kind text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
 | `bkt_admin_moderate` | moderator, super_admin | `p_action, p_target_kind, p_target_id, p_target_field = null, p_replacement = null, p_reason` (required, 1–2000 characters) | `{action_id, action, target_kind, target_id, target_field, content, queue}` |
-| `bkt_admin_audit` | moderator, super_admin | `p_limit integer = 100, p_before timestamptz = null` | `{role, items, next_cursor}` |
+| `bkt_admin_audit` | moderator, super_admin | `p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
 | `bkt_admin_metrics` | all active admin roles | `p_from timestamptz = null, p_to timestamptz = null` | `{role, from, to, generated_at, totals, statuses, moderation, daily}` |
+| `bkt_submit_report` | durable signed-in player | `p_target_kind, p_target_id, p_target_field, p_reason` (10–1200 characters) | `{accepted, duplicate}` |
+| `bkt_admin_reports` | moderator, super_admin | `p_status text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_review_report` | moderator, super_admin | `p_report_id, p_status, p_note = null` | reviewed report and audit action ID |
 
 Analysts are deliberately metrics-only. Moderators can review and change
 content but cannot manage membership; `super_admin` is the escalation role.
@@ -157,15 +161,24 @@ content but cannot manage membership; `super_admin` is the escalation role.
 
 The private `moderation_queue` stores one original snapshot per whitelisted
 target field and the current decision. Targets are player `tag`, organisation
-`name`, event `name`/`venue`, entry `crew`, station `label`, and a result
-`record`. `hide` and `quarantine` replace public text with a short
-placeholder; result rows are hidden by RLS and the event bundle while remaining
-durable. `restore` reads the private snapshot. `replace` on text stores the
-replacement; `replace` on a result marks the prior row `superseded` and inserts
-a corrective result row, so history is never overwritten. Every active
-moderation decision holds its target against organiser UPDATE/DELETE attempts
-through target-table triggers; a moderator or super admin can restore or issue
-a further correction only through the audited AAL2 moderation RPC.
+`name`, event `name`/`game_id`/`format`/`venue_type`/`venue`/`platforms`/
+`starts_at`/`preset_id`/`documents`/`overrides`/`seeding_report`, entry
+`crew`, station `label`/`platform`/`match_id`, and bracket/result `record`.
+Operational status, capacity, identifiers, and private contacts are excluded.
+`hide` and `quarantine` suppress a held field in public read paths while
+retaining the underlying typed value for restoration. A bracket hold suppresses
+the bracket record. A result hold hides the durable result row; a result
+replacement marks the old row `superseded` and inserts a correction. Active
+decisions resist organiser replay through target-table triggers. Only an
+audited AAL2 moderation call may restore or change a held target.
+
+`bkt_private.user_reports` stores the reporter and reason privately for
+deduplication, rate limiting, and triage. Reports can target only readable,
+allowlisted public content. The report RPC returns an acknowledgement, never
+another user's report or identity. Moderators see reports through a separate
+paginated RPC and record review status and an optional note through an audited
+review RPC. Queue, content, report, and audit searches are server-backed and
+use stable cursors rather than stopping after the first page.
 
 `bkt_private.admin_audit` is append-only (client roles have zero schema/table
 grants and an UPDATE/DELETE trigger rejects even accidental definer mutation).

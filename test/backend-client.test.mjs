@@ -59,12 +59,28 @@ assert.deepEqual(calls.pop(), { name: 'bkt_claim_player', args: { p_code: 'a'.re
 reply = { active: true, role: 'moderator', aal: 'aal2', can_moderate: true };
 assert.equal((await api.adminAccess()).role, 'moderator');
 assert.deepEqual(calls.pop(), { name: 'bkt_admin_access', args: {} });
-reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id, target_field: 'tag' }], next_cursor: 'next' };
-assert.equal((await api.adminQueue({ state: 'hidden', limit: 20 })).items[0].targetKind, 'player');
-assert.deepEqual(calls.pop(), { name: 'bkt_admin_queue', args: { p_state: 'hidden', p_limit: 20 } });
-reply = { role: 'moderator', items: [{ target_kind: 'event', target_id: id, target_field: 'name', value: 'Weekly' }] };
-await api.adminContent({ targetKind: 'event', limit: 10 });
-assert.deepEqual(calls.pop(), { name: 'bkt_admin_content', args: { p_target_kind: 'event', p_limit: 10 } });
+reply = { accepted: true, duplicate: false };
+assert.deepEqual(await api.submitReport({ targetKind: 'bracket', targetId: id, targetField: 'record', reason: 'This bracket includes an invalid match.' }), { accepted: true, duplicate: false });
+assert.deepEqual(calls.pop(), { name: 'bkt_submit_report', args: {
+  p_target_kind: 'bracket', p_target_id: id, p_target_field: 'record', p_reason: 'This bracket includes an invalid match.',
+} });
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'private_contact', reason: 'Please review this private contact.' }), /target/);
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'status', reason: 'This event status should not be reportable.' }), /target/);
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'documents', reason: 'short' }), /10 and 1200/);
+reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id, target_field: 'tag' }], next_cursor: { updated_at: '2026-09-18T00:00:00Z', id } };
+assert.equal((await api.adminQueue({ state: 'hidden', search: 'example', limit: 20, cursor: { updated_at: '2026-09-17T00:00:00Z', id } })).items[0].targetKind, 'player');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_queue', args: {
+  p_state: 'hidden', p_search: 'example', p_limit: 20, p_cursor: { updated_at: '2026-09-17T00:00:00Z', id },
+} });
+reply = { role: 'moderator', items: [{ target_kind: 'event', target_id: id, target_field: 'documents', value: [{ id: 'conduct' }] }], next_cursor: { target_kind: 'event', target_id: id, target_field: 'documents' } };
+await api.adminContent({ targetKind: 'event', search: 'conduct', limit: 10, cursor: { target_kind: 'event', target_id: id, target_field: 'name' } });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_content', args: {
+  p_target_kind: 'event', p_search: 'conduct', p_limit: 10,
+  p_cursor: { target_kind: 'event', target_id: id, target_field: 'name' },
+} });
+reply = { action_id: id, action: 'replace', target_kind: 'bracket', target_id: id, target_field: 'record', queue: { target_kind: 'bracket' } };
+await api.adminModerate({ action: 'replace', targetKind: 'bracket', targetId: id, targetField: 'record', replacement: { matches: [] }, reason: 'Correct bracket JSON' });
+assert.equal(calls.pop().args.p_replacement.matches.length, 0);
 reply = { action_id: id, action: 'replace', target_kind: 'player', target_id: id, target_field: 'tag', queue: { target_kind: 'player' } };
 await api.adminModerate({ action: 'replace', targetKind: 'player', targetId: id, targetField: 'tag', replacement: 'Batty', reason: 'reviewed' });
 assert.deepEqual(calls.pop(), { name: 'bkt_admin_moderate', args: {
@@ -72,15 +88,28 @@ assert.deepEqual(calls.pop(), { name: 'bkt_admin_moderate', args: {
   p_replacement: 'Batty', p_reason: 'reviewed',
 } });
 reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id }], next_cursor: null };
-await api.adminAudit({ limit: 5 });
-assert.deepEqual(calls.pop(), { name: 'bkt_admin_audit', args: { p_limit: 5, p_before: null } });
+await api.adminAudit({ search: 'moderator', limit: 5, cursor: { created_at: '2026-09-18T00:00:00Z', id } });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_audit', args: {
+  p_search: 'moderator', p_limit: 5, p_cursor: { created_at: '2026-09-18T00:00:00Z', id },
+} });
+reply = { role: 'moderator', items: [{ id, status: 'open', reason: 'Unsafe event name' }], next_cursor: null };
+assert.equal((await api.adminReports({ status: 'open', search: 'unsafe' })).items[0].status, 'open');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_reports', args: { p_status: 'open', p_search: 'unsafe', p_limit: 100, p_cursor: null } });
+reply = { id, status: 'resolved', review_note: 'Handled' };
+assert.equal((await api.adminReviewReport({ reportId: id, status: 'resolved', note: 'Handled' })).status, 'resolved');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_review_report', args: { p_report_id: id, p_status: 'resolved', p_note: 'Handled' } });
 reply = { role: 'moderator', totals: { events: 2 }, statuses: [], daily: [] };
 assert.equal((await api.adminMetrics()).totals.events, 2);
 assert.deepEqual(calls.pop(), { name: 'bkt_admin_metrics', args: { p_from: null, p_to: null } });
 await assert.rejects(api.adminQueue({ limit: 0 }), /limit/);
 await assert.rejects(api.adminModerate({ action: 'delete', targetKind: 'player', targetId: id, targetField: 'tag' }), /action/);
 await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'event', targetId: id, targetField: 'bad', reason: 'invalid field probe' }), /field/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'bracket', targetId: id, targetField: 'json', reason: 'invalid structured field probe' }), /field/);
+await assert.rejects(api.adminModerate({ action: 'replace', targetKind: 'station', targetId: id, targetField: 'match_id', replacement: 'final', reason: 'direct reference replacement should be rejected' }), /cannot be replaced/);
 await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'player', targetId: id, targetField: 'tag' }), /reason/);
+await assert.rejects(api.adminReports({ status: 'pending' }), /status/);
+await assert.rejects(api.adminReviewReport({ reportId: 'not-a-uuid', status: 'resolved' }), /ID/);
+await assert.rejects(api.adminReviewReport({ reportId: id, status: 'new' }), /status/);
 reply = null;
 await assert.rejects(api.identity(), /acknowledgement/);
 const failing = createBackend({ async rpc() { return { error: { message: 'Permission denied' } }; } });

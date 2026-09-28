@@ -44,6 +44,7 @@ import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { CONNECTIONS, setConnection } from '../lib/auth.js';
 import { gameById, GAMES } from '../data/games.js';
+import { reportButton } from './report.js';
 
 export function view(ctx) {
   const isMe = ctx.route === 'me';
@@ -133,6 +134,7 @@ function profile(player, ctx, isMe) {
                 ${raw(icon('key', 'icon-sm'))} Unclaimed — added by an organiser
               </div>` : ''}
           </div>
+          ${raw(reportButton('player', player.id))}
           ${isMe ? html`<button class="btn btn-icon" data-act="profile-edit" aria-label="Edit profile">${raw(icon('edit'))}</button>` : ''}
         </div>
 

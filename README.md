@@ -3,6 +3,11 @@
 Tournament brackets for fighting games, built for the people running them.
 Served at [battybrackets.com](https://battybrackets.com/).
 
+For the next tester handoff, see [TEST-READINESS.md](TEST-READINESS.md): the
+three-view scope, confirmed connected-workflow gaps, and a short manual check.
+Follow [DEVELOPMENT-WORKFLOW.md](DEVELOPMENT-WORKFLOW.md) for ordered copy/paste
+prompts, recommended models, manual checkpoints, and handoffs between agents.
+
 Production is connected to Supabase through the explicit RPC boundary. Local
 development deliberately stays device-only: open it on localhost and a
 28-entrant demo event is seeded into your browser, with no account or network
@@ -27,8 +32,8 @@ node test/run.mjs tv roster    # only suites matching those names
 node test/backend/contract-static.test.mjs # staging/client contract drift
 ```
 
-Three Node suites (bracket engine, colour palettes, backend client) need
-nothing installed. Seventeen browser suites need Playwright and axe:
+The runner discovers the dependency-free Node suites and browser suites by
+filename. Browser suites need Playwright and axe:
 
 ```
 cd test && npm install && npx playwright install chromium
@@ -93,9 +98,9 @@ replacement is in `sql/staging/`, with its contract under `backend/`. New
 backend changes extend that ordered migration set; the historical file remains
 documentation rather than an install path.
 
-`config.js` takes a project URL and a publishable key, both public by design.
-A service role key or database password there would bypass row-level security
-entirely on a page whose source anyone can read.
+`config.js` holds the public project URL, publishable key, and CAPTCHA site key.
+A service role key, CAPTCHA secret, or database password must never be placed
+on a page whose source anyone can read.
 
 ## Deploying
 

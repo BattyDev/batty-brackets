@@ -584,7 +584,8 @@ on('undo', () => {
 
        * no backend at all  -> demo (the local-only mode, and how this runs
          today)
-       * backend, signed out -> demo, seeded locally only
+       * backend, signed out -> use the public list; if no events are
+         browseable, seed the demo locally only
        * backend, signed in  -> no demo. A real account must look empty when it
          is empty; seeding fiction into somebody's own event list would be
          indefensible.
@@ -613,8 +614,13 @@ on('undo', () => {
     store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
     await auth.initAuth(client, { connectedBackend: backend });
     /* Pull only the public/account-visible list through bkt_list_events. A
-       signed-out connected visitor gets no local demo seed. */
-    await store.pull();
+       signed-out visitor gets local sample events when that list has nothing
+       active to browse. The demo rows never enter the server write queue. */
+    const publicList = await store.pull();
+    if (publicList && !auth.isSignedIn()
+      && !store.listEvents().some((event) => ['registration', 'checkin', 'seeding', 'running'].includes(event.status))) {
+      store.seedDemo({ allowExistingData: true });
+    }
   } else {
     await auth.initAuth(null);
   }

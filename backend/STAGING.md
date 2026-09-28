@@ -9,8 +9,8 @@ deploy anything. `sql/001_schema.sql` is historical and must not be applied.
 First run the dependency-free drift check from the repository root:
 
 ```sh
-node brackets/test/backend/contract-static.test.mjs
-node brackets/test/backend-client.test.mjs
+node test/backend/contract-static.test.mjs
+node test/backend-client.test.mjs
 ```
 
 These checks validate migration ordering and client/RPC naming only. They do
@@ -21,7 +21,7 @@ Use a database that can be discarded. The harness creates Supabase-shaped
 `anon`, `authenticated` and `auth` fixtures, so never run it against Supabase or
 any database that already has those objects.
 
-From `brackets/test/backend/`:
+From `test/backend/`:
 
 ```sh
 createdb batty_brackets_test
@@ -64,8 +64,14 @@ enabled.
 8. Seed a disposable `bkt_private.admin_members` row for each test role and
    exercise the admin RPCs with a JWT whose top-level `aal` claim is `aal2`.
    Confirm an AAL1 session, inactive member, analyst moderation attempt, and
-   anonymous call are all rejected. Confirm result replacement supersedes the
-   old row, restore reactivates the original, and lock blocks organizer writes.
+   anonymous call are all rejected. Confirm cursor/search traversal beyond the
+   first content, queue, report, and audit pages. Submit a report from a saved
+   player account; verify target visibility checks, 24-hour deduplication,
+   throttling, private reporter identity, and audited staff triage. Hide and
+   restore each field shape (text, arrays, JSON documents, bracket, result),
+   checking direct RLS and every public read RPC for leaks. Confirm result
+   replacement supersedes the old row, restore reactivates the original, and
+   organizer replay cannot overwrite a held field or bracket.
    For the production bootstrap, create a dedicated email/password Auth user,
    copy its Auth UUID, and insert that UUID with role `super_admin` from a
    reviewed operator SQL session. Never expose the operator or service-role
@@ -73,13 +79,24 @@ enabled.
 9. Delete the staging test data or discard the project. Never use real
    participant contact information.
 
+## Upgrade gate for an existing Batty backend
+
+Use an isolated branch or disposable clone of the intended project. Verify
+that its schema and migration history already contain the reviewed `100`–`105`
+backend and do not contain `106`. Apply only `106_admin.sql` in that isolated
+environment with `bkt.staging = 'on'`; do not replay `100`–`105` over existing
+tables. Run the role, reporting, moderation, read-path, and cursor assertions
+above against the clone before preparing a separate production migration.
+The local `run.sql` fixture is for an empty local database and must never be
+executed on a hosted Supabase project.
+
 ## Still required after SQL passes
 
 - Re-verify authenticated cache/account isolation whenever the connected client
   boundary changes; never attach the legacy generic outbox.
 - Exercise create/list/redeem/join/read from independent laptop, phone and TV
   contexts, including expiration, sign-out, reconnect and access revocation.
-- Add transactional report/correct/station-release commands with operation IDs
+- Add transactional result-report/correct/station-release commands with operation IDs
   and expected revisions before calling connected tournament operation ready.
 - Review a separate production migration and rollback plan. Do not activate the
   admin RPCs or seed production membership until those gates pass.

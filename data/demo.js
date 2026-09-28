@@ -63,6 +63,7 @@ export function seedDemoData({ apply, uid, inviteCode, setSession }) {
     blurb: 'Weekly fighting games in the back room. Tuesdays, 7pm, $5.',
     region: 'NA East',
     createdAt: ago(400),
+    demo: true,
   }, { queueIt: false });
 
   /* ---- players ---- */
