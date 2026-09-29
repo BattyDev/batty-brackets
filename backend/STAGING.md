@@ -46,7 +46,7 @@ enabled.
 2. In one explicitly selected SQL session, set `bkt.staging = 'on'`.
 3. Apply `100_foundation.sql`, `101_commands.sql`, `102_claims.sql`,
    `103_operations.sql`, `104_hardening.sql`, `105_guest_join.sql`, then
-   `106_admin.sql`, then `107_match_submissions.sql`.
+   `106_admin.sql`, `107_match_submissions.sql`, then `108_withdrawals.sql`.
    The first migration refuses legacy or partially installed Batty objects.
 4. Adapt the assertions in `test/backend/security.sql` to real test users and
    JWT-backed API requests. Do not run `bootstrap.sql`; Supabase already owns

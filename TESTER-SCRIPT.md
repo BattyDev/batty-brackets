@@ -36,13 +36,16 @@ app URL, build/commit, device/browser, time, and a pass/fail note for each step.
    Disconnect one player session, restore its network, and confirm its match
    and station refresh without duplicate actions.
 3. **Result, approval, and correction:** Submit the winner and score from a
-   player's match screen. Confirm the host sees it pending, approves it, and
+   player's match screen. Leave the host untouched and confirm it shows the
+   pending request within 10 seconds. Approve it and confirm
    the bracket advances on all views. Correct that result from the host Run
    view and confirm bracket and station assignments update everywhere.
 4. **Withdrawal and completion:** Withdraw one entry before seeding and
    confirm it leaves the admitted roster. Request withdrawal from another
    entry after play starts; confirm the host resolves it through the ready-set
-   DQ action without leaving the opponent stuck. Play through the final,
+   DQ action without leaving the opponent stuck. Also interrupt a withdrawal
+   while sending, reload the player page, reconnect, and retry; confirm one
+   request appears and the player is not stuck in Sending. Play through the final,
    including a grand-final reset if required, and confirm every view shows the
    completed state.
 5. **Demo isolation:** Open `/demo.html`, enter Host, Player, and TV, then reset

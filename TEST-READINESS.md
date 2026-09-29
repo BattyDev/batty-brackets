@@ -1,5 +1,31 @@
 # Three-view tester readiness
 
+## Latest repair pass — September 29, 2026
+
+The review findings are repaired locally: event polling redraws when player
+result submissions or withdrawals change without an event revision bump;
+interrupted withdrawals become retryable after reload with the same request
+ID; the reporting browser check uses separate demo and connected contexts.
+The focused reporting, live-refresh, and match-submission checks passed. The
+refresh check now authenticates its mock host, observes both pending-request
+panels without a host interaction, and waits synchronously on actual store
+state. The withdrawal check covers reload, ID reuse, and repeated taps.
+
+`node test/run.mjs` passed **29/29 suites, zero skipped**, using installed
+Chrome. The backend static-contract check and `git diff --check` also passed.
+These are local/mocked results; no live-server acceptance is claimed.
+
+**Connected pilot remains blocked.** The connected Supabase account lists no
+dedicated staging project, and the Batty Brackets project has no development
+branches. Staging creation awaits the user's organization choice and the
+provider-required cost confirmation. No hosted migrations, authentication
+configuration, independent-client live checks, deployment, or production
+changes were performed. `backend/STAGING.md` now includes migration 108, and
+`TESTER-SCRIPT.md` includes the two repaired player-request paths.
+
+The dated sections below preserve earlier evidence; this repair pass supersedes
+their outstanding reporting-test finding.
+
 Reviewed September 28, 2026 against this checkout, including its existing
 uncommitted work. This is a prototype preparation plan, not a production signoff.
 Assumption: next week's target is independent host, player, and TV devices.

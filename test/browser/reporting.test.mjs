@@ -1,6 +1,6 @@
 /* Public reporting entry points and the device-only fail-closed path. */
 
-import { launch, openDemo, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
+import { launch, openApp, openDemo, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
@@ -13,7 +13,7 @@ const errors = [];
 
   report.ok('event view exposes an accessible report entry point',
     await page.getByRole('button', { name: 'Report content' }).count() === 1);
-  const beforeEvent = await page.evaluate(() => localStorage.getItem('battydev.brackets.state.v1'));
+  const beforeEvent = await page.evaluate(async () => JSON.stringify((await import('./lib/store.js')).get()));
   await page.getByRole('button', { name: 'Report content' }).click();
   report.ok('device-only event report opens a native dialog',
     await page.locator('dialog.m3[open]').count() === 1);
@@ -23,7 +23,7 @@ const errors = [];
     await page.locator('dialog.m3 textarea#report-reason').count() === 0);
   await page.keyboard.press('Escape');
   report.ok('closing the device-only report dialog does not write local report state',
-    await page.evaluate(() => localStorage.getItem('battydev.brackets.state.v1')) === beforeEvent);
+    await page.evaluate(async () => JSON.stringify((await import('./lib/store.js')).get())) === beforeEvent);
 
   await goTo(page, base, `#/p/${DEMO_PLAYER}`);
   report.ok('player profile exposes an accessible report entry point',
@@ -79,6 +79,11 @@ const errors = [];
   report.ok('public report candidates never include private contact values',
     targets.every(({ label }) => !/private@example|private-handle|private phone/i.test(label)));
 
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await openApp(browser, { base, width: 390, height: 844, errors });
   const remoteEventId = '77777777-7777-4777-8777-777777777777';
   await page.evaluate(async (eventId) => {
     const store = await import('./lib/store.js');
@@ -123,7 +128,8 @@ const errors = [];
     store.apply('brackets', eventId, { eventId, matches: [{ id: 'match-1' }] }, { queueIt: false });
   }, remoteEventId);
 
-  await goTo(page, base, `#/e/${remoteEventId}/entrants`);
+  await page.evaluate((eventId) => { location.hash = `#/e/${eventId}/entrants`; }, remoteEventId);
+  await page.getByRole('button', { name: 'Report content' }).waitFor();
   const connectedState = await page.evaluate(async (eventId) => {
     const store = await import('./lib/store.js');
     const auth = await import('./lib/auth.js');

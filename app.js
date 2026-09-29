@@ -532,6 +532,13 @@ function markEventRefreshFailure(eventId, error) {
   eventRefresh.error = currentRefreshError(error);
 }
 
+function eventRequestSnapshot(eventId) {
+  const state = store.get();
+  return JSON.stringify(['matchSubmissions', 'withdrawals'].map((collection) =>
+    Object.values(state[collection]).filter((row) => row.eventId === eventId)
+      .sort((a, b) => a.id.localeCompare(b.id))));
+}
+
 async function refreshConnectedEvent() {
   const eventId = eventRefresh.eventId;
   const generation = eventRefresh.generation;
@@ -540,6 +547,7 @@ async function refreshConnectedEvent() {
   if (!hydration || hydration.status === 'loading') return;
 
   const previousRevision = store.getEvent(eventId)?.revision;
+  const previousRequests = eventRequestSnapshot(eventId);
   const wasUnavailable = hydration.status !== 'done';
   const hadError = Boolean(eventRefresh.error);
   try {
@@ -548,7 +556,8 @@ async function refreshConnectedEvent() {
     routeHydration.set(eventId, { status: 'done', error: null });
     markEventRefreshSuccess(eventId);
     const changed = Number.isSafeInteger(result?.revision) && result.revision !== previousRevision;
-    if (changed || wasUnavailable || hadError) drawForEventRefresh();
+    // Player requests can change without advancing the host's event revision.
+    if (changed || previousRequests !== eventRequestSnapshot(eventId) || wasUnavailable || hadError) drawForEventRefresh();
   } catch (error) {
     if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
     markEventRefreshFailure(eventId, error);

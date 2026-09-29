@@ -129,4 +129,29 @@ assert.equal(selectPlayerMatchSubmission(proposals, matchId).id, 'new');
 assert.equal(selectPlayerMatchSubmission([...proposals].reverse(), matchId).id, 'new',
   'cached insertion order cannot elevate stale history above pending review');
 
-console.log('PASS match submission: ambiguous response, stale revision retry, proposal ordering, review, account isolation');
+// Reload after the phone closes during a withdrawal must allow the same ID to retry.
+store.cacheRemote({ entries: [{ id: winnerEntryId, eventId, playerId }] });
+backend.withdrawEntry = () => new Promise(() => {});
+void store.withdrawRemoteEntry(eventId);
+const interrupted = Object.values(store.get().withdrawals)[0];
+assert.equal(interrupted.status, 'sending');
+const reloaded = await import(`../lib/store.js?withdrawal-reload=${Date.now()}`);
+reloaded.boot({ scope: { projectUrl, accountId: 'account-c' } });
+let withdrawalCalls = 0;
+let acceptedWithdrawal;
+const readBeforeWithdrawal = backend.readEvent;
+backend.readEvent = async () => ({ ...await readBeforeWithdrawal(),
+  withdrawals: acceptedWithdrawal ? [acceptedWithdrawal] : [] });
+backend.withdrawEntry = async (id) => {
+  withdrawalCalls += 1;
+  assert.equal(id, interrupted.id, 'reload retry preserves the idempotency key');
+  acceptedWithdrawal = { ...interrupted, status: 'pending' };
+  return acceptedWithdrawal;
+};
+await reloaded.attachBackend(backend, { projectUrl, accountId: 'account-c' });
+assert.equal(reloaded.get().withdrawals[interrupted.id].status, 'failed');
+assert.equal((await reloaded.withdrawRemoteEntry(eventId)).status, 'pending');
+assert.equal((await reloaded.withdrawRemoteEntry(eventId)).status, 'pending');
+assert.equal(withdrawalCalls, 1);
+
+console.log('PASS match submission and withdrawal: retry, reload, proposal ordering, review, account isolation');

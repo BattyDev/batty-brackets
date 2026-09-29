@@ -36,6 +36,7 @@ let serverBundle = {
   revision: 1,
   orgs: [{ id: ORG_ID, name: 'Mock venue', ownerId: HOST_ID }],
   players: [
+    { id: HOST_ID, tag: 'Host', orgId: ORG_ID },
     { id: PLAYER_A, tag: 'Player One', orgId: ORG_ID },
     { id: PLAYER_B, tag: 'Player Two', orgId: ORG_ID },
   ],
@@ -134,8 +135,10 @@ async function openConnected(clientId, hash, width = 1280) {
   });
   await page.evaluate(async ({ clientId, eventBundle }) => {
     const store = await import('./lib/store.js');
+    window.__refreshStore = store;
     const backend = {
-      identity: async () => ({ id: '10000000-0000-4000-8000-000000000099', tag: 'Mock reader' }),
+      identity: async () => ({ id: clientId === 'host-device'
+        ? '10000000-0000-4000-8000-000000000002' : '10000000-0000-4000-8000-000000000099', tag: 'Mock reader' }),
       listEvents: async () => ({ events: [eventBundle.event], orgs: eventBundle.orgs, players: eventBundle.players }),
       readEvent: async (eventId) => window.__mockReadRemoteEvent(eventId),
       saveEventState: async (eventId, revision, snapshot) =>
@@ -145,6 +148,16 @@ async function openConnected(clientId, hash, width = 1280) {
       projectUrl: 'https://mock-backend.example.test',
       accountId: clientId,
     });
+    if (clientId === 'host-device') {
+      const auth = await import('./lib/auth.js');
+      await auth.initAuth({ auth: {
+        getSession: async () => ({ data: { session: { user: {
+          id: clientId, email: 'host@example.test', identities: [{ provider: 'email' }],
+          app_metadata: { providers: ['email'] }, user_metadata: {},
+        } } } }),
+        onAuthStateChange() {},
+      } }, { connectedBackend: backend });
+    }
     store.cacheRemote({ ...eventBundle, events: [eventBundle.event] }, { silent: true });
   }, { clientId, eventBundle: copy(serverBundle) });
   /* Keep the connected adapter attached to this page. goTo() performs a full
@@ -197,15 +210,15 @@ try {
     new Promise((resolve) => setTimeout(() => resolve(false), 2000)),
   ]);
   report.ok('the host save reached the mocked backend', hostSaveStarted);
-  const localCallVisibleBeforeAck = await host.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const localCallVisibleBeforeAck = await host.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return store.syncState().pending > 0
       && document.querySelectorAll('.stations .station.busy').length === 1;
   }, null, { timeout: 3000 }).then(() => true).catch(() => false);
   report.ok('host shows its station call while the mocked save is still pending', localCallVisibleBeforeAck);
   heldHostSave.release();
-  const hostSavedCall = await host.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const hostSavedCall = await host.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return store.syncState().pending === 0
       && store.get().stations['40000000-0000-4000-8000-000000000001']?.matchId;
   }, null, { timeout: 5000 }).then(() => true).catch(() => false);
@@ -213,8 +226,8 @@ try {
     hostSavedCall && serverBundle.revision >= 2,
     'server revision ' + serverBundle.revision);
 
-  const phoneSawCall = await phone.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const phoneSawCall = await phone.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return store.get().stations['40000000-0000-4000-8000-000000000001']?.matchId === 'W1-1'
       && store.getEvent('20000000-0000-4000-8000-000000000002')?.revision === 2;
   }, null, { timeout: POLL_LIMIT_MS }).then(() => true).catch(() => false);
@@ -229,17 +242,27 @@ try {
       && Boolean(document.querySelector('.tv-progress')));
   report.ok('TV rotation remained mounted after the remote refresh', tvCycleAfterRefresh);
 
+  const requestRevision = serverBundle.revision;
+  serverBundle.matchSubmissions = [{ id: '50000000-0000-4000-8000-000000000001',
+    eventId: EVENT_ID, matchId: 'W1-1', playerId: PLAYER_A, winnerEntryId: ENTRY_A,
+    scoreA: 2, scoreB: 1, status: 'pending' }];
+  serverBundle.withdrawals = [{ id: '60000000-0000-4000-8000-000000000001',
+    eventId: EVENT_ID, playerId: PLAYER_B, entryId: ENTRY_B, status: 'pending' }];
+  await host.page.getByRole('region', { name: 'Player match result submissions' }).waitFor({ timeout: POLL_LIMIT_MS });
+  await host.page.getByRole('region', { name: 'Pending player withdrawals' }).waitFor({ timeout: POLL_LIMIT_MS });
+  report.ok('host displays new player requests without an event revision change', serverBundle.revision === requestRevision);
+
   await phone.page.evaluate(() => window.dispatchEvent(new Event('offline')));
   const offlineNotice = await phone.page.waitForFunction(() =>
     document.querySelector('[role="status"]')?.textContent.includes('Offline'),
   null, { timeout: 1500 }).then(() => true).catch(() => false);
   report.ok('phone labels its cached event data offline', offlineNotice);
 
-  await host.page.locator('[data-act="report-open"]').first().click();
+  await host.page.locator('[data-act="report-open"]:not([data-submission])').first().click();
   await host.page.locator('dialog.m3 [data-score-side="a"]').last().click();
   await host.page.locator('dialog.m3 .dialog-actions button').filter({ hasText: 'Save' }).click();
-  const hostSavedResult = await host.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const hostSavedResult = await host.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return store.syncState().pending === 0
       && Object.values(store.get().results).some((result) => result.matchId === 'W1-1');
   }, null, { timeout: 5000 }).then(() => true).catch(() => false);
@@ -254,12 +277,12 @@ try {
   report.ok('offline phone did not see an unsynced local copy of the host result', heldWhileOffline);
 
   await phone.page.evaluate(() => window.dispatchEvent(new Event('online')));
-  const phoneSawResult = await phone.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const phoneSawResult = await phone.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return Object.values(store.get().results).some((result) => result.matchId === 'W1-1');
   }, null, { timeout: 3000 }).then(() => true).catch(() => false);
-  const tvSawResult = await tv.page.waitForFunction(async () => {
-    const store = await import('./lib/store.js');
+  const tvSawResult = await tv.page.waitForFunction(() => {
+    const store = window.__refreshStore;
     return Object.values(store.get().results).some((result) => result.matchId === 'W1-1')
       && store.get().brackets['20000000-0000-4000-8000-000000000002']?.matches
         .find((match) => match.id === 'W1-1')?.state === 'complete';
