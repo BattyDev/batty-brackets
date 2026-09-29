@@ -780,6 +780,8 @@ function runTab(data) {
   const dq = Number(data.ruleset?.values?.dqTimer || 5);
 
   const rounds = groupRounds(bracket);
+  const submissions = auth.isRemote() ? Object.values(store.get().matchSubmissions || {})
+    .filter(row => row.eventId === event.id && row.status === 'pending') : [];
 
   return html`
     <div class="pane">
@@ -789,6 +791,24 @@ function runTab(data) {
         </a>
         <span class="body-small dim">Opens in a new tab — put it on the TV.</span>
       </div>
+
+      ${submissions.length ? html`<section class="card card-elevated" style="margin-bottom:20px" aria-label="Player match result submissions">
+        <h2 class="title-large">Player results to review</h2>
+        <p class="body-small dim">These are match results from players. Content reports are reviewed separately.</p>
+        <div class="stack-sm" style="margin-top:12px">${list(submissions.map(submission => {
+          const match = bracket.matches.find(row => row.id === submission.matchId);
+          const winner = nameOf(submission.winnerEntryId);
+          const ready = match && !match.state && !match.cancelled;
+          return html`<div class="card card-outlined" role="group" aria-label="${match?.name || 'Match'} result submission">
+            <b>${match?.name || 'Match changed'}</b>
+            <p class="body-medium">${winner} wins ${Math.max(submission.scoreA, submission.scoreB)}–${Math.min(submission.scoreA, submission.scoreB)}</p>
+            ${ready ? html`<div class="row" style="gap:8px;flex-wrap:wrap">
+              <button class="btn btn-filled btn-sm" data-act="accept-match-result" data-submission="${submission.id}">Accept result</button>
+              <button class="btn btn-tonal btn-sm" data-act="report-open" data-match="${submission.matchId}" data-submission="${submission.id}">Correct score</button>
+            </div>` : html`<p class="body-small dim">The match changed. Refresh and use manual reporting if needed.</p>`}
+          </div>`;
+        }))}</div>
+      </section>` : ''}
 
       <section style="margin-bottom:20px">
         <h2 class="title-large" style="margin-bottom:12px">Stations</h2>
@@ -1827,7 +1847,7 @@ function scoreTarget(data, match) {
     : data.ruleset?.values?.setLengthPools).games / 2);
 }
 
-on('report-open', ({ match: matchId }) => {
+on('report-open', ({ match: matchId, submission: submissionId }) => {
   const data = contextFor(currentEventId());
   const match = data.bracket.matches.find((m) => m.id === matchId);
   if (!match) return;
@@ -1857,8 +1877,8 @@ on('report-open', ({ match: matchId }) => {
             </div>
           </div>`))}
       </div>
-      <button class="btn btn-danger-text btn-block" id="dq-a">Disqualify ${nameOf(a.entrantId)}</button>
-      <button class="btn btn-danger-text btn-block" id="dq-b">Disqualify ${nameOf(b.entrantId)}</button>
+      ${submissionId ? '' : html`<button class="btn btn-danger-text btn-block" id="dq-a">Disqualify ${nameOf(a.entrantId)}</button>
+      <button class="btn btn-danger-text btn-block" id="dq-b">Disqualify ${nameOf(b.entrantId)}</button>`}
       ${match.state === 'complete' ? html`
         <hr class="divider" style="margin:16px 0">
         <button class="btn btn-outlined btn-block" id="unreport">${raw(icon('undo'))} Un-report this set</button>
@@ -1871,7 +1891,7 @@ on('report-open', ({ match: matchId }) => {
         if (scoreA < 0 || scoreB < 0) { snack('Pick both scores.'); return false; }
         if (scoreA === scoreB) { snack('A set cannot be a draw.'); return false; }
         if (Math.max(scoreA, scoreB) !== target) { snack(`The winner must reach ${target} games.`); return false; }
-        saveResult(matchId, scoreA > scoreB ? a.entrantId : b.entrantId, scoreA, scoreB);
+        saveResult(matchId, scoreA > scoreB ? a.entrantId : b.entrantId, scoreA, scoreB, false, submissionId);
         return true;
       } },
     ],
@@ -1900,7 +1920,15 @@ on('report-open', ({ match: matchId }) => {
   dlg.querySelector('#unreport')?.addEventListener('click', () => { unreport(matchId); dlg.close(); });
 });
 
-function saveResult(matchId, winnerEntrantId, scoreA, scoreB, byDq = false) {
+const reviewingResults = new Set();
+
+on('accept-match-result', ({ submission: submissionId }) => {
+  const proposal = store.get().matchSubmissions[submissionId];
+  if (!proposal || proposal.status !== 'pending') return;
+  saveResult(proposal.matchId, proposal.winnerEntryId, proposal.scoreA, proposal.scoreB, false, submissionId);
+});
+
+function saveResult(matchId, winnerEntrantId, scoreA, scoreB, byDq = false, submissionId = null) {
   const data = contextFor(currentEventId());
   if (!data?.bracket) return;
   const eventId = data.event.id;
@@ -1926,7 +1954,7 @@ function saveResult(matchId, winnerEntrantId, scoreA, scoreB, byDq = false) {
     const done = next.find((m) => m.id === matchId);
     const playerOf = (entrantId) => data.entries.find((e) => e.id === entrantId)?.playerId;
     const resultId = store.uid('res');
-    store.applyMany([...invalidationWrites(data, ids),
+    const writes = [...invalidationWrites(data, ids),
       { collection: 'brackets', id: eventId, patch: { matches: next } },
       { collection: 'events', id: eventId, patch: { status: 'running', completedAt: null } },
       { collection: 'results', id: resultId, patch: {
@@ -1935,7 +1963,28 @@ function saveResult(matchId, winnerEntrantId, scoreA, scoreB, byDq = false) {
         scoreWinner: Math.max(scoreA, scoreB), scoreLoser: Math.min(scoreA, scoreB), byDq,
         reportedAt: new Date().toISOString(), reportedBy: auth.currentPlayer()?.id || null,
       } },
-    ]);
+    ];
+    if (submissionId && auth.isRemote()) {
+      if (reviewingResults.has(submissionId)) return;
+      reviewingResults.add(submissionId);
+      store.reviewRemoteMatchResult(submissionId,
+        winnerEntrantId === store.get().matchSubmissions[submissionId]?.winnerEntryId
+          && scoreA === store.get().matchSubmissions[submissionId]?.scoreA
+          && scoreB === store.get().matchSubmissions[submissionId]?.scoreB ? 'accepted' : 'corrected',
+        writes).then(() => {
+        snack('Player result reviewed and bracket advanced.');
+        rerender();
+      }).catch(async error => {
+        try { await store.readRemoteEvent(eventId); } catch { /* Keep local status until refresh succeeds. */ }
+        const status = store.get().matchSubmissions[submissionId]?.status;
+        snack(status === 'accepted' || status === 'corrected'
+          ? 'Player result reviewed and bracket advanced.'
+          : `Result review was not confirmed: ${String(error?.message || error)}`);
+        rerender();
+      }).finally(() => reviewingResults.delete(submissionId));
+      return;
+    }
+    store.applyMany(writes);
     snack(byDq ? 'Recorded as a disqualification' : 'Reported');
     rerender();
   };

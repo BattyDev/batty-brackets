@@ -21,7 +21,7 @@ import {
 } from '../lib/ui.js';
 import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
-import { gameById, resolveRuleset, fieldVisible, formatValue } from '../data/games.js';
+import { gameById, resolveRuleset, fieldVisible, formatValue, setLength } from '../data/games.js';
 import { gameHero, gameMark } from '../data/themes.js';
 import { standings } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
@@ -161,6 +161,10 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
     return players.get(entry?.playerId)?.tag || '—';
   };
   const station = current?.stationId ? store.get().stations[current.stationId] : null;
+  const mySubmissions = Object.values(store.get().matchSubmissions || {})
+    .filter(row => row.eventId === event.id && row.playerId === me.id);
+  const submission = mySubmissions.find(row => row.matchId === current?.id)
+    || mySubmissions.sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')))[0];
   const statusLabel = myEntry.waitlisted ? 'Waitlisted' : out ? 'Eliminated'
     : current ? 'Called now' : myEntry.checkedInAt ? 'Checked in' : 'Entered';
 
@@ -181,7 +185,12 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
               ${ruleset?.values?.dqTimer || 5} minutes from when it was called.</div>
             </div>` : ''}
           ${raw(headToHeadLine(me.id, entries, players, current, myEntry))}
+          ${auth.isRemote() ? raw(matchResultForm({ event, current, entries, players, ruleset, submission })) : ''}
         </section>` : ''}
+
+      ${!current && submission ? html`<div class="banner banner-info" role="status" style="margin-bottom:16px">
+        <div><b>Match result submission</b><p class="body-small" style="margin:4px 0 0">${submissionStatus(submission)}</p></div>
+      </div>` : ''}
 
       ${!current && next ? html`
         <section class="card card-elevated next-set" aria-labelledby="next-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
@@ -247,6 +256,60 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 
       ${raw(eventHeader(event, game, entries))}
     </div>`;
+}
+
+const resultDrafts = new Map();
+const submittingResults = new Set();
+
+function submissionStatus(row) {
+  if (row.status === 'sending') return 'Sending your choice to the host…';
+  if (row.status === 'failed') return 'Could not confirm delivery. Your choice is saved here; retry it when connected.';
+  if (row.status === 'pending') return 'Sent. Waiting for the host to accept or correct it. The bracket has not advanced.';
+  if (row.status === 'stale') return 'The match changed or the host reported it manually. Check the bracket or ask the host.';
+  if (row.status === 'corrected') return 'The host corrected and recorded this result.';
+  return 'The host accepted this result.';
+}
+
+function matchResultForm({ event, current, entries, players, ruleset, submission }) {
+  if (submission?.matchId === current.id && submission.status === 'failed') {
+    return html`<div class="banner banner-warn" role="status" style="margin-top:14px"><div>
+      <b>Match result submission</b><p class="body-small">${submissionStatus(submission)}</p>
+      <p class="body-medium">Your saved choice: ${submission.scoreA}–${submission.scoreB}.</p>
+      <button class="btn btn-filled" data-act="retry-match-result" data-submission="${submission.id}">Retry saved result</button>
+    </div></div>`;
+  }
+  if (submission && submission.matchId === current.id && submission.status !== 'stale') {
+    return html`<div class="banner banner-info" role="status" style="margin-top:14px"><div>
+      <b>Match result submission</b><p class="body-small" style="margin:4px 0 0">${submissionStatus(submission)}</p>
+    </div></div>`;
+  }
+  const isFinals = current.bracket === 'GF' || (current.bracket === 'W' && current.round === store.get().brackets[event.id]?.rounds);
+  const target = Math.ceil(setLength(isFinals
+    ? ruleset?.values?.setLengthFinals : ruleset?.values?.setLengthPools).games / 2);
+  const key = `${event.id}:${current.id}`;
+  const draft = resultDrafts.get(key) || {};
+  const name = id => {
+    const entry = entries.find(row => row.id === id);
+    return players.get(entry?.playerId)?.tag || 'Player';
+  };
+  return html`<form data-act-submit="submit-match-result" data-event="${event.id}" data-match="${current.id}"
+    data-target="${target}" style="margin-top:14px" aria-label="Submit match result to host">
+    <p class="eyebrow">MATCH RESULT SUBMISSION</p>
+    <p class="body-small dim">First to ${target}. The host reviews this before anyone advances.</p>
+    ${submission?.status === 'stale' ? html`<div class="banner banner-warn" role="status">${submissionStatus(submission)}</div>` : ''}
+    <label class="field"><span class="field-label">Winner</span><select name="winner" data-act-change="result-draft" data-key="${key}">
+      <option value="">Choose winner</option>
+      ${list(current.slots.map(slot => html`<option value="${slot.entrantId}" ${raw(draft.winnerEntryId === slot.entrantId ? 'selected' : '')}>${name(slot.entrantId)}</option>`))}
+    </select></label>
+    <div class="row" style="gap:8px;flex-wrap:wrap">
+      ${list(current.slots.map((slot, index) => html`<label class="field" style="flex:1;min-width:120px">
+        <span class="field-label">${name(slot.entrantId)} score</span>
+        <input name="score${index}" type="number" min="0" max="${target}" inputmode="numeric"
+          value="${draft[index === 0 ? 'scoreA' : 'scoreB'] ?? ''}" data-act-input="result-draft" data-key="${key}">
+      </label>`))}
+    </div>
+    <button class="btn btn-filled btn-block" type="submit">Send result to host</button>
+  </form>`;
 }
 
 function nextTaskCard({ event, myEntry, unsigned, readiness }) {
@@ -515,6 +578,63 @@ function rulesTab({ event, game, ruleset }) {
    -------------------------------------------------------------------------- */
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+function saveResultDraft(form) {
+  const key = `${form.dataset.event}:${form.dataset.match}`;
+  resultDrafts.set(key, {
+    winnerEntryId: form.elements.winner.value,
+    scoreA: form.elements.score0.value,
+    scoreB: form.elements.score1.value,
+  });
+}
+on('result-draft', (data, el) => saveResultDraft(el.closest('form')));
+on('retry-match-result', async ({ submission: id }) => {
+  const proposal = store.get().matchSubmissions[id];
+  if (!proposal || proposal.status !== 'failed') return;
+  const key = `${proposal.eventId}:${proposal.matchId}`;
+  if (submittingResults.has(key)) return;
+  submittingResults.add(key);
+  rerender();
+  try {
+    await store.submitRemoteMatchResult(proposal);
+    snack('Sent to the host for review.');
+  } catch (error) {
+    snack(`Result was not confirmed: ${String(error?.message || error)}`);
+  } finally {
+    submittingResults.delete(key);
+    rerender();
+  }
+});
+on('submit-match-result', async ({ event: eventId, match: matchId, target }, form) => {
+  if (submittingResults.has(`${eventId}:${matchId}`)) return;
+  const bracket = store.get().brackets[eventId];
+  const match = bracket?.matches.find(row => row.id === matchId);
+  const me = auth.currentPlayer();
+  const winnerEntryId = form.elements.winner.value;
+  const scoreA = Number(form.elements.score0.value);
+  const scoreB = Number(form.elements.score1.value);
+  if (!match || !me || !match.slots.some(slot => slot.entrantId === winnerEntryId)
+    || !form.elements.score0.value || !form.elements.score1.value
+    || ![scoreA, scoreB].every(n => Number.isInteger(n) && n >= 0 && n <= Number(target))
+    || Math.max(scoreA, scoreB) !== Number(target) || scoreA === scoreB
+    || (winnerEntryId === match.slots[0].entrantId ? scoreA < scoreB : scoreB < scoreA)) {
+    snack(`Choose a winner and a first-to-${target} score.`); return;
+  }
+  const key = `${eventId}:${matchId}`;
+  submittingResults.add(key);
+  saveResultDraft(form);
+  rerender();
+  try {
+    await store.submitRemoteMatchResult({ eventId, matchId, playerId: me.id,
+      winnerEntryId, scoreA, scoreB });
+    snack('Sent to the host for review.');
+  } catch (error) {
+    snack(`Result was not confirmed: ${String(error?.message || error)}`);
+  } finally {
+    submittingResults.delete(key);
+    rerender();
+  }
+});
 
 on('self-checkin', async ({ entry: entryId }) => {
   const entry = store.get().entries[entryId];

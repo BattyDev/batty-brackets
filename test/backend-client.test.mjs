@@ -50,6 +50,22 @@ assert.deepEqual(calls.pop(), { name: 'bkt_save_event_state', args: {
   p_state: { event: { id }, entries: [], players: [], stations: [], bracket: null, results: [] },
 } });
 await assert.rejects(api.saveEventState(id, 0, {}), /Refresh/);
+reply = { id, event_id: id, match_id: 'W-1-0', player_id: id,
+  winner_entry_id: id, score_a: 2, score_b: 1, status: 'pending' };
+assert.equal((await api.submitMatchResult({ id, eventId: id, matchId: 'W-1-0',
+  expectedRevision: 3, winnerEntryId: id, scoreA: 2, scoreB: 1 })).winnerEntryId, id);
+assert.deepEqual(calls.pop(), { name: 'bkt_submit_match_result', args: {
+  p_id: id, p_event_id: id, p_match_id: 'W-1-0', p_expected_revision: 3,
+  p_winner_entry_id: id, p_score_a: 2, p_score_b: 1,
+} });
+await assert.rejects(api.submitMatchResult({ id, eventId: id, matchId: 'W-1-0',
+  expectedRevision: 3, winnerEntryId: id, scoreA: 2, scoreB: 2 }), /valid winner/);
+reply = { event: { id, revision: 4 }, revision: 4, entries: [], players: [],
+  stations: [], orgs: [], brackets: [], results: [], match_submissions: [{ id, status: 'accepted' }] };
+assert.equal((await api.reviewMatchResult(id, 3, { event: { id } }, 'accepted')).matchSubmissions[0].status, 'accepted');
+assert.deepEqual(calls.pop(), { name: 'bkt_review_match_result', args: {
+  p_id: id, p_expected_revision: 3, p_state: { event: { id } }, p_decision: 'accepted',
+} });
 reply = { entry: { id, event_id: id, player_id: id }, player: { id, tag: 'Door' }, claim_code: 'a'.repeat(64) };
 assert.equal((await api.createWalkup(id, ' Door ')).claimCode, 'a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_create_walkup', args: { p_event_id: id, p_tag: 'Door' } });

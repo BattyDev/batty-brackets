@@ -99,6 +99,19 @@ and pools/top-cut are outside this pilot's critical path.
    a result. Leave profile upgrades optional rather than automatically opening
    the current post-join upsell (`views/home.js:449`).
 
+   **Provisional task 3 checkpoint (September 28):** Connected players can
+   submit a called match's winner and score. The server checks match entry
+   ownership and stale/completed state, stores one pending proposal per match,
+   and returns the same proposal for an identical retry. The host Run view
+   accepts or corrects the score through a versioned review command before
+   bracket advancement; manual reporting remains available. The client keeps
+   a failed choice for retry and displays the server's pending/accepted/
+   corrected status. Focused backend-contract, mocked-store, bracket, mobile
+   player, and host-operations checks passed. SQL execution, live-server
+   acceptance, and manual cross-device verification remain blocked without a
+   disposable staging backend. Withdrawal and optional post-join upgrade are
+   separate follow-up work.
+
 4. **Separate the demo and trim initial mobile loading.**
    `app.js:604-622` seeds demos into the normal entry path; home also exposes
    tour actions. Give the showcase its own entry page and isolated storage,

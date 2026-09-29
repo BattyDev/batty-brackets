@@ -15,10 +15,11 @@ const operations = read('sql/staging/103_operations.sql');
 const hardening = read('sql/staging/104_hardening.sql');
 const guest = read('sql/staging/105_guest_join.sql');
 const admin = read('sql/staging/106_admin.sql');
+const submissions = read('sql/staging/107_match_submissions.sql');
 const run = read('test/backend/run.sql');
 const adapter = read('lib/backend.js');
 
-assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
+assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*107_match_submissions\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
   'the disposable harness must apply staging migrations in order before assertions');
 assert.doesNotMatch(run, /001_schema\.sql/, 'the unsafe historical schema must never enter the staging harness');
 
@@ -29,7 +30,7 @@ for (const name of rpc) {
   assert.match(adapter, new RegExp(`call\\('${name}'`), `${name} client call missing`);
 }
 
-for (const sql of [foundation, commands, claims, operations, guest, admin]) {
+for (const sql of [foundation, commands, claims, operations, guest, admin, submissions]) {
   const declarations = [...sql.matchAll(/create function\s+([\w.]+)([\s\S]*?)\bas\s+\$\$/gi)];
   const definers = declarations.filter(([, , declaration]) => /security definer/i.test(declaration));
   assert.ok(definers.length, 'each migration that defines commands must expose definer functions to inspect');
@@ -106,5 +107,18 @@ assert.match(admin, /if p_reason is null or length\(trim\(p_reason\)\) not betwe
   'every moderation decision requires a bounded reason');
 assert.match(admin, /auth\.jwt\(\)->>'is_anonymous'/,
   'anonymous Auth accounts must never qualify as platform administrators');
+assert.match(submissions, /create table bkt_private\.match_submissions[\s\S]*enable row level security/);
+assert.match(submissions, /create trigger bkt_close_stale_match_submissions[\s\S]*after update on public\.bkt_brackets/,
+  'manual host reports must close obsolete player proposals');
+assert.match(submissions, /bkt_private\.match_submissions[\s\S]*player_id=v_me[\s\S]*return to_jsonb\(v_existing\)/,
+  'a retry must return only the same caller and payload');
+assert.match(submissions, /en\.id in \(v_a,v_b\) and en\.player_id=v_me/,
+  'the server must verify match ownership');
+assert.match(submissions, /v_submission\.status<>'pending' then return public\.bkt_read_event/,
+  'review retries must not advance the bracket twice');
+assert.match(submissions, /bkt_save_event_state\(v_submission\.event_id,p_expected_revision,p_state\)/,
+  'host review must use the versioned save boundary');
+assert.match(adapter, /call\('bkt_submit_match_result'/);
+assert.match(adapter, /call\('bkt_review_match_result'/);
 
 console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, admin AAL2 boundary, and private moderation data');

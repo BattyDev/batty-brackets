@@ -46,7 +46,7 @@ enabled.
 2. In one explicitly selected SQL session, set `bkt.staging = 'on'`.
 3. Apply `100_foundation.sql`, `101_commands.sql`, `102_claims.sql`,
    `103_operations.sql`, `104_hardening.sql`, `105_guest_join.sql`, then
-   `106_admin.sql`.
+   `106_admin.sql`, then `107_match_submissions.sql`.
    The first migration refuses legacy or partially installed Batty objects.
 4. Adapt the assertions in `test/backend/security.sql` to real test users and
    JWT-backed API requests. Do not run `bootstrap.sql`; Supabase already owns
@@ -97,6 +97,6 @@ executed on a hosted Supabase project.
 - Exercise create/list/redeem/join/read from independent laptop, phone and TV
   contexts, including expiration, sign-out, reconnect and access revocation.
 - Add transactional result-report/correct/station-release commands with operation IDs
-  and expected revisions before calling connected tournament operation ready.
+  and expected revisions for remaining manual host operations before calling connected tournament operation ready.
 - Review a separate production migration and rollback plan. Do not activate the
   admin RPCs or seed production membership until those gates pass.
