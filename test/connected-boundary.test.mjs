@@ -218,4 +218,62 @@ assert.equal(walkup.get().entries[walkupEntryId].group, 'Pool B', 'accepted walk
 assert.equal(walkup.get().entries[walkupEntryId].source, 'door');
 assert.ok(walkup.get().entries[walkupEntryId].checkedInAt);
 
+/* A mocked server exercises the two withdrawal acknowledgements and the
+   ambiguous-delivery retry. SQL ownership and locking need live PostgreSQL. */
+const withdrawalProject = 'https://withdrawal.supabase.co';
+const withdrawal = await import(`../lib/store.js?withdrawal=${Date.now()}`);
+let serverEntry = { id: entryId, eventId, playerId, waitlisted: false };
+let serverWithdrawal = null;
+let withdrawalCalls = 0;
+let loseAcknowledgement = true;
+const withdrawalBackend = {
+  invalidate() {},
+  async identity() { return { id: playerId, tag: 'A' }; },
+  async listEvents() { return { events: [], orgs: [], players: [] }; },
+  async readEvent() { return {
+    event: { id: eventId, name: 'Withdrawal event', gameId: 'mvci', status: 'registration', revision: 2 }, revision: 2,
+    entries: serverEntry ? [serverEntry] : [], players: [{ id: playerId, tag: 'A' }],
+    stations: [], orgs: [], brackets: [], results: [], withdrawals: serverWithdrawal ? [serverWithdrawal] : [],
+  }; },
+  async withdrawEntry(id) {
+    withdrawalCalls += 1;
+    if (!serverWithdrawal) {
+      serverWithdrawal = { id, eventId, entryId, playerId, status: 'withdrawn' };
+      serverEntry = null;
+    }
+    if (loseAcknowledgement) { loseAcknowledgement = false; throw new Error('Response lost'); }
+    return serverWithdrawal;
+  },
+};
+withdrawal.boot({ scope: { projectUrl: withdrawalProject, accountId: 'player-a' } });
+withdrawal.attachBackend(withdrawalBackend, { projectUrl: withdrawalProject, accountId: 'player-a' });
+withdrawal.setSession({ playerId });
+await withdrawal.readRemoteEvent(eventId);
+assert.equal((await withdrawal.withdrawRemoteEntry(eventId)).status, 'withdrawn',
+  'an ambiguous delivery is reconciled from the server');
+assert.equal(withdrawal.entryFor(eventId, playerId), null, 'pre-bracket withdrawal removes the entry');
+assert.equal(withdrawal.get().players[playerId].tag, 'A', 'identity survives withdrawal');
+assert.equal(withdrawalCalls, 1, 'confirmed delivery needs no duplicate retry');
+
+const active = await import(`../lib/store.js?active-withdrawal=${Date.now()}`);
+const activeProject = 'https://active-withdrawal.supabase.co';
+const activeBackend = { ...withdrawalBackend, async readEvent() { return {
+  event: { id: eventId, name: 'Active event', gameId: 'mvci', status: 'running', revision: 3 }, revision: 3,
+  entries: [{ id: entryId, eventId, playerId, waitlisted: false }], players: [{ id: playerId, tag: 'A' }],
+  stations: [], orgs: [], brackets: [], results: [], withdrawals: serverWithdrawal ? [serverWithdrawal] : [],
+}; }, async withdrawEntry(id) {
+  withdrawalCalls += 1;
+  serverWithdrawal = { id, eventId, entryId, playerId, status: 'pending' };
+  return serverWithdrawal;
+} };
+serverWithdrawal = null;
+active.boot({ scope: { projectUrl: activeProject, accountId: 'player-a' } });
+active.attachBackend(activeBackend, { projectUrl: activeProject, accountId: 'player-a' });
+active.setSession({ playerId });
+await active.readRemoteEvent(eventId);
+assert.equal((await active.withdrawRemoteEntry(eventId)).status, 'pending');
+assert.ok(active.entryFor(eventId, playerId), 'active request keeps the bracket entry');
+assert.equal((await active.withdrawRemoteEntry(eventId)).status, 'pending');
+assert.equal(withdrawalCalls, 2, 'repeat taps do not send another active request');
+
 console.log('PASS connected boundary: RPC boot, blank config, fail-closed publish, and account isolation');

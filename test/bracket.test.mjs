@@ -152,6 +152,24 @@ console.log('byes');
 }
 
 /* -------------------------------------------------------- double elim */
+{
+  const bracket = singleElimination(entrants(4));
+  const [withdrawnSet, otherSet] = readyMatches(bracket.matches);
+  const withdrawn = withdrawnSet.slots[0].entrantId;
+  const opponent = withdrawnSet.slots[1].entrantId;
+  let matches = reportResult(bracket.matches, withdrawnSet.id,
+    { winnerId: opponent, scoreA: 0, scoreB: 2 });
+  ok('host DQ completes only the current set',
+    matches.find(match => match.id === withdrawnSet.id).state === 'complete'
+      && matches.find(match => match.id === otherSet.id).state !== 'complete');
+  matches = reportResult(matches, otherSet.id,
+    { winnerId: otherSet.slots[0].entrantId, scoreA: 2, scoreB: 0 });
+  const final = readyMatches(matches)[0];
+  ok('opponent advances after host DQ while withdrawn player does not',
+    final.slots.some(slot => slot.entrantId === opponent)
+      && final.slots.every(slot => slot.entrantId !== withdrawn));
+}
+
 console.log('double elimination');
 for (const n of [4, 8, 16, 32]) {
   const bracket = doubleElimination(entrants(n));

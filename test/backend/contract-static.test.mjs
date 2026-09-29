@@ -16,10 +16,11 @@ const hardening = read('sql/staging/104_hardening.sql');
 const guest = read('sql/staging/105_guest_join.sql');
 const admin = read('sql/staging/106_admin.sql');
 const submissions = read('sql/staging/107_match_submissions.sql');
+const withdrawals = read('sql/staging/108_withdrawals.sql');
 const run = read('test/backend/run.sql');
 const adapter = read('lib/backend.js');
 
-assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*107_match_submissions\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
+assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*107_match_submissions\.sql[\s\S]*108_withdrawals\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
   'the disposable harness must apply staging migrations in order before assertions');
 assert.doesNotMatch(run, /001_schema\.sql/, 'the unsafe historical schema must never enter the staging harness');
 
@@ -30,7 +31,7 @@ for (const name of rpc) {
   assert.match(adapter, new RegExp(`call\\('${name}'`), `${name} client call missing`);
 }
 
-for (const sql of [foundation, commands, claims, operations, guest, admin, submissions]) {
+for (const sql of [foundation, commands, claims, operations, guest, admin, submissions, withdrawals]) {
   const declarations = [...sql.matchAll(/create function\s+([\w.]+)([\s\S]*?)\bas\s+\$\$/gi)];
   const definers = declarations.filter(([, , declaration]) => /security definer/i.test(declaration));
   assert.ok(definers.length, 'each migration that defines commands must expose definer functions to inspect');
@@ -120,5 +121,19 @@ assert.match(submissions, /bkt_save_event_state\(v_submission\.event_id,p_expect
   'host review must use the versioned save boundary');
 assert.match(adapter, /call\('bkt_submit_match_result'/);
 assert.match(adapter, /call\('bkt_review_match_result'/);
+assert.match(withdrawals, /create table bkt_private\.withdrawals[\s\S]*enable row level security/);
+assert.match(withdrawals, /v_existing\.player_id<>v_me[\s\S]*return to_jsonb\(v_existing\)/,
+  'withdrawal retries must belong to the same player');
+assert.match(withdrawals, /v_event\.status in \('draft','complete'\)/,
+  'closed events must reject new withdrawals');
+assert.match(withdrawals, /delete from public\.bkt_entries where id=v_entry\.id/,
+  'pre-bracket withdrawal removes the entry only');
+assert.match(withdrawals, /r\.by_dq and not r\.superseded[\s\S]*w\.status='pending'/,
+  'a recorded DQ is required to resolve a pending player request');
+assert.match(withdrawals, /select count\(\*\) from public\.bkt_results r[\s\S]*b\.type='double' then 2 else 1/,
+  'double elimination requests remain pending until the player is out');
+assert.match(withdrawals, /old\.by_dq and not old\.superseded and new\.superseded[\s\S]*status='pending'/,
+  'correcting a DQ reopens the request');
+assert.match(adapter, /call\('bkt_withdraw_entry'/);
 
 console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, admin AAL2 boundary, and private moderation data');

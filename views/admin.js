@@ -782,6 +782,8 @@ function runTab(data) {
   const rounds = groupRounds(bracket);
   const submissions = auth.isRemote() ? Object.values(store.get().matchSubmissions || {})
     .filter(row => row.eventId === event.id && row.status === 'pending') : [];
+  const withdrawals = auth.isRemote() ? Object.values(store.get().withdrawals || {})
+    .filter(row => row.eventId === event.id && row.status === 'pending') : [];
 
   return html`
     <div class="pane">
@@ -791,6 +793,19 @@ function runTab(data) {
         </a>
         <span class="body-small dim">Opens in a new tab — put it on the TV.</span>
       </div>
+
+      ${withdrawals.length ? html`<section class="card card-elevated" style="margin-bottom:20px" aria-label="Pending player withdrawals">
+        <h2 class="title-large">Withdrawal requests</h2>
+        <p class="body-small dim">Use the existing DQ action on a ready set. Completed results stay recorded.</p>
+        <div class="stack-sm" style="margin-top:12px">${list(withdrawals.map(request => {
+          const entry = entries.find(row => row.id === request.entryId);
+          const ready = entry ? readyMatches(bracket.matches).filter(match => match.slots.some(slot => slot.entrantId === entry.id)) : [];
+          return html`<div class="card card-outlined"><b>${players.get(request.playerId)?.tag || 'Player'}</b>
+            <p class="body-small dim">${ready.length === 1 ? `Ready: ${ready[0].name}` : 'No single ready set yet. Check again when their next set opens.'}</p>
+            ${ready.length === 1 ? html`<button class="btn btn-tonal btn-sm" data-act="entrant-dq" data-id="${entry.id}">Record DQ in ready set</button>` : ''}
+          </div>`;
+        }))}</div>
+      </section>` : ''}
 
       ${submissions.length ? html`<section class="card card-elevated" style="margin-bottom:20px" aria-label="Player match result submissions">
         <h2 class="title-large">Player results to review</h2>

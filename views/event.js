@@ -16,7 +16,7 @@
 'use strict';
 
 import {
-  html, raw, list, icon, esc, on, snack, dialog, avatar,
+  html, raw, list, icon, esc, on, snack, dialog, confirmDialog, avatar,
   formatDateTime, relativeTime,
 } from '../lib/ui.js';
 import * as store from '../lib/store.js';
@@ -104,6 +104,9 @@ function eventNavigation(event, tab, secondary) {
    -------------------------------------------------------------------------- */
 
 function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }) {
+  const withdrawal = me ? Object.values(store.get().withdrawals || {})
+    .filter(row => row.eventId === event.id && row.playerId === me.id)
+    .sort((a, b) => String(b.requestedAt || '').localeCompare(String(a.requestedAt || '')))[0] : null;
   if (!me) {
     return html`
       <div class="pane">
@@ -130,12 +133,12 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
         <div class="card card-elevated" style="margin-top:16px">
           <p class="eyebrow">ENTRY STATUS</p><h2 class="title-large">You are not entered</h2>
           <p class="body-medium dim" style="margin:4px 0 12px">
-            ${!open ? 'Registration is closed. Ask the host about joining this event.' : full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
+            ${withdrawal?.status === 'withdrawn' ? 'You withdrew before bracket generation. Your player profile and history remain.' : !open ? 'Registration is closed. Ask the host about joining this event.' : full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
           </p>
-          ${open ? html`<button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}">
+          ${open && withdrawal?.status !== 'withdrawn' ? html`<button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}">
             ${full ? 'Confirm waitlist entry' : 'Confirm entry'}
           </button>` : html`<a class="btn btn-tonal" href="#/e/${event.id}/bracket">Follow the bracket</a>`}
-          ${open ? html`<p class="body-small dim" style="margin:10px 0 0">This is the final confirmation. Your entry is created only when you activate the button.</p>` : ''}
+          ${open && withdrawal?.status !== 'withdrawn' ? html`<p class="body-small dim" style="margin:10px 0 0">This is the final confirmation. Your entry is created only when you activate the button.</p>` : ''}
         </div>
       </div>`;
   }
@@ -171,6 +174,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
   return html`
     <div class="pane player-now" style="max-width:800px">
       <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static chip-info" style="margin-top:10px">${statusLabel}</span></header>
+      ${withdrawal ? html`<div class="banner ${raw(withdrawal.status === 'failed' ? 'banner-warn' : 'banner-info')}" role="status" style="margin-bottom:16px"><div><b>Withdrawal</b><p class="body-small">${withdrawal.status === 'pending' ? 'Request sent. The host must record a DQ or forfeit in your next open set; the bracket has not changed yet.' : withdrawal.status === 'resolved' ? 'The host recorded your DQ. Check the bracket for your opponent’s next state.' : withdrawal.status === 'sending' ? 'Sending your withdrawal request…' : withdrawal.status === 'failed' ? 'Delivery was not confirmed. Retry the saved request when connected.' : 'Your entry was withdrawn before bracket generation.'}</p>${withdrawal.status === 'failed' ? html`<button class="btn btn-filled btn-sm" data-act="withdraw-entry" data-event="${event.id}">Retry withdrawal</button>` : ''}</div></div>` : ''}
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
       ${!current && !next && !waiting && !out ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Complete the next task below. Check-in appears here as soon as the host opens it.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
       ${current ? html`
@@ -242,6 +246,8 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           </div>` : ''}
       </section>
 
+      ${auth.isRemote() && !['complete', 'draft'].includes(event.status) && !['pending', 'sending', 'resolved', 'withdrawn', 'failed'].includes(withdrawal?.status) ? html`<button class="btn btn-tonal btn-block" data-act="withdraw-entry" data-event="${event.id}" style="margin-bottom:16px">Withdraw from event</button>` : ''}
+
       ${readiness.length ? html`
         <div class="banner ${raw(readiness.some((p) => p.level === 'error') ? 'banner-error' : 'banner-warn')}" style="margin-bottom:16px">
           ${raw(icon('alert'))}
@@ -260,6 +266,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 
 const resultDrafts = new Map();
 const submittingResults = new Set();
+const submittingWithdrawals = new Set();
 
 function submissionStatus(row) {
   if (row.status === 'sending') return 'Sending your choice to the host…';
@@ -578,6 +585,33 @@ function rulesTab({ event, game, ruleset }) {
    -------------------------------------------------------------------------- */
 
 const rerender = () => window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+on('withdraw-entry', ({ event: eventId }) => {
+  if (submittingWithdrawals.has(eventId)) return;
+  const event = store.getEvent(eventId);
+  const bracket = store.get().brackets[eventId];
+  const active = Boolean(bracket);
+  confirmDialog({
+    title: active ? 'Request withdrawal?' : 'Withdraw your entry?',
+    body: active
+      ? 'Your request will go to the host. You stay in the bracket until the host records a DQ or forfeit in an open set. Completed results will remain.'
+      : 'Your entry will be removed before the bracket is generated. Your player profile and history will remain.',
+    confirmLabel: active ? 'Send request' : 'Withdraw entry', danger: true,
+    onConfirm: async () => {
+      submittingWithdrawals.add(eventId);
+      rerender();
+      try {
+        const row = await store.withdrawRemoteEntry(eventId);
+        snack(row.status === 'withdrawn' ? 'Your entry was withdrawn.' : 'Withdrawal request sent to the host.');
+      } catch (error) {
+        snack(`Withdrawal was not confirmed: ${String(error?.message || error)}`);
+      } finally {
+        submittingWithdrawals.delete(eventId);
+        rerender();
+      }
+    },
+  });
+});
 
 function saveResultDraft(form) {
   const key = `${form.dataset.event}:${form.dataset.match}`;

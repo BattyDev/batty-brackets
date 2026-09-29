@@ -66,6 +66,13 @@ assert.equal((await api.reviewMatchResult(id, 3, { event: { id } }, 'accepted'))
 assert.deepEqual(calls.pop(), { name: 'bkt_review_match_result', args: {
   p_id: id, p_expected_revision: 3, p_state: { event: { id } }, p_decision: 'accepted',
 } });
+reply = { id, event_id: id, entry_id: id, player_id: id, status: 'pending' };
+assert.equal((await api.withdrawEntry(id, id)).status, 'pending');
+assert.deepEqual(calls.pop(), { name: 'bkt_withdraw_entry', args: { p_id: id, p_event_id: id } });
+await assert.rejects(api.withdrawEntry('local-id', id), /UUID/);
+reply = { event: { id, revision: 4 }, revision: 4, entries: [], players: [],
+  stations: [], orgs: [], brackets: [], results: [], withdrawals: [{ id, event_id: id, entry_id: id, player_id: id, status: 'resolved' }] };
+assert.equal((await api.readEvent(id)).withdrawals[0].status, 'resolved');
 reply = { entry: { id, event_id: id, player_id: id }, player: { id, tag: 'Door' }, claim_code: 'a'.repeat(64) };
 assert.equal((await api.createWalkup(id, ' Door ')).claimCode, 'a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_create_walkup', args: { p_event_id: id, p_tag: 'Door' } });

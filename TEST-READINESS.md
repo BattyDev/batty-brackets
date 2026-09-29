@@ -7,9 +7,8 @@ Assumption: next week's target is independent host, player, and TV devices.
 ## Verdict
 
 The local tournament workflow is substantial enough to test now. Connected host
-save recovery and event refresh have provisional client-side checkpoints, but
-the connected experience still needs player match submission, withdrawal, and
-live-server acceptance. A polished local demo must not be presented as proof
+save recovery, event refresh, player match submission, and withdrawal now have
+provisional code checkpoints, but still need live-server acceptance. A polished local demo must not be presented as proof
 that these connected workflows work.
 
 Keep the vanilla app. Prioritize completing these flows over adding features.
@@ -85,8 +84,8 @@ and pools/top-cut are outside this pilot's critical path.
    `views/event.js` has joining, check-in, documents, and opponent/station
    information. Match scoring is currently a host operation in
    `views/admin.js`; `views/report.js` is content moderation, not match scoring.
-   There is no player match-result submission or withdrawal command in the
-   inspected client boundary.
+   At the original review, there was no player match-result submission or
+   withdrawal command in the inspected client boundary.
 
    Recommended cheap pilot policy: a player submits the winner and score; the
    host accepts or corrects it before the bracket advances. Defer a generalized
@@ -111,6 +110,18 @@ and pools/top-cut are outside this pilot's critical path.
    acceptance, and manual cross-device verification remain blocked without a
    disposable staging backend. Withdrawal and optional post-join upgrade are
    separate follow-up work.
+
+   **Provisional task 4 checkpoint (September 28):** Connected players can
+   withdraw their own entry before bracket generation; the server removes the
+   entry while retaining player and signed-document history. Once a bracket
+   exists, the server records one pending request for the host. The Run view
+   shows it and uses the existing DQ control on a ready set; the request stays
+   pending across double-elimination sets until the player is out. Each DQ
+   advances the opponent through the bracket engine.
+   Local client, static SQL contract, mocked-backend, bracket, mobile player,
+   and host-operations checks passed. SQL execution, live-server acceptance,
+   and manual cross-device verification remain unverified without disposable
+   staging. Optional post-join upgrade remains separate work.
 
 4. **Separate the demo and trim initial mobile loading.**
    `app.js:604-622` seeds demos into the normal entry path; home also exposes
