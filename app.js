@@ -391,17 +391,17 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
 const root = document.getElementById('app');
 let drawing = false;
 const routeHydration = new Map();
+const eventReadRequests = new Map();
 const EVENT_REFRESH_INTERVAL_MS = 5000;
 const EVENT_REFRESH_MAX_BACKOFF_MS = 30000;
 const eventRefresh = {
   eventId: null,
   timer: null,
-  inFlight: false,
   failures: 0,
   lastSuccessAt: null,
   error: null,
   generation: 0,
-  refreshSoon: false,
+  refreshSoonFor: null,
   redrawOnBlur: false,
 };
 
@@ -414,6 +414,18 @@ function connectedEventRouteId(route = parseRoute()) {
 function clearEventRefreshTimer() {
   if (eventRefresh.timer) clearTimeout(eventRefresh.timer);
   eventRefresh.timer = null;
+}
+
+function readRouteEvent(eventId) {
+  const current = eventReadRequests.get(eventId);
+  if (current) return current;
+  const request = store.readRemoteEvent(eventId);
+  let tracked;
+  tracked = request.finally(() => {
+    if (eventReadRequests.get(eventId) === tracked) eventReadRequests.delete(eventId);
+  });
+  eventReadRequests.set(eventId, tracked);
+  return tracked;
 }
 
 function eventRefreshAvailable() {
@@ -436,7 +448,7 @@ function syncEventRefresh(route = parseRoute()) {
     eventRefresh.failures = 0;
     eventRefresh.lastSuccessAt = null;
     eventRefresh.error = null;
-    eventRefresh.refreshSoon = false;
+    eventRefresh.refreshSoonFor = null;
     eventRefresh.generation += 1;
   }
   if (!eventId || !eventRefreshAvailable()) {
@@ -445,7 +457,7 @@ function syncEventRefresh(route = parseRoute()) {
   }
 
   const hydration = routeHydration.get(eventId);
-  if (!hydration || hydration.status === 'loading' || eventRefresh.inFlight) {
+  if (!hydration || hydration.status === 'loading' || eventReadRequests.has(eventId)) {
     clearEventRefreshTimer();
     return;
   }
@@ -459,13 +471,19 @@ function syncEventRefresh(route = parseRoute()) {
 function requestEventRefreshNow() {
   syncEventRefresh();
   if (!eventRefresh.eventId || !eventRefreshAvailable()) return;
-  if (eventRefresh.inFlight) {
-    eventRefresh.refreshSoon = true;
+  if (eventReadRequests.has(eventRefresh.eventId)) {
+    eventRefresh.refreshSoonFor = eventRefresh.eventId;
     return;
   }
   const hydration = routeHydration.get(eventRefresh.eventId);
   if (!hydration || hydration.status === 'loading') return;
   scheduleEventRefresh(0);
+}
+
+function resumeQueuedEventRefresh(eventId) {
+  if (eventRefresh.refreshSoonFor !== eventId) return;
+  eventRefresh.refreshSoonFor = null;
+  if (eventRefresh.eventId === eventId && eventRefreshAvailable()) requestEventRefreshNow();
 }
 
 function currentRefreshError(error) {
@@ -488,16 +506,15 @@ function markEventRefreshFailure(eventId, error) {
 async function refreshConnectedEvent() {
   const eventId = eventRefresh.eventId;
   const generation = eventRefresh.generation;
-  if (!eventId || eventRefresh.inFlight || !eventRefreshAvailable()) return;
+  if (!eventId || eventReadRequests.has(eventId) || !eventRefreshAvailable()) return;
   const hydration = routeHydration.get(eventId);
   if (!hydration || hydration.status === 'loading') return;
 
   const previousRevision = store.getEvent(eventId)?.revision;
   const wasUnavailable = hydration.status !== 'done';
   const hadError = Boolean(eventRefresh.error);
-  eventRefresh.inFlight = true;
   try {
-    const result = await store.readRemoteEvent(eventId);
+    const result = await readRouteEvent(eventId);
     if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
     routeHydration.set(eventId, { status: 'done', error: null });
     markEventRefreshSuccess(eventId);
@@ -511,14 +528,8 @@ async function refreshConnectedEvent() {
     }
     if (!hadError || wasUnavailable) drawForEventRefresh();
   } finally {
-    eventRefresh.inFlight = false;
-    if (eventRefresh.refreshSoon && eventRefreshAvailable()) {
-      eventRefresh.refreshSoon = false;
-      requestEventRefreshNow();
-    } else {
-      eventRefresh.refreshSoon = false;
-      syncEventRefresh();
-    }
+    resumeQueuedEventRefresh(eventId);
+    syncEventRefresh();
   }
 }
 
@@ -590,14 +601,16 @@ function drawForEventRefresh() {
 function hydrateRemoteRoute(eventId) {
   if (routeHydration.get(eventId)?.status === 'loading') return;
   routeHydration.set(eventId, { status: 'loading', error: null });
-  store.readRemoteEvent(eventId).then(() => {
+  readRouteEvent(eventId).then(() => {
     routeHydration.set(eventId, { status: 'done', error: null });
     markEventRefreshSuccess(eventId);
+    resumeQueuedEventRefresh(eventId);
     draw();
   }).catch((error) => {
     const message = currentRefreshError(error);
     routeHydration.set(eventId, { status: 'error', error: message });
     markEventRefreshFailure(eventId, error);
+    resumeQueuedEventRefresh(eventId);
     draw();
   });
 }

@@ -6,6 +6,7 @@ import { launch, openApp, goTo, standalone, reporter } from './harness.mjs';
 import { singleElimination } from '../../lib/bracket.js';
 
 const EVENT_ID = '20000000-0000-4000-8000-000000000002';
+const EVENT_B_ID = '20000000-0000-4000-8000-000000000012';
 const ORG_ID = '10000000-0000-4000-8000-000000000001';
 const HOST_ID = '10000000-0000-4000-8000-000000000002';
 const PLAYER_A = '10000000-0000-4000-8000-000000000003';
@@ -43,28 +44,66 @@ let serverBundle = {
   brackets: [matchBracket],
   results: [],
 };
+let serverBundleB = {
+  event: {
+    id: EVENT_B_ID, orgId: ORG_ID, ownerId: HOST_ID, name: 'Second route event',
+    gameId: 'ssbu', format: 'single', venueType: 'offline', venue: 'Second mock venue',
+    platforms: ['switch'], startsAt: now, status: 'running', revision: 1,
+    presetId: 'ssbu-standard', overrides: {}, documents: [], capacity: 0,
+    inviteCode: 'MOCKROUTE2',
+  },
+  revision: 1,
+  orgs: [{ id: ORG_ID, name: 'Second mock venue', ownerId: HOST_ID }],
+  players: [], entries: [], stations: [], brackets: [], results: [],
+};
 
 const reads = new Map();
 const activeReads = new Map();
 const maxConcurrentReads = new Map();
+const readGates = new Map();
 const report = reporter('live-refresh');
 const { base, close } = await standalone();
 const browser = await launch();
+let routeSwap;
+let blockedRouteRead;
+
+function readKey(clientId, eventId) { return clientId + ':' + eventId; }
+
+function createReadGate() {
+  let markStarted;
+  let release;
+  let released = false;
+  return {
+    started: new Promise((resolve) => { markStarted = resolve; }),
+    blocked: new Promise((resolve) => { release = resolve; }),
+    markStarted() { markStarted(); },
+    release() { released = true; release(); },
+    get released() { return released; },
+  };
+}
 
 async function openConnected(clientId, hash, width = 1280) {
   const pageErrors = [];
   const { ctx, page } = await openApp(browser, { base, width, height: 900, errors: pageErrors });
   await page.exposeFunction('__mockReadRemoteEvent', async (eventId) => {
-    if (eventId !== EVENT_ID) throw new Error('Unexpected event read: ' + eventId);
-    reads.set(clientId, (reads.get(clientId) || 0) + 1);
-    const active = (activeReads.get(clientId) || 0) + 1;
-    activeReads.set(clientId, active);
-    maxConcurrentReads.set(clientId, Math.max(maxConcurrentReads.get(clientId) || 0, active));
+    if (![EVENT_ID, EVENT_B_ID].includes(eventId)) throw new Error('Unexpected event read: ' + eventId);
+    const key = readKey(clientId, eventId);
+    reads.set(key, (reads.get(key) || 0) + 1);
+    const active = (activeReads.get(key) || 0) + 1;
+    activeReads.set(key, active);
+    maxConcurrentReads.set(key, Math.max(maxConcurrentReads.get(key) || 0, active));
     try {
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      return copy(serverBundle);
+      const gate = readGates.get(key);
+      if (gate) {
+        readGates.delete(key);
+        gate.markStarted();
+        await gate.blocked;
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+      return copy(eventId === EVENT_ID ? serverBundle : serverBundleB);
     } finally {
-      activeReads.set(clientId, activeReads.get(clientId) - 1);
+      activeReads.set(key, activeReads.get(key) - 1);
     }
   });
   await page.exposeFunction('__mockSaveRemoteEvent', async (eventId, expectedRevision, snapshot) => {
@@ -195,20 +234,55 @@ try {
   report.ok('reconnected phone immediately read the host result', phoneSawResult);
   report.ok('independent TV displayed the completed result', tvSawResult);
 
-  await goTo(phone.page, base, '#/');
-  const phoneReadsAfterLeaving = reads.get('phone-device') || 0;
+  routeSwap = await openConnected('route-swap', '#/e/' + EVENT_ID + '/tv');
+  await routeSwap.page.waitForFunction(() => document.querySelector('.tv-title')?.textContent.trim() === 'Refresh acceptance');
+  const routeSwapAKey = readKey('route-swap', EVENT_ID);
+  const routeSwapBKey = readKey('route-swap', EVENT_B_ID);
+  blockedRouteRead = createReadGate();
+  readGates.set(routeSwapAKey, blockedRouteRead);
+  await routeSwap.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const aReadStarted = await Promise.race([
+    blockedRouteRead.started.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 4000)),
+  ]);
+  report.ok('route swap setup held an in-flight read for the first event', aReadStarted);
+  await routeSwap.page.evaluate((eventId) => { location.hash = '#/e/' + eventId + '/tv'; }, EVENT_B_ID);
+  const bHydrated = await routeSwap.page.waitForFunction(() =>
+    document.querySelector('.tv-title')?.textContent.trim() === 'Second route event',
+  null, { timeout: 5000 }).then(() => true).catch(() => false);
+  report.ok('second event hydrates while the first event read is still pending',
+    bHydrated && !blockedRouteRead.released);
+  serverBundleB = {
+    ...serverBundleB,
+    event: { ...serverBundleB.event, name: 'Route B updated', revision: 2 },
+    revision: 2,
+  };
+  const bSawLaterRevision = await routeSwap.page.waitForFunction(() =>
+    document.querySelector('.tv-title')?.textContent.trim() === 'Route B updated',
+  null, { timeout: POLL_LIMIT_MS }).then(() => true).catch(() => false);
+  report.ok('second event keeps polling while the first event read is stalled',
+    bSawLaterRevision && !blockedRouteRead.released && (reads.get(routeSwapBKey) || 0) >= 2,
+    (reads.get(routeSwapBKey) || 0) + ' reads for the second event');
+  blockedRouteRead.release();
+
+  await phone.page.evaluate(() => { location.hash = '#/'; });
+  await phone.page.waitForFunction(() => location.hash === '#/'
+    && !document.querySelector('.tv') && Boolean(document.querySelector('main')?.textContent?.trim()));
+  const phoneReadsAfterLeaving = reads.get(readKey('phone-device', EVENT_ID)) || 0;
   await phone.page.waitForTimeout(6200);
   report.ok('leaving the event stops phone event polling',
-    (reads.get('phone-device') || 0) === phoneReadsAfterLeaving,
-    phoneReadsAfterLeaving + ' reads before leaving, ' + (reads.get('phone-device') || 0) + ' after');
-  report.ok('the independent phone used the mocked backend', (reads.get('phone-device') || 0) >= 2,
-    String(reads.get('phone-device') || 0) + ' reads');
-  report.ok('the independent TV used the mocked backend', (reads.get('tv-device') || 0) >= 2);
-  report.ok('polling did not overlap event reads in a browser context',
+    (reads.get(readKey('phone-device', EVENT_ID)) || 0) === phoneReadsAfterLeaving,
+    phoneReadsAfterLeaving + ' reads before leaving, ' + (reads.get(readKey('phone-device', EVENT_ID)) || 0) + ' after');
+  report.ok('the independent phone used the mocked backend', (reads.get(readKey('phone-device', EVENT_ID)) || 0) >= 2,
+    String(reads.get(readKey('phone-device', EVENT_ID)) || 0) + ' reads');
+  report.ok('the independent TV used the mocked backend', (reads.get(readKey('tv-device', EVENT_ID)) || 0) >= 2);
+  report.ok('polling did not overlap reads for the same event in one browser context',
     [...maxConcurrentReads.values()].every((active) => active <= 1),
-    [...maxConcurrentReads.entries()].map(([client, active]) => client + ': ' + active).join(', '));
-  report.noErrors([...host.pageErrors, ...phone.pageErrors, ...tv.pageErrors]);
+    [...maxConcurrentReads.entries()].map(([key, active]) => key + ': ' + active).join(', '));
+  report.noErrors([...host.pageErrors, ...phone.pageErrors, ...tv.pageErrors, ...routeSwap.pageErrors]);
 } finally {
+  blockedRouteRead?.release();
+  if (routeSwap) await routeSwap.ctx.close();
   await host.ctx.close();
   await phone.ctx.close();
   await tv.ctx.close();

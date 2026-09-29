@@ -150,4 +150,72 @@ assert.equal(recoverySaves.length, attemptsBeforeRetry, 'stale retry never sends
 reloaded.useConnectedScope(recoveryProject, 'host-b');
 assert.equal(reloaded.getEvent(eventId), null, 'another account cannot see host-a pending work');
 
+/* A walk-up's organizer-only fields must enter the same connected save queue
+   as ordinary host edits, then survive a failed write and an authoritative read. */
+const walkupProject = 'https://walkup.supabase.co';
+const walkupEntryId = '30000000-0000-4000-8000-000000000013';
+const walkupPlayerId = '10000000-0000-4000-8000-000000000013';
+let walkupRevision = 1;
+let rejectWalkupSave = true;
+let walkupServerEntries = [];
+const walkupSaves = [];
+const walkupBackend = {
+  invalidate() {},
+  async identity() { return { id: playerId, tag: 'A' }; },
+  async listEvents() { return { events: [], orgs: [], players: [] }; },
+  async createWalkup() {
+    const player = { id: walkupPlayerId, tag: 'Door Player' };
+    const entry = { id: walkupEntryId, eventId, playerId: walkupPlayerId, waitlisted: false };
+    return { player, entry, claimCode: 'claim-code' };
+  },
+  async readEvent() {
+    return {
+      event: { id: eventId, name: 'Walk-up event', gameId: 'mvci', revision: walkupRevision },
+      revision: walkupRevision,
+      entries: walkupServerEntries.length ? structuredClone(walkupServerEntries)
+        : [{ id: walkupEntryId, eventId, playerId: walkupPlayerId, waitlisted: false }],
+      players: [{ id: walkupPlayerId, tag: 'Door Player' }],
+      stations: [], orgs: [], brackets: [], results: [],
+    };
+  },
+  async saveEventState(id, revision, data) {
+    walkupSaves.push({ id, revision, entries: structuredClone(data.entries) });
+    if (rejectWalkupSave) throw new Error('Temporary network failure');
+    assert.equal(revision, walkupRevision);
+    walkupRevision += 1;
+    walkupServerEntries = structuredClone(data.entries);
+    return { revision: walkupRevision };
+  },
+};
+const walkup = await import(`../lib/store.js?walkup=${Date.now()}`);
+walkup.boot({ scope: { projectUrl: walkupProject, accountId: 'host-walkup' } });
+walkup.attachBackend(walkupBackend, { projectUrl: walkupProject, accountId: 'host-walkup' });
+walkup.cacheRemote({
+  players: [],
+  events: [{ id: eventId, name: 'Walk-up event', gameId: 'mvci', revision: 1 }],
+});
+const createdWalkup = await walkup.createRemoteWalkup(eventId, 'Door Player', 'Pool B');
+assert.equal(createdWalkup.entry.group, 'Pool B');
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(walkupSaves.length, 1, 'walk-up organizer fields queue one versioned event save');
+assert.equal(walkupSaves[0].revision, 1);
+assert.equal(walkupSaves[0].entries[0].group, 'Pool B');
+assert.equal(walkupSaves[0].entries[0].source, 'door');
+assert.ok(walkupSaves[0].entries[0].checkedInAt);
+assert.equal(walkup.syncState().failed, 1, 'a rejected walk-up save remains visible for retry');
+await walkup.readRemoteEvent(eventId);
+assert.equal(walkup.get().entries[walkupEntryId].group, 'Pool B', 'remote reads preserve the local group');
+assert.equal(walkup.get().entries[walkupEntryId].source, 'door', 'remote reads preserve walk-up source');
+assert.ok(walkup.get().entries[walkupEntryId].checkedInAt, 'remote reads preserve desk check-in');
+assert.equal(walkup.syncState().failed, 1);
+rejectWalkupSave = false;
+assert.equal(await walkup.retryConnectedSave(eventId), true);
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(walkup.syncState().pending, 0);
+assert.equal(walkup.syncState().failed, 0);
+await walkup.readRemoteEvent(eventId);
+assert.equal(walkup.get().entries[walkupEntryId].group, 'Pool B', 'accepted walk-up fields survive a later server read');
+assert.equal(walkup.get().entries[walkupEntryId].source, 'door');
+assert.ok(walkup.get().entries[walkupEntryId].checkedInAt);
+
 console.log('PASS connected boundary: RPC boot, blank config, fail-closed publish, and account isolation');

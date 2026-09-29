@@ -58,6 +58,9 @@ and pools/top-cut are outside this pilot's critical path.
    checks do not establish live connected acceptance: no disposable staging
    backend is configured, and manual verification was skipped. Conflicts keep
    the local edit available for backup and require manual reconciliation.
+   Walk-up group, source, and desk check-in fields now enter this same
+   retryable save path; the focused boundary check also covers a rejected
+   walk-up save, a subsequent read, retry, and accepted server read.
 
 2. **Keep player and TV screens current.**
    A list refresh alone cannot update an active bracket, station, and result
@@ -73,7 +76,10 @@ and pools/top-cut are outside this pilot's critical path.
    call, a result, disconnect/reconnect, navigation cleanup, and the TV cycle
    display. Its transport was a mocked store backend. No disposable staging
    backend is configured, so live-server and manual cross-device acceptance
-   remain unverified.
+   remain unverified. A follow-up route-swap check holds event A's read open,
+   navigates to event B, and verifies B continues polling without overlapping
+   reads for the same event. Event refresh and hydration now share per-event
+   in-flight reads, so a slow old route does not pause the current route.
 
 3. **Finish the small player workflow.**
    `views/event.js` has joining, check-in, documents, and opponent/station
@@ -166,7 +172,8 @@ validation was performed.
   local resource/render measurements above.
 
 Existing suites exercise local and mocked flows; a green run does not cover
-the missing workflows above or validate production RPC deployment. Application
-code was reviewed but not changed in this pass. Changes are limited to this
-plan, shared agent/Claude instructions, the README link and the local rehearsal
-configuration correction. Existing uncommitted implementation work is preserved.
+the missing workflows above or validate production RPC deployment. This
+September 28 follow-up changed the walk-up save and event refresh paths. The
+focused `node test/run.mjs connected-boundary live-refresh` run passed with
+installed Chrome; no live backend or manual cross-device verification was
+used.
