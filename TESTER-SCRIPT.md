@@ -2,9 +2,12 @@
 
 ## Environment and limits
 
-**Connected pilot status: blocked.** There is no disposable staging backend or
-staging app URL configured in this checkout. Do not use production data or
-`https://battybrackets.com` for this test.
+**Target: the existing live environment, explicitly selected September 29.**
+App: `https://battybrackets.com/`; demo: `https://battybrackets.com/demo.html`.
+Backend: `bbqauqqymjxqcyurxmna` (battydevsite). Staging is deferred.
+Wait for migrations 106–108 and the release deployment to be confirmed before
+running the connected steps. Database application currently awaits explicit
+approval after automatic review rejected the scope of migration 106.
 
 For local UI rehearsal only, run `python -m http.server 8000` from the
 `batty-brackets/` checkout and open:
@@ -13,15 +16,14 @@ For local UI rehearsal only, run `python -m http.server 8000` from the
 - Isolated demo: `http://localhost:8000/demo.html`
 
 The local app has no backend URL/key. Local and mocked checks cannot verify
-account signup against Supabase, authorization, or sync between devices. Before
-the connected run, the pilot owner must provide a dedicated disposable staging
-project and app URL, apply the current reviewed staging migrations, configure
-the public staging client URL/publishable key, and enable the required staging
-auth settings. Never put a service-role key in the browser config.
+account signup against Supabase, authorization, or sync between devices. The
+live public auth settings advertise guest, email, and Discord sign-in; actual
+sign-in and independent-device behavior still require verification. Never put
+a service-role key in the browser config.
 
 Use disposable names and test contact details. Keep the host on a desktop,
 each player in a separate phone/browser session, and TV in a separate browser
-or device. Do not share local storage between these clients. Record the staging
+or device. Do not share local storage between these clients. Record the live
 app URL, build/commit, device/browser, time, and a pass/fail note for each step.
 
 ## Steps
@@ -56,7 +58,7 @@ app URL, build/commit, device/browser, time, and a pass/fail note for each step.
 ## Record
 
 Mark each step **PASS**, **FAIL**, or **BLOCKED** with a short note. Stop the
-connected run if the app URL points at production, a player can act on another
+connected run if the app URL points at an unexpected backend, a player can act on another
 player's entry, a failed action is presented as accepted, or a retry duplicates
 an entry/result. Local rehearsal outcomes must be labeled local; they do not
-clear the connected-pilot blocker.
+establish connected-pilot acceptance.

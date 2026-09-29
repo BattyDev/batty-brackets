@@ -15,13 +15,16 @@ state. The withdrawal check covers reload, ID reuse, and repeated taps.
 Chrome. The backend static-contract check and `git diff --check` also passed.
 These are local/mocked results; no live-server acceptance is claimed.
 
-**Connected pilot remains blocked.** The connected Supabase account lists no
-dedicated staging project, and the Batty Brackets project has no development
-branches. Staging creation awaits the user's organization choice and the
-provider-required cost confirmation. No hosted migrations, authentication
-configuration, independent-client live checks, deployment, or production
-changes were performed. `backend/STAGING.md` now includes migration 108, and
-`TESTER-SCRIPT.md` includes the two repaired player-request paths.
+**Live release preparation:** the user explicitly deferred staging and selected
+the existing live project (`bbqauqqymjxqcyurxmna`) on September 29. Read-only
+inspection found the base/guest schema installed, migrations 106–108 absent,
+and zero tournament events. Public auth settings advertise anonymous, email,
+and Discord sign-in. PR #6 prepares the release; CI must pass before merge.
+Automatic approval review rejected application of migration 106 because of
+its live policy, table, and trigger changes. Explicit approval for migrations
+106–108 is pending. No hosted migration or deployment has occurred, and
+independent-client live acceptance remains unverified. TESTER-SCRIPT.md now
+targets the live app once the database and release deployment are confirmed.
 
 The dated sections below preserve earlier evidence; this repair pass supersedes
 their outstanding reporting-test finding.
