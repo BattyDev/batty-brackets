@@ -17,7 +17,9 @@ Write down the values the organiser actually intends to use:
 | Stations available | ______________________________ |
 | Entry fee, if any | ______________________________ |
 
-In the current build, `config.js` is unconfigured. The wizard therefore says
+On localhost, `config.js` deliberately leaves the backend unconfigured.
+The production domain has separate connected configuration; this script does
+not verify that deployment or cross-device behavior. Locally, the wizard says
 “Device-only sign-ups”: the event, roster, and bracket stay on this device.
 Add entrants here and connect this computer to the venue TV; another phone
 cannot join the event. The setup does not offer a visibility or invite-link

@@ -14,14 +14,14 @@
    Both are asserted here. The second is the dangerous one.
    =========================================================================== */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openDemo, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('roster');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, width: 1400, height: 1000, errors });
+const { ctx, page } = await openDemo(browser, { base, width: 1400, height: 1000, errors });
 await goTo(page, base, `#/e/${DEMO_EVENT}/admin/entrants`);
 
 /* Read one column out of the table. Cells may hold an input (the grid is

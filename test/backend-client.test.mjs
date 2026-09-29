@@ -50,12 +50,89 @@ assert.deepEqual(calls.pop(), { name: 'bkt_save_event_state', args: {
   p_state: { event: { id }, entries: [], players: [], stations: [], bracket: null, results: [] },
 } });
 await assert.rejects(api.saveEventState(id, 0, {}), /Refresh/);
+reply = { id, event_id: id, match_id: 'W-1-0', player_id: id,
+  winner_entry_id: id, score_a: 2, score_b: 1, status: 'pending' };
+assert.equal((await api.submitMatchResult({ id, eventId: id, matchId: 'W-1-0',
+  expectedRevision: 3, winnerEntryId: id, scoreA: 2, scoreB: 1 })).winnerEntryId, id);
+assert.deepEqual(calls.pop(), { name: 'bkt_submit_match_result', args: {
+  p_id: id, p_event_id: id, p_match_id: 'W-1-0', p_expected_revision: 3,
+  p_winner_entry_id: id, p_score_a: 2, p_score_b: 1,
+} });
+await assert.rejects(api.submitMatchResult({ id, eventId: id, matchId: 'W-1-0',
+  expectedRevision: 3, winnerEntryId: id, scoreA: 2, scoreB: 2 }), /valid winner/);
+reply = { event: { id, revision: 4 }, revision: 4, entries: [], players: [],
+  stations: [], orgs: [], brackets: [], results: [], match_submissions: [{ id, status: 'accepted' }] };
+assert.equal((await api.reviewMatchResult(id, 3, { event: { id } }, 'accepted')).matchSubmissions[0].status, 'accepted');
+assert.deepEqual(calls.pop(), { name: 'bkt_review_match_result', args: {
+  p_id: id, p_expected_revision: 3, p_state: { event: { id } }, p_decision: 'accepted',
+} });
+reply = { id, event_id: id, entry_id: id, player_id: id, status: 'pending' };
+assert.equal((await api.withdrawEntry(id, id)).status, 'pending');
+assert.deepEqual(calls.pop(), { name: 'bkt_withdraw_entry', args: { p_id: id, p_event_id: id } });
+await assert.rejects(api.withdrawEntry('local-id', id), /UUID/);
+reply = { event: { id, revision: 4 }, revision: 4, entries: [], players: [],
+  stations: [], orgs: [], brackets: [], results: [], withdrawals: [{ id, event_id: id, entry_id: id, player_id: id, status: 'resolved' }] };
+assert.equal((await api.readEvent(id)).withdrawals[0].status, 'resolved');
 reply = { entry: { id, event_id: id, player_id: id }, player: { id, tag: 'Door' }, claim_code: 'a'.repeat(64) };
 assert.equal((await api.createWalkup(id, ' Door ')).claimCode, 'a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_create_walkup', args: { p_event_id: id, p_tag: 'Door' } });
 reply = { player_id: id };
 await api.claimPlayer('a'.repeat(64));
 assert.deepEqual(calls.pop(), { name: 'bkt_claim_player', args: { p_code: 'a'.repeat(64) } });
+reply = { active: true, role: 'moderator', aal: 'aal2', can_moderate: true };
+assert.equal((await api.adminAccess()).role, 'moderator');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_access', args: {} });
+reply = { accepted: true, duplicate: false };
+assert.deepEqual(await api.submitReport({ targetKind: 'bracket', targetId: id, targetField: 'record', reason: 'This bracket includes an invalid match.' }), { accepted: true, duplicate: false });
+assert.deepEqual(calls.pop(), { name: 'bkt_submit_report', args: {
+  p_target_kind: 'bracket', p_target_id: id, p_target_field: 'record', p_reason: 'This bracket includes an invalid match.',
+} });
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'private_contact', reason: 'Please review this private contact.' }), /target/);
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'status', reason: 'This event status should not be reportable.' }), /target/);
+await assert.rejects(api.submitReport({ targetKind: 'event', targetId: id, targetField: 'documents', reason: 'short' }), /10 and 1200/);
+reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id, target_field: 'tag' }], next_cursor: { updated_at: '2026-09-18T00:00:00Z', id } };
+assert.equal((await api.adminQueue({ state: 'hidden', search: 'example', limit: 20, cursor: { updated_at: '2026-09-17T00:00:00Z', id } })).items[0].targetKind, 'player');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_queue', args: {
+  p_state: 'hidden', p_search: 'example', p_limit: 20, p_cursor: { updated_at: '2026-09-17T00:00:00Z', id },
+} });
+reply = { role: 'moderator', items: [{ target_kind: 'event', target_id: id, target_field: 'documents', value: [{ id: 'conduct' }] }], next_cursor: { target_kind: 'event', target_id: id, target_field: 'documents' } };
+await api.adminContent({ targetKind: 'event', search: 'conduct', limit: 10, cursor: { target_kind: 'event', target_id: id, target_field: 'name' } });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_content', args: {
+  p_target_kind: 'event', p_search: 'conduct', p_limit: 10,
+  p_cursor: { target_kind: 'event', target_id: id, target_field: 'name' },
+} });
+reply = { action_id: id, action: 'replace', target_kind: 'bracket', target_id: id, target_field: 'record', queue: { target_kind: 'bracket' } };
+await api.adminModerate({ action: 'replace', targetKind: 'bracket', targetId: id, targetField: 'record', replacement: { matches: [] }, reason: 'Correct bracket JSON' });
+assert.equal(calls.pop().args.p_replacement.matches.length, 0);
+reply = { action_id: id, action: 'replace', target_kind: 'player', target_id: id, target_field: 'tag', queue: { target_kind: 'player' } };
+await api.adminModerate({ action: 'replace', targetKind: 'player', targetId: id, targetField: 'tag', replacement: 'Batty', reason: 'reviewed' });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_moderate', args: {
+  p_action: 'replace', p_target_kind: 'player', p_target_id: id, p_target_field: 'tag',
+  p_replacement: 'Batty', p_reason: 'reviewed',
+} });
+reply = { role: 'moderator', items: [{ target_kind: 'player', target_id: id }], next_cursor: null };
+await api.adminAudit({ search: 'moderator', limit: 5, cursor: { created_at: '2026-09-18T00:00:00Z', id } });
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_audit', args: {
+  p_search: 'moderator', p_limit: 5, p_cursor: { created_at: '2026-09-18T00:00:00Z', id },
+} });
+reply = { role: 'moderator', items: [{ id, status: 'open', reason: 'Unsafe event name' }], next_cursor: null };
+assert.equal((await api.adminReports({ status: 'open', search: 'unsafe' })).items[0].status, 'open');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_reports', args: { p_status: 'open', p_search: 'unsafe', p_limit: 100, p_cursor: null } });
+reply = { id, status: 'resolved', review_note: 'Handled' };
+assert.equal((await api.adminReviewReport({ reportId: id, status: 'resolved', note: 'Handled' })).status, 'resolved');
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_review_report', args: { p_report_id: id, p_status: 'resolved', p_note: 'Handled' } });
+reply = { role: 'moderator', totals: { events: 2 }, statuses: [], daily: [] };
+assert.equal((await api.adminMetrics()).totals.events, 2);
+assert.deepEqual(calls.pop(), { name: 'bkt_admin_metrics', args: { p_from: null, p_to: null } });
+await assert.rejects(api.adminQueue({ limit: 0 }), /limit/);
+await assert.rejects(api.adminModerate({ action: 'delete', targetKind: 'player', targetId: id, targetField: 'tag' }), /action/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'event', targetId: id, targetField: 'bad', reason: 'invalid field probe' }), /field/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'bracket', targetId: id, targetField: 'json', reason: 'invalid structured field probe' }), /field/);
+await assert.rejects(api.adminModerate({ action: 'replace', targetKind: 'station', targetId: id, targetField: 'match_id', replacement: 'final', reason: 'direct reference replacement should be rejected' }), /cannot be replaced/);
+await assert.rejects(api.adminModerate({ action: 'hide', targetKind: 'player', targetId: id, targetField: 'tag' }), /reason/);
+await assert.rejects(api.adminReports({ status: 'pending' }), /status/);
+await assert.rejects(api.adminReviewReport({ reportId: 'not-a-uuid', status: 'resolved' }), /ID/);
+await assert.rejects(api.adminReviewReport({ reportId: id, status: 'new' }), /status/);
 reply = null;
 await assert.rejects(api.identity(), /acknowledgement/);
 const failing = createBackend({ async rpc() { return { error: { message: 'Permission denied' } }; } });

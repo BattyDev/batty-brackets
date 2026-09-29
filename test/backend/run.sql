@@ -7,4 +7,8 @@ set bkt.staging='on';
 \ir ../../sql/staging/103_operations.sql
 \ir ../../sql/staging/104_hardening.sql
 \ir ../../sql/staging/105_guest_join.sql
+\ir ../../sql/staging/106_admin.sql
+\ir ../../sql/staging/107_match_submissions.sql
+\ir ../../sql/staging/108_withdrawals.sql
 \ir security.sql
+\ir admin-security.sql

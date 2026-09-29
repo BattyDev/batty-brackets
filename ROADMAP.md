@@ -6,9 +6,10 @@ anything that gets done comes out. A to-do list nobody deletes from stops
 being read.
 
 Status as of September 2026: the local app and refreshed player/host UI are
-built and tested, but no connected backend has been activated and no real event
-has run. A replacement staging schema and explicit client contract exist; their
-presence is not proof that database permissions or cross-device operation work.
+built and tested, and production is connected to Supabase through the explicit
+RPC boundary. No real event has run yet. The remaining backend work is live
+multi-client rehearsal and continuing adversarial verification, not initial
+activation.
 
 The first pilot targets a Marvel Tōkon local. The selected sports-publication
 identity and broadcast-style venue display are implemented locally, alongside
@@ -16,42 +17,38 @@ reviewed setup, backup/recovery and TV-completion improvements. Creator identity
 is Batty Brackets, By BattyDev; game identity remains separate. Local/demo
 screens do not advertise cross-device joining. Follow LOCAL-REHEARSAL.md before
 the first event. This does not replace backend validation or the observed event
-below: online registration is still unconnected.
+below.
 
 ---
 
 ## Now — the two that block everything else
 
-### 1. Verify and connect the replacement backend
+### 1. Verify the connected backend under real conditions
 
-**Nothing in `sql/` has ever run against a real project.** The historical
-`sql/001_schema.sql` must not be applied: review found authorization, contact
-consent, identity and registration-insert defects. The replacement is the
-isolated schema under `sql/staging/`, with the wire contract in `backend/` and
-an explicit client boundary in `lib/backend.js`.
+The historical `sql/001_schema.sql` must not be applied: review found
+authorization, contact-consent, identity and registration-insert defects. The
+active design is the isolated schema under `sql/staging/`, with the wire
+contract in `backend/` and an explicit client boundary in `lib/backend.js`.
 
 This is first because **decisions upstream of it change if the security model
 has a flaw**. It is much cheaper to find that now than after there are events
 in it.
 
-- [ ] Choose and provision a dedicated empty Supabase staging project; confirm
-      owner, region and budget before any paid resource is created
-- [ ] Apply `sql/staging/` only, then run every adversarial test in
+- [x] Provision Supabase and configure the production public URL and
+      publishable key
+- [x] Integrate authenticated identity, event commands and account-partitioned
+      caches through `lib/backend.js`; the legacy generic outbox is not attached
+- [x] Build a separate AAL2 platform-admin console, private role registry,
+      audited moderation commands and metrics RPCs
+- [ ] Apply each new `sql/staging/` migration in a disposable project, then run every adversarial test in
       `test/backend/` with anonymous, player, staff and owner roles
-- [ ] Integrate authenticated identity, create, list, code redemption, join and
-      event reads through `lib/backend.js`; do not enable the generic store
-      outbox or automatically upload local/demo data
-- [ ] Partition connected caches and queues by project and account; clear
-      protected data on sign-out/account switch
-- [ ] Add authoritative report/correct/station-release commands with operation
-      IDs and expected revisions before promising a connected live bracket
+- [ ] Verify `106_admin.sql` in staging, then provision the first dedicated
+      super-admin Auth account and private membership through a reviewed
+      operator session
 - [ ] Rehearse organiser laptop, player phone and TV as independent clients,
       including capacity races, reconnect, stale state and failed writes
-- [ ] Only then fill in `config.js` with the public URL and publishable key —
-      **never** a service-role key or database password
-
-**Expect to fix things on first connection.** Sync code that has never seen a
-server is not working code, it is code that has not failed yet.
+- [ ] Keep production migrations and rollback steps documented; never put a
+      service-role key or database password in the static client
 
 ### 2. Run one real event on it
 

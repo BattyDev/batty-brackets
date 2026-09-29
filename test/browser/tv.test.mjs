@@ -21,7 +21,7 @@
    fine.
    =========================================================================== */
 
-import { launch, openApp, goTo, generateBracket, playSets, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openDemo, goTo, generateBracket, playSets, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const CYCLE_SECONDS = 15;   // must match views/tv.js
 const MIN_SCALE = 0.45;     // ditto -- the floor below which a name is unreadable
@@ -32,7 +32,7 @@ const report = reporter('tv');
 const errors = [];
 
 /* A television, not a laptop. */
-const { ctx, page } = await openApp(browser, { base, width: 1920, height: 1080, errors });
+const { ctx, page } = await openDemo(browser, { base, width: 1920, height: 1080, errors });
 
 await goTo(page, base, `#/e/${DEMO_EVENT}/tv`);
 report.ok('pre-bracket TV shows the check-in count',
@@ -93,7 +93,7 @@ async function readColumns(page) {
 
 for (const depth of DEPTHS) {
   const depthErrors = [];
-  const d = await openApp(browser, { base, width: 1920, height: 1080, errors: depthErrors });
+  const d = await openDemo(browser, { base, width: 1920, height: 1080, errors: depthErrors });
   await generateBracket(d.page, base);
   if (depth) await playSets(d.page, depth);
   await goTo(d.page, base, `#/e/${DEMO_EVENT}/tv`);
@@ -123,7 +123,7 @@ report.ok('recent results fill the space the trimmed rounds left',
 
 /* ---- venue-sized layout, long tags, and the end of the night ------------ */
 const compactErrors = [];
-const compact = await openApp(browser, { base, width: 1280, height: 720, errors: compactErrors });
+const compact = await openDemo(browser, { base, width: 1280, height: 720, errors: compactErrors });
 await generateBracket(compact.page, base);
 await compact.page.evaluate(async () => {
   const store = await import('./lib/store.js');
@@ -200,7 +200,7 @@ async function driveEngineBracket(page, format, finalMode = 'single') {
 
 async function assertEngineCompletion(label, format, finalMode) {
   const errors = [];
-  const finished = await openApp(browser, { base, width: 1280, height: 720, errors });
+  const finished = await openDemo(browser, { base, width: 1280, height: 720, errors });
   const expected = await driveEngineBracket(finished.page, format, finalMode);
   await goTo(finished.page, base, `#/e/${DEMO_EVENT}/tv`);
   report.ok(`${label} drains every playable match`, expected.unplayed.length === 0, expected.unplayed.join(', '));
@@ -220,7 +220,7 @@ await assertEngineCompletion('double-elimination GF1 completion', 'double', 'gf1
 await assertEngineCompletion('double-elimination GF2 reset completion', 'double', 'gf2-winner');
 
 const emptyErrors = [];
-const empty = await openApp(browser, { base, width: 1280, height: 720, errors: emptyErrors });
+const empty = await openDemo(browser, { base, width: 1280, height: 720, errors: emptyErrors });
 await empty.page.evaluate(async () => {
   const store = await import('./lib/store.js');
   store.apply('brackets', 'evt_demo_tokon', { matches: [] }, { queueIt: false });

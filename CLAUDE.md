@@ -1,17 +1,10 @@
 # CLAUDE.md — Batty Brackets
 
-The guidance for this project lives in **[AGENTS.md](AGENTS.md)**, kept in one
-file so it can't drift out of sync between tools. Read it first.
+Before planning or editing, read [AGENTS.md](AGENTS.md) for the shared product
+priorities, prototype workflow, scope, verification
+budget, delegation brief, and release boundaries. It is the single source of
+agent instructions for this checkout.
 
-The short version:
-
-- No build step. Serve the repository root statically with
-  `python3 -m http.server 8000`, then open `/` locally.
-- `node test/run.mjs` runs everything. The browser half silently skips without
-  Playwright installed, so confirm which half ran before calling a UI change
-  verified.
-- Two real constraints: no service keys in `config.js`, and don't get the
-  accessibility suites to green by weakening them.
-- Everything else in AGENTS.md is description of how the code stands today, not
-  a rulebook. Changing the architecture is a tradeoff to argue, not a line you
-  can't cross.
+Use the model selected by the user. Preserve the existing working diff, make
+the smallest complete workflow change, and report what was actually checked.
+An upcoming user test does not switch the project out of prototype mode.

@@ -1,7 +1,7 @@
 /* Brackets · demo data
    ===========================================================================
-   Seeded once, on a device that has never held a real event, so that opening
-   the page shows a working tournament rather than an empty state with a tour.
+   Seeded only by the explicit demo entry, into a storage namespace separate
+   from the real app, so the working sample never enters a real event list.
 
    The data is chosen to exercise the parts that are hard, not the parts that
    look good in a screenshot:

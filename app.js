@@ -25,16 +25,13 @@ import { createBackend, isUuid } from './lib/backend.js';
 import { brandMark, brandSignature } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
+import { isDemoMode } from './lib/demo-mode.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
 
 import * as home from './views/home.js';
-import * as setup from './views/setup.js';
-import * as admin from './views/admin.js';
 import * as player from './views/player.js';
 import * as publicEvent from './views/event.js';
-import * as tv from './views/tv.js';
 import * as authView from './views/auth.js';
-import * as recovery from './views/recovery.js';
 
 /* --------------------------------------------------------------------------
    Supabase
@@ -71,17 +68,48 @@ async function connect() {
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
   { pattern: /^\/host$/, view: home, name: 'host' },
-  { pattern: /^\/new$/, view: setup, name: 'new' },
-  { pattern: /^\/recovery$/, view: recovery, name: 'recovery' },
+  { pattern: /^\/new$/, load: (attempt = 0) => import('./views/setup.js' + (attempt ? '?retry=' + attempt : '')), name: 'new' },
+  { pattern: /^\/recovery$/, load: (attempt = 0) => import('./views/recovery.js' + (attempt ? '?retry=' + attempt : '')), name: 'recovery' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
-  { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, view: admin, name: 'admin', keys: ['eventId', 'tab'] },
+  { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, load: (attempt = 0) => import('./views/admin.js' + (attempt ? '?retry=' + attempt : '')), name: 'admin', keys: ['eventId', 'tab'] },
   /* Before the generic event route, which would otherwise match /tv as a tab
      and render the event page with an unknown tab. */
-  { pattern: /^\/e\/([^/]+)\/tv$/, view: tv, name: 'tv', keys: ['eventId'] },
+  { pattern: /^\/e\/([^/]+)\/tv$/, load: (attempt = 0) => import('./views/tv.js' + (attempt ? '?retry=' + attempt : '')), name: 'tv', keys: ['eventId'] },
   { pattern: /^\/e\/([^/]+)(?:\/([^/]+))?$/, view: publicEvent, name: 'event', keys: ['eventId', 'tab'] },
   { pattern: /^\/me(?:\/([^/]+))?$/, view: player, name: 'me', keys: ['tab'] },
   { pattern: /^\/p\/([^/]+)$/, view: player, name: 'player', keys: ['playerId'] },
 ];
+
+const routeModules = new Map();
+const routeModuleLoads = new Map();
+const routeModuleErrors = new Map();
+const routeModuleAttempts = new Map();
+let lastHash = window.location.hash;
+const routeTitles = {
+  new: 'New event', admin: 'Host workspace', tv: 'Venue display', recovery: 'Backup and recovery',
+};
+
+function hasPendingSetupPublish() {
+  try { return JSON.parse(localStorage.getItem('battydev.brackets.draft') || 'null')?.pendingPublish === true; }
+  catch { return false; }
+}
+
+function loadRouteModule(route) {
+  if (routeModules.has(route.name)) return Promise.resolve(routeModules.get(route.name));
+  if (routeModuleLoads.has(route.name)) return routeModuleLoads.get(route.name);
+  const loading = route.load(routeModuleAttempts.get(route.name) || 0).then((module) => {
+    routeModules.set(route.name, module);
+    routeModuleErrors.delete(route.name);
+    routeModuleAttempts.delete(route.name);
+    /* The setup draft may be waiting for the return from Discord OAuth. Read
+       only its small flag on boot; load the wizard itself only when that
+       callback needs to resume or someone visits /new. */
+    if (route.name === 'new' && hasPendingSetupPublish()) module.resumePendingPublish();
+    return module;
+  }).finally(() => routeModuleLoads.delete(route.name));
+  routeModuleLoads.set(route.name, loading);
+  return loading;
+}
 
 /* Presentation memory only: it chooses the first navigation on a compact
    phone, never event access or host authorization. */
@@ -251,16 +279,15 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)">
       ${raw(icon('station', 'icon-sm'))} Saved on this device</button>`;
   }
-  if (s.connected && s.localOnlyWrites) {
-    return html`<button type="button" class="sync pending" data-act="recovery-open"
-      aria-label="Connected RPC mode: ${s.localOnlyWrites} local-only controls"
-      title="This connected slice syncs identity, events and joins through explicit commands. Other host controls remain local-only until their server commands exist."
-      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
-      Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
-  }
-  if (s.connected && s.lastServerError) {
+  if (s.connected && s.conflicts) {
     return html`<button type="button" class="sync offline" data-act="recovery-open"
-      aria-label="Connected save failed" title="${s.lastServerError}"
+      aria-label="Connected event has conflicting changes" title="A newer server revision needs review"
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · Conflict</button>`;
+  }
+  if (s.connected && s.failed) {
+    return html`<button type="button" class="sync offline" data-act="recovery-open"
+      aria-label="Connected save failed" title="${s.lastServerError || 'Retry in Backup and recovery'}"
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
       Connected · Save failed</button>`;
   }
@@ -270,12 +297,19 @@ function syncChip() {
       style="border:0;cursor:pointer;font:var(--label-medium)"><span class="dot"></span>
       Connected · Saving</button>`;
   }
+  if (s.connected && s.localOnlyWrites) {
+    return html`<button type="button" class="sync pending" data-act="recovery-open"
+      aria-label="Connected RPC mode: ${s.localOnlyWrites} local-only controls"
+      title="This connected slice syncs identity, events and joins through explicit commands. Other host controls remain local-only until their server commands exist."
+      style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('alert', 'icon-sm'))}
+      Connected · ${s.localOnlyWrites} local-only control${s.localOnlyWrites === 1 ? '' : 's'}</button>`;
+  }
   if (s.connected) {
     return html`<button type="button" class="sync" data-act="recovery-open"
-      aria-label="Connected through explicit server commands"
+      aria-label="Connected changes saved"
       title="Event setup, registration, organizer controls and results use versioned server commands."
       style="border:0;cursor:pointer;font:var(--label-medium)">${raw(icon('check', 'icon-sm'))}
-      Connected · RPC mode</button>`;
+      Connected · Saved</button>`;
   }
   if (!s.online) {
     return html`<button type="button" class="sync offline" data-act="recovery-open"
@@ -383,17 +417,238 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
    -------------------------------------------------------------------------- */
 
 const root = document.getElementById('app');
+const demoMode = isDemoMode();
 let drawing = false;
 const routeHydration = new Map();
+const eventReadRequests = new Map();
+const EVENT_REFRESH_INTERVAL_MS = 5000;
+const EVENT_REFRESH_MAX_BACKOFF_MS = 30000;
+const eventRefresh = {
+  eventId: null,
+  timer: null,
+  failures: 0,
+  lastSuccessAt: null,
+  error: null,
+  generation: 0,
+  refreshSoonFor: null,
+  redrawOnBlur: false,
+};
+
+function connectedEventRouteId(route = parseRoute()) {
+  if (!['admin', 'event', 'tv'].includes(route.name)) return null;
+  const eventId = route.params.eventId;
+  return eventId && store.syncState().connected && isUuid(eventId) ? eventId : null;
+}
+
+function clearEventRefreshTimer() {
+  if (eventRefresh.timer) clearTimeout(eventRefresh.timer);
+  eventRefresh.timer = null;
+}
+
+function readRouteEvent(eventId) {
+  const current = eventReadRequests.get(eventId);
+  if (current) return current;
+  const request = store.readRemoteEvent(eventId);
+  let tracked;
+  tracked = request.finally(() => {
+    if (eventReadRequests.get(eventId) === tracked) eventReadRequests.delete(eventId);
+  });
+  eventReadRequests.set(eventId, tracked);
+  return tracked;
+}
+
+function eventRefreshAvailable() {
+  return document.visibilityState !== 'hidden' && store.syncState().online;
+}
+
+function scheduleEventRefresh(delay) {
+  clearEventRefreshTimer();
+  eventRefresh.timer = setTimeout(() => {
+    eventRefresh.timer = null;
+    refreshConnectedEvent();
+  }, delay);
+}
+
+function syncEventRefresh(route = parseRoute()) {
+  const eventId = connectedEventRouteId(route);
+  if (eventId !== eventRefresh.eventId) {
+    clearEventRefreshTimer();
+    eventRefresh.eventId = eventId;
+    eventRefresh.failures = 0;
+    eventRefresh.lastSuccessAt = null;
+    eventRefresh.error = null;
+    eventRefresh.refreshSoonFor = null;
+    eventRefresh.generation += 1;
+  }
+  if (!eventId || !eventRefreshAvailable()) {
+    clearEventRefreshTimer();
+    return;
+  }
+
+  const hydration = routeHydration.get(eventId);
+  if (!hydration || hydration.status === 'loading' || eventReadRequests.has(eventId)) {
+    clearEventRefreshTimer();
+    return;
+  }
+  if (eventRefresh.timer) return;
+  const delay = hydration.status === 'error'
+    ? Math.min(EVENT_REFRESH_INTERVAL_MS * (2 ** Math.max(0, eventRefresh.failures - 1)), EVENT_REFRESH_MAX_BACKOFF_MS)
+    : EVENT_REFRESH_INTERVAL_MS;
+  scheduleEventRefresh(delay);
+}
+
+function requestEventRefreshNow() {
+  syncEventRefresh();
+  if (!eventRefresh.eventId || !eventRefreshAvailable()) return;
+  if (eventReadRequests.has(eventRefresh.eventId)) {
+    eventRefresh.refreshSoonFor = eventRefresh.eventId;
+    return;
+  }
+  const hydration = routeHydration.get(eventRefresh.eventId);
+  if (!hydration || hydration.status === 'loading') return;
+  scheduleEventRefresh(0);
+}
+
+function resumeQueuedEventRefresh(eventId) {
+  if (eventRefresh.refreshSoonFor !== eventId) return;
+  eventRefresh.refreshSoonFor = null;
+  if (eventRefresh.eventId === eventId && eventRefreshAvailable()) requestEventRefreshNow();
+}
+
+function currentRefreshError(error) {
+  return String(error?.message || error || 'Could not refresh this event from the server.');
+}
+
+function markEventRefreshSuccess(eventId) {
+  if (eventRefresh.eventId !== eventId) return;
+  eventRefresh.failures = 0;
+  eventRefresh.lastSuccessAt = Date.now();
+  eventRefresh.error = null;
+}
+
+function markEventRefreshFailure(eventId, error) {
+  if (eventRefresh.eventId !== eventId) return;
+  eventRefresh.failures += 1;
+  eventRefresh.error = currentRefreshError(error);
+}
+
+function eventRequestSnapshot(eventId) {
+  const state = store.get();
+  return JSON.stringify(['matchSubmissions', 'withdrawals'].map((collection) =>
+    Object.values(state[collection]).filter((row) => row.eventId === eventId)
+      .sort((a, b) => a.id.localeCompare(b.id))));
+}
+
+async function refreshConnectedEvent() {
+  const eventId = eventRefresh.eventId;
+  const generation = eventRefresh.generation;
+  if (!eventId || eventReadRequests.has(eventId) || !eventRefreshAvailable()) return;
+  const hydration = routeHydration.get(eventId);
+  if (!hydration || hydration.status === 'loading') return;
+
+  const previousRevision = store.getEvent(eventId)?.revision;
+  const previousRequests = eventRequestSnapshot(eventId);
+  const wasUnavailable = hydration.status !== 'done';
+  const hadError = Boolean(eventRefresh.error);
+  try {
+    const result = await readRouteEvent(eventId);
+    if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
+    routeHydration.set(eventId, { status: 'done', error: null });
+    markEventRefreshSuccess(eventId);
+    const changed = Number.isSafeInteger(result?.revision) && result.revision !== previousRevision;
+    // Player requests can change without advancing the host's event revision.
+    if (changed || previousRequests !== eventRequestSnapshot(eventId) || wasUnavailable || hadError) drawForEventRefresh();
+  } catch (error) {
+    if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
+    markEventRefreshFailure(eventId, error);
+    if (hydration.status !== 'done') {
+      routeHydration.set(eventId, { status: 'error', error: eventRefresh.error });
+    }
+    if (!hadError || wasUnavailable) drawForEventRefresh();
+  } finally {
+    resumeQueuedEventRefresh(eventId);
+    syncEventRefresh();
+  }
+}
+
+function eventFreshness(eventId) {
+  if (!eventId || !store.syncState().connected) return null;
+  const refresh = eventRefresh.eventId === eventId ? eventRefresh : null;
+  const online = store.syncState().online;
+  if (!online) {
+    return {
+      kind: 'warn',
+      message: refresh?.lastSuccessAt
+        ? `Offline. Showing event data from ${Math.max(1, Math.floor((Date.now() - refresh.lastSuccessAt) / 1000))} seconds ago.`
+        : 'Offline. Event data is unavailable until the connection returns.',
+    };
+  }
+  if (refresh?.error) {
+    return {
+      kind: 'error',
+      message: refresh.lastSuccessAt
+        ? `Event data is stale. Last successful refresh was ${Math.max(1, Math.floor((Date.now() - refresh.lastSuccessAt) / 1000))} seconds ago; retrying.`
+        : 'Event data is unavailable. Retrying the server read.',
+    };
+  }
+  return null;
+}
+
+function stableFocusIdentity(node) {
+  if (!node || node === document.body || !root.contains(node)) return null;
+  const attributes = [...node.attributes]
+    .filter(({ name }) => name === 'id' || name === 'data-focus-key'
+      || name.startsWith('data-act')
+      || ['data-field', 'data-id', 'data-event', 'data-match', 'data-station', 'data-screen', 'data-tab'].includes(name))
+    .map(({ name, value }) => [name, value]);
+  return attributes.length ? { tag: node.tagName, attributes } : null;
+}
+
+function matchingFocusNode(identity) {
+  if (!identity) return null;
+  const candidates = [...root.querySelectorAll(identity.tag.toLowerCase())]
+    .filter((node) => identity.attributes.every(([name, value]) => node.getAttribute(name) === value));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function drawForEventRefresh() {
+  const focused = document.activeElement;
+  const identity = stableFocusIdentity(focused);
+  if (focused && root.contains(focused) && !identity) {
+    eventRefresh.redrawOnBlur = true;
+    return;
+  }
+  const value = focused && 'value' in focused && focused.value !== focused.defaultValue
+    ? focused.value : null;
+  const selection = focused && 'selectionStart' in focused
+    ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+  const checked = focused && 'checked' in focused && focused.checked !== focused.defaultChecked
+    ? focused.checked : null;
+  draw();
+  if (!identity) return;
+  const next = matchingFocusNode(identity);
+  if (!next) return;
+  if (value !== null && 'value' in next) next.value = value;
+  if (checked !== null && 'checked' in next) next.checked = checked;
+  next.focus();
+  if (selection && 'setSelectionRange' in next && selection.every(Number.isInteger)) {
+    try { next.setSelectionRange(...selection); } catch { /* not a text input */ }
+  }
+}
 
 function hydrateRemoteRoute(eventId) {
   if (routeHydration.get(eventId)?.status === 'loading') return;
   routeHydration.set(eventId, { status: 'loading', error: null });
-  store.readRemoteEvent(eventId).then(() => {
+  readRouteEvent(eventId).then(() => {
     routeHydration.set(eventId, { status: 'done', error: null });
+    markEventRefreshSuccess(eventId);
+    resumeQueuedEventRefresh(eventId);
     draw();
   }).catch((error) => {
-    routeHydration.set(eventId, { status: 'error', error: String(error?.message || error) });
+    const message = currentRefreshError(error);
+    routeHydration.set(eventId, { status: 'error', error: message });
+    markEventRefreshFailure(eventId, error);
+    resumeQueuedEventRefresh(eventId);
     draw();
   });
 }
@@ -403,9 +658,11 @@ export function draw() {
      example, lazily creating a bracket), which notifies, which would draw
      again mid-draw. */
   if (drawing) return;
+  eventRefresh.redrawOnBlur = false;
   drawing = true;
   try {
     const route = parseRoute();
+    syncEventRefresh(route);
     const remoteEventRoute = route.params.eventId && store.syncState().connected
       && isUuid(route.params.eventId);
     const remoteHydration = remoteEventRoute && routeHydration.get(route.params.eventId);
@@ -415,7 +672,7 @@ export function draw() {
       render(root, shell(html`<div class="pane"><div class="banner ${raw(hydration?.status === 'error' ? 'banner-error' : 'banner-info')}">
         ${raw(icon(hydration?.status === 'error' ? 'alert' : 'clock'))}
         <div><b>${hydration?.status === 'error' ? 'This event is unavailable.' : 'Loading the event…'}</b>
-        ${hydration?.error ? html`<p class="body-small" style="margin:4px 0 0">${hydration.error}</p>` : ''}</div>
+        ${hydration?.status === 'error' ? html`<p class="body-small" style="margin:4px 0 0">${hydration.error} The page will retry while it is visible and online.</p>` : ''}</div>
       </div><p><a class="btn btn-tonal" href="#/">Back to events</a></p></div>`, {
         title: 'Event', back: '/',
       }));
@@ -424,18 +681,51 @@ export function draw() {
       focusMainIfNavigated(route.path);
       return;
     }
+
+    if (route.load) {
+      const module = routeModules.get(route.name);
+      if (!module) {
+        const error = routeModuleErrors.get(route.name);
+        if (!error && !routeModuleLoads.has(route.name)) {
+          loadRouteModule(route).then(() => {
+            if (parseRoute().name === route.name) draw();
+          }).catch((loadError) => {
+            routeModuleErrors.set(route.name, loadError);
+            if (parseRoute().name === route.name) draw();
+          });
+        }
+        const title = routeTitles[route.name] || 'Page';
+        render(root, shell(html`
+          <div class="pane" aria-busy="${raw(error ? 'false' : 'true')}">
+            <div class="banner ${raw(error ? 'banner-error' : 'banner-info')}" role="status">
+              ${raw(icon(error ? 'alert' : 'clock'))}
+              <div><b>${error ? 'This page could not be loaded.' : `Loading ${title.toLowerCase()}…`}</b>
+                ${error ? html`<p class="body-small" style="margin:4px 0 0">${String(error?.message || error)}</p>` : ''}
+              </div>
+            </div>
+            ${error ? html`<button class="btn btn-tonal" data-act="route-retry" data-route="${route.name}">Retry loading this page</button>` : ''}
+          </div>`, { title, back: '/' }));
+        drawChrome();
+        announceRoute(title);
+        focusMainIfNavigated(route.path);
+        return;
+      }
+    }
+
     const ctx = {
       state: store.get(),
       session: auth.currentSession(),
       me: auth.currentPlayer(),
       compact: compactViewport(),
       rolePreference: rolePreference(),
+      eventFreshness: eventFreshness(route.params.eventId),
       params: route.params,
       route: route.name,
       go,
       draw,
     };
-    const out = route.view.view(ctx);
+    const viewModule = route.load ? routeModules.get(route.name) : route.view;
+    const out = viewModule.view(ctx);
     render(root, out.chromeless
       ? chromelessShell(out.body, out.gameId)
       : shell(out.body, out));
@@ -481,6 +771,12 @@ function drawChrome() {
 on('go', ({ path }) => go(path));
 on('noop', () => {});
 on('recovery-open', () => go('/recovery'));
+on('route-retry', ({ route: name }) => {
+  if (parseRoute().name !== name) return;
+  routeModuleErrors.delete(name);
+  routeModuleAttempts.set(name, (routeModuleAttempts.get(name) || 0) + 1);
+  draw();
+});
 on('choose-role', ({ role }) => { go(rememberRole(role) === 'host' ? '/host' : '/'); });
 
 /* The theme button toggles against what you can SEE, not against what is
@@ -546,6 +842,7 @@ on('tour-prev', () => { tour.previous(); });
 on('tour-stop', () => { tour.stop(); draw(); snack('Tour ended — everything still works. Reset when you are done.'); });
 on('tour-dismiss', () => { tour.dismiss(); draw(); });
 on('tour-reset', () => {
+  if (!demoMode) return;
   const restored = tour.reset();
   snack(restored ? 'Demo reset to how it started.' : 'Nothing to reset.');
   window.location.hash = `#/e/${tour.DEMO_EVENT}`;
@@ -575,71 +872,68 @@ on('undo', () => {
      inside it. */
   installThemes();
 
-  /* ---- who gets the demo ----------------------------------------------
-     A guest does. That is the whole point of it: somebody following a link
-     with no account should land on a working tournament rather than an empty
-     state, and be able to walk through every screen without signing up.
-
-     The rule is therefore about the VISITOR, not about the deployment:
-
-       * no backend at all  -> demo (the local-only mode, and how this runs
-         today)
-       * backend, signed out -> use the public list; if no events are
-         browseable, seed the demo locally only
-       * backend, signed in  -> no demo. A real account must look empty when it
-         is empty; seeding fiction into somebody's own event list would be
-         indefensible.
-
-     Seeding it for a signed-out visitor of a live deployment is safe because
-     every write in data/demo.js passes `queueIt: false`, so not one demo row
-     can reach the server. It exists in that browser and nowhere else.
-
-     Signing in later does not wipe it — the demo and the account's real events
-     simply coexist locally, and the demo rows are the ones carrying `demo:
-     true`, which is also what scopes the reset. */
   const cfg = window.BRACKETS_CONFIG || {};
   const configured = Boolean(cfg.url && cfg.key);
 
   store.boot({
-    demo: !configured,
-    scope: configured ? { projectUrl: cfg.url, accountId: 'anonymous' } : null,
+    demo: demoMode,
+    scope: !demoMode && configured ? { projectUrl: cfg.url, accountId: 'anonymous' } : null,
   });
 
-  const connection = await connect();
-  if (connection) {
-    const { client, backend } = connection;
-    /* The production boot path crosses the connected boundary exactly once:
-       an explicit RPC adapter. It never attaches the legacy generic outbox
-       and never performs a table pull. */
-    store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
-    await auth.initAuth(client, { connectedBackend: backend });
-    /* Pull only the public/account-visible list through bkt_list_events. A
-       signed-out visitor gets local sample events when that list has nothing
-       active to browse. The demo rows never enter the server write queue. */
-    const publicList = await store.pull();
-    if (publicList && !auth.isSignedIn()
-      && !store.listEvents().some((event) => ['registration', 'checkin', 'seeding', 'running'].includes(event.status))) {
-      store.seedDemo({ allowExistingData: true });
-    }
-  } else {
+  if (demoMode) {
+    /* Demo mode is a separate device-only store and never initializes the
+       configured backend or adopts the site's real authentication session. */
     await auth.initAuth(null);
+  } else {
+    const connection = await connect();
+    if (connection) {
+      const { client, backend } = connection;
+      /* The production boot path crosses the connected boundary exactly once:
+         an explicit RPC adapter. It never attaches the legacy generic outbox
+         and never performs a table pull. */
+      store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
+      await auth.initAuth(client, { connectedBackend: backend });
+      await store.pull();
+    } else {
+      await auth.initAuth(null);
+    }
   }
 
-  /* Capture the pristine demo before anything can touch it, so reset always
-     has something correct to restore. No-op once captured, and a no-op
-     entirely when the data is not the demo. */
-  tour.snapshot();
+  if (demoMode) tour.snapshot();
 
-  store.subscribe(() => draw());
+  store.subscribe((_, event) => ['net', 'pull', 'pull-error'].includes(event?.type)
+    ? drawForEventRefresh() : draw());
   auth.onAuth(() => {
     draw();
     if (auth.isRemote()) store.pull().then(draw);
   });
   window.addEventListener('brackets-recovery-change', draw);
   window.addEventListener('hashchange', () => {
-    const eventId = parseRoute().params.eventId;
-    if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
+    const hash = window.location.hash;
+    const navigated = hash !== lastHash;
+    lastHash = hash;
+    /* Views use a synthetic hashchange as their shared redraw signal. Only a
+       real URL change should discard connected-event hydration; otherwise a
+       local host edit flashes the loading view and waits for another read. */
+    if (navigated) {
+      const eventId = parseRoute().params.eventId;
+      if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
+    }
     draw();
+  });
+  window.addEventListener('online', requestEventRefreshNow);
+  window.addEventListener('offline', () => drawForEventRefresh());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestEventRefreshNow();
+    else syncEventRefresh();
+  });
+  root.addEventListener('focusout', () => {
+    if (!eventRefresh.redrawOnBlur) return;
+    queueMicrotask(() => {
+      if (!eventRefresh.redrawOnBlur) return;
+      eventRefresh.redrawOnBlur = false;
+      drawForEventRefresh();
+    });
   });
 
   /* Live clocks: DQ timers and how long a set has been out.
@@ -674,10 +968,16 @@ on('undo', () => {
   draw();
 
   /* Somebody who hit the wizard's sign-in gate and chose Discord left the page
-     entirely and has just come back on a fresh load. Their draft is on disk;
-     this puts them back in front of it. */
-  const setup = await import('./views/setup.js');
-  setup.resumePendingPublish();
+     entirely and has just come back on a fresh load. Only that callback needs
+     the wizard before its route is opened. */
+  if (hasPendingSetupPublish()) {
+    const setupRoute = ROUTES.find((route) => route.name === 'new');
+    loadRouteModule(setupRoute).catch((error) => {
+      routeModuleErrors.set('new', error);
+      if (parseRoute().name !== 'new') window.location.hash = '#/new';
+      else draw();
+    });
+  }
 
   /* Sets up the "join" search param -> invite code shortcut, so a QR code
      on a flyer can be battybrackets.com/?join=TKN14B and land straight on

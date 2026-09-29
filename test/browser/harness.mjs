@@ -177,17 +177,15 @@ export function reporter(name) {
 /* --------------------------------------------------------------------------
    Page setup
    --------------------------------------------------------------------------
-   `openApp` waits for the demo seed rather than a fixed timeout. Boot is
-   async -- it imports the store, seeds the demo event and draws -- and a
-   `waitForTimeout(800)` scattered through eight suites is both slower than it
-   needs to be and flaky on a loaded machine. Waiting for the thing you
-   actually need is faster AND more reliable, which is a rare combination.
+   `openApp` starts real event work without sample data. Demo-dependent suites
+   explicitly use `openDemo`, which visits the launcher before opening the
+   shared app in its isolated demo namespace.
    -------------------------------------------------------------------------- */
 
 export const DEMO_EVENT = 'evt_demo_tokon';
 export const DEMO_PLAYER = 'plr_demo01';
 
-export async function openApp(browser, { base, width = 1280, height = 900, scheme = 'dark', reducedMotion, errors } = {}) {
+export async function openApp(browser, { base, width = 1280, height = 900, scheme = 'dark', reducedMotion, errors, demo = false } = {}) {
   const ctx = await browser.newContext({
     viewport: { width, height },
     colorScheme: scheme,
@@ -198,17 +196,37 @@ export async function openApp(browser, { base, width = 1280, height = 900, schem
     page.on('pageerror', (e) => errors.push(`PAGEERROR ${e.message}`));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(`CONSOLE ${m.text()}`); });
   }
-  await page.goto(base, { waitUntil: 'domcontentloaded' });
+  if (demo) {
+    await page.goto(`${base}demo.html`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.documentElement.dataset.demoReady === 'true');
+    await page.goto(`${base}index.html?demo=1#/`, { waitUntil: 'domcontentloaded' });
+  } else {
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+  }
   await page.waitForFunction(() => Boolean(document.querySelector('main')?.textContent?.trim()), null, { timeout: 15000 });
+  if (demo) {
+    await page.waitForFunction(async () => {
+      const store = await import('./lib/store.js');
+      return Boolean(store.getEvent('evt_demo_tokon'));
+    }, null, { timeout: 15000 });
+  }
   return { ctx, page };
+}
+
+export async function openDemo(browser, options = {}) {
+  return openApp(browser, { ...options, demo: true });
 }
 
 /* Navigate and wait for the view to have drawn. The router is synchronous
    after the hash changes, but view modules are dynamically imported, so the
    first visit to a route has a real await in it. */
 export async function goTo(page, base, hash) {
-  await page.goto(base + hash);
-  await page.waitForFunction(() => Boolean(document.querySelector('main')?.textContent?.trim()));
+  const demo = new URL(page.url()).searchParams.get('demo') === '1';
+  await page.goto(`${base}${demo ? 'index.html?demo=1' : 'index.html'}${hash}`);
+  await page.waitForFunction(() => {
+    const main = document.querySelector('#main');
+    return Boolean(main?.textContent?.trim()) && !main.querySelector('[aria-busy="true"]');
+  });
   await page.waitForTimeout(120); // one frame for layout to settle
 }
 

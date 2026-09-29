@@ -11,14 +11,14 @@
    is two lines, and nothing except trying it would have found it.
    =========================================================================== */
 
-import { launch, openApp, goTo, generateBracket, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openApp, openDemo, goTo, generateBracket, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('keyboard');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, errors });
+const { ctx, page } = await openDemo(browser, { base, errors });
 const active = () => page.evaluate(() => {
   const el = document.activeElement;
   if (!el) return null;
@@ -114,7 +114,7 @@ await ctx.close();
    1.4.10 Reflow. Halving the viewport is the same thing as doubling the zoom
    as far as CSS is concerned, and it is easier to measure. */
 for (const route of ['#/', `#/e/${DEMO_EVENT}/admin`, `#/e/${DEMO_EVENT}/admin/entrants`]) {
-  const z = await openApp(browser, { base, width: 640, height: 900 });
+  const z = await openDemo(browser, { base, width: 640, height: 900 });
   await goTo(z.page, base, route);
   const overflow = await z.page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   report.ok(`1.4.10 no horizontal scroll at 200% zoom — ${route}`, overflow <= 2, `${overflow}px over`);

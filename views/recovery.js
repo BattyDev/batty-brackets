@@ -136,6 +136,16 @@ export function view() {
                 </div>
               </div>
             </div>
+            ${sync.connected ? Object.entries(sync.connectedSaves).map(([eventId, save]) => html`
+              <div class="banner ${raw(save.status === 'pending' ? 'banner-info' : 'banner-error')}" style="margin-top:12px" role="status">
+                ${raw(icon(save.status === 'pending' ? 'clock' : 'alert'))}
+                <div class="spacer">
+                  <b>${store.getEvent(eventId)?.name || 'Event'} · ${save.status === 'pending' ? 'Saving' : save.status === 'conflict' ? 'Conflict' : 'Save failed'}</b>
+                  <div class="body-small" style="margin-top:4px">${save.error || 'Your change is saved on this device while the server responds.'}</div>
+                  ${save.status === 'failed' ? html`<button class="btn btn-tonal btn-sm" data-act="recovery-retry-connected" data-event-id="${eventId}" style="margin-top:10px">Check revision and retry</button>` : ''}
+                  ${save.status === 'conflict' ? html`<div class="body-small" style="margin-top:4px">Your local version remains available. Download a backup, then review the newer server version before reconciling.</div>` : ''}
+                </div>
+              </div>`) : ''}
             ${review && sync.configured ? html`
               <div class="banner banner-info" style="margin-top:12px">
                 ${raw(icon('info'))}
@@ -150,7 +160,7 @@ export function view() {
                   </button>
                 </div>
               </div>` : ''}
-            ${failed ? html`
+            ${failed && !sync.connected ? html`
               <div class="banner banner-error" style="margin-top:12px">
                 ${raw(icon('alert'))}
                 <div class="spacer">
@@ -231,6 +241,16 @@ on('recovery-restore', () => {
 on('recovery-retry-failed', () => {
   const count = store.retryFailed();
   snack(count ? `Retrying ${count} failed write${count === 1 ? '' : 's'}.` : 'Nothing is blocked.');
+  refresh();
+});
+
+on('recovery-retry-connected', async ({ eventId }) => {
+  try {
+    const ready = await store.retryConnectedSave(eventId);
+    snack(ready ? 'Server revision matched. Retrying your saved change.' : 'The server changed. Your local edit is still available for review.');
+  } catch (error) {
+    snack(error?.message || 'Could not check the server revision. Your edit is still saved locally.');
+  }
   refresh();
 });
 

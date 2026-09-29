@@ -1,7 +1,7 @@
 /* Identity must survive more than the screenshot: theme changes, narrow
    screens, and navigation into a real event. The negative probes prove the
    design assertions detect a missing creator credit or lost editorial type. */
-import { launch, openApp, goTo, standalone, reporter, generateBracket, playSets, DEMO_EVENT } from './harness.mjs';
+import { launch, openDemo, goTo, standalone, reporter, generateBracket, playSets, DEMO_EVENT } from './harness.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 
@@ -24,7 +24,7 @@ const palette = page => page.locator('.top-bar').evaluate(el => {
 });
 try {
   for (const scheme of ['light', 'dark']) {
-    const { ctx, page } = await openApp(browser, { base, scheme, errors });
+    const { ctx, page } = await openDemo(browser, { base, scheme, errors });
     report.ok(`${scheme}: publisher masthead is present`, (await page.locator('.publication-wordmark').textContent()).trim() === 'Batty Brackets.');
     report.ok(`${scheme}: creator is credited`, (await page.locator('.publication-edition').textContent()).includes('By BattyDev'));
     report.ok(`${scheme}: readable masthead typography is applied`, await editorial(page));
@@ -85,7 +85,7 @@ try {
   }
   // Isolated browser storage: exercise admission without touching a real local.
   {
-    const { ctx, page } = await openApp(browser, { base, scheme: 'light', errors });
+    const { ctx, page } = await openDemo(browser, { base, scheme: 'light', errors });
     const code = await page.evaluate(async (id) => {
       const store = await import('./lib/store.js');
       const event = store.getEvent(id);
@@ -104,7 +104,8 @@ try {
     }, DEMO_EVENT);
     report.ok('nickname is collected before guest entry', page.url().endsWith(`#/join/${code}`) && !(await entryState()));
     await page.locator('[data-act-submit="guest-join"] button[type="submit"]').click();
-    await page.waitForURL(`**/#/e/${DEMO_EVENT}`);
+    await page.waitForFunction((eventId) => location.hash === `#/e/${eventId}`
+      && Boolean(document.querySelector('#main')?.textContent?.includes('Brand join probe')), DEMO_EVENT);
     report.ok('guest confirmation admits into available capacity', (await entryState())?.waitlisted === false);
     await page.waitForTimeout(350);
     if (await page.getByRole('button', { name: 'Maybe later', exact: true }).count()) await page.getByRole('button', { name: 'Maybe later', exact: true }).click();

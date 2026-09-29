@@ -19,14 +19,14 @@
    fails here rather than passing quietly with an empty page.
    =========================================================================== */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
+import { launch, openDemo, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('flows');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, errors });
+const { ctx, page } = await openDemo(browser, { base, errors });
 
 const rows = () => page.evaluate(() => document.querySelectorAll('table.data tbody tr').length);
 const clickDialog = async (label) => {
@@ -129,7 +129,7 @@ await ctx.close();
 /* ---- the same thing on a phone ------------------------------------------ */
 {
   const mobileErrors = [];
-  const m = await openApp(browser, { base, width: 390, height: 844, errors: mobileErrors });
+  const m = await openDemo(browser, { base, width: 390, height: 844, errors: mobileErrors });
   await goTo(m.page, base, `#/e/${DEMO_EVENT}/admin/seeding`);
   const gen = await m.page.$('[data-act="generate-bracket"]');
   if (gen) { await gen.click(); await m.page.waitForTimeout(600); }

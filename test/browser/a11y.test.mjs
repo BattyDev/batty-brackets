@@ -22,7 +22,7 @@
    =========================================================================== */
 
 import { AxeBuilder } from '@axe-core/playwright';
-import { launch, openApp, goTo, generateBracket, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
+import { launch, openDemo, goTo, generateBracket, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
 
 const ROUTES = [
   ['landing', '#/'],
@@ -51,7 +51,7 @@ const report = reporter('a11y');
 const found = new Map();
 
 async function sweep(label, opts, routes) {
-  const { ctx, page } = await openApp(browser, { base, ...opts });
+  const { ctx, page } = await openDemo(browser, { base, ...opts });
   await generateBracket(page, base); // so run/bracket/tv have something to draw
   for (const [name, hash] of routes) {
     await goTo(page, base, hash);

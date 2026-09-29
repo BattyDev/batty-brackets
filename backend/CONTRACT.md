@@ -119,3 +119,69 @@ manual identity linking in Supabase, configure CAPTCHA/edge abuse protection,
 and rehearse email verification and OAuth linking on the production callback
 domain. The per-account invitation throttle cannot stop one device from making
 many anonymous accounts.
+
+## Site administration contract (staging migration 106)
+
+The site-wide console is a separate capability from event staff. The private
+`bkt_private.admin_members` table maps an Auth account UUID to exactly one
+active role: `moderator`, `analyst`, or `super_admin`. A client cannot read or
+write that table. The first production super-admin membership must be seeded by
+the reviewed deployment operator; the browser never receives a service-role
+credential.
+
+Every admin RPC checks all three conditions at call time: `auth.uid()` is
+present, the matching membership is active and has an allowed role, and the
+issuer-controlled top-level JWT `aal` claim is `aal2`. No `user_metadata` value
+is used for authorization. A stale or AAL1 session receives a denial and must
+complete MFA before retrying.
+
+### RPC boundary
+
+The public-facing admin and report RPCs are `SECURITY DEFINER` with
+`search_path = pg_catalog`. PUBLIC/anon execution is revoked; only
+`authenticated` can execute them. Each admin RPC checks the current private
+membership and AAL2 claim independently. No private table is exposed directly.
+
+| RPC | Roles | Arguments | Response |
+|---|---|---|---|
+| `bkt_admin_access` | all active admin roles | none | `{active, role, aal, can_moderate, can_analyze, can_queue, can_content, can_audit}` |
+| `bkt_admin_queue` | moderator, super_admin | `p_state text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_content` | moderator, super_admin | `p_target_kind text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_moderate` | moderator, super_admin | `p_action, p_target_kind, p_target_id, p_target_field = null, p_replacement = null, p_reason` (required, 1–2000 characters) | `{action_id, action, target_kind, target_id, target_field, content, queue}` |
+| `bkt_admin_audit` | moderator, super_admin | `p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_metrics` | all active admin roles | `p_from timestamptz = null, p_to timestamptz = null` | `{role, from, to, generated_at, totals, statuses, moderation, daily}` |
+| `bkt_submit_report` | durable signed-in player | `p_target_kind, p_target_id, p_target_field, p_reason` (10–1200 characters) | `{accepted, duplicate}` |
+| `bkt_admin_reports` | moderator, super_admin | `p_status text = null, p_search text = null, p_limit integer = 100, p_cursor jsonb = null` | `{role, items, next_cursor}` |
+| `bkt_admin_review_report` | moderator, super_admin | `p_report_id, p_status, p_note = null` | reviewed report and audit action ID |
+
+Analysts are deliberately metrics-only. Moderators can review and change
+content but cannot manage membership; `super_admin` is the escalation role.
+
+### Moderation and privacy
+
+The private `moderation_queue` stores one original snapshot per whitelisted
+target field and the current decision. Targets are player `tag`, organisation
+`name`, event `name`/`game_id`/`format`/`venue_type`/`venue`/`platforms`/
+`starts_at`/`preset_id`/`documents`/`overrides`/`seeding_report`, entry
+`crew`, station `label`/`platform`/`match_id`, and bracket/result `record`.
+Operational status, capacity, identifiers, and private contacts are excluded.
+`hide` and `quarantine` suppress a held field in public read paths while
+retaining the underlying typed value for restoration. A bracket hold suppresses
+the bracket record. A result hold hides the durable result row; a result
+replacement marks the old row `superseded` and inserts a correction. Active
+decisions resist organiser replay through target-table triggers. Only an
+audited AAL2 moderation call may restore or change a held target.
+
+`bkt_private.user_reports` stores the reporter and reason privately for
+deduplication, rate limiting, and triage. Reports can target only readable,
+allowlisted public content. The report RPC returns an acknowledgement, never
+another user's report or identity. Moderators see reports through a separate
+paginated RPC and record review status and an optional note through an audited
+review RPC. Queue, content, report, and audit searches are server-backed and
+use stable cursors rather than stopping after the first page.
+
+`bkt_private.admin_audit` is append-only (client roles have zero schema/table
+grants and an UPDATE/DELETE trigger rejects even accidental definer mutation).
+It records the actor role, action, target, before/after values, required reason, and
+timestamp. Private contacts are not a moderation target and are excluded from
+the content feed, audit payloads, and metrics.

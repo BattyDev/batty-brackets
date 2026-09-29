@@ -3,9 +3,15 @@
 Tournament brackets for fighting games, built for the people running them.
 Served at [battybrackets.com](https://battybrackets.com/).
 
-Open it and a tournament is already running — a 28-entrant demo event seeded
-into your own browser, no sign-in, with a reset button. There is no backend
-connected yet, so everything lives on the device.
+For the next tester handoff, see [TEST-READINESS.md](TEST-READINESS.md): the
+three-view scope, confirmed connected-workflow gaps, and a short manual check.
+Follow [DEVELOPMENT-WORKFLOW.md](DEVELOPMENT-WORKFLOW.md) for ordered copy/paste
+prompts, recommended models, manual checkpoints, and handoffs between agents.
+
+Production is connected to Supabase through the explicit RPC boundary. Local
+development deliberately stays device-only: open it on localhost and a
+28-entrant demo event is seeded into your browser, with no account or network
+dependency.
 
 ## Running it
 
@@ -26,8 +32,8 @@ node test/run.mjs tv roster    # only suites matching those names
 node test/backend/contract-static.test.mjs # staging/client contract drift
 ```
 
-Three Node suites (bracket engine, colour palettes, backend client) need
-nothing installed. Seventeen browser suites need Playwright and axe:
+The runner discovers the dependency-free Node suites and browser suites by
+filename. Browser suites need Playwright and axe:
 
 ```
 cd test && npm install && npx playwright install chromium
@@ -40,13 +46,14 @@ Missing those, the browser half skips with a note so the fast half always runs.
 
 ```
 index.html      app shell
+platform-admin.html  separate MFA-gated platform administration console
 brackets.css    the design system, hand-rolled (~2.1k lines)
-config.js       Supabase URL + publishable key — blank, so it runs on-device
+config.js       production Supabase URL + publishable key; localhost stays blank
 app.js          boot, hash router, chrome
 data/           game registry, rulesets, themes, demo seed
 lib/            bracket engine, store, auth, guidance, CSV, UI helpers
 views/          one module per screen
-sql/            schema and policies — written, not yet applied
+sql/            reviewed schema, policies and ordered staging migrations
 backend/        the staging backend contract
 test/           see test/README.md
 docs/history/   the original design record, archived
@@ -63,9 +70,18 @@ and DQ and un-reporting, station queue, guidance engine, player passport,
 claimable walk-up players, document signing, offline write queue, light/dark and
 per-game theming, and the guest tour.
 
-**Not connected to a backend.** No Supabase project is configured, so the sync
-paths in `store.js` and `auth.js` have never run against a real PostgREST.
-Expect to fix things on first connection.
+**Connected in production.** `battybrackets.com` uses the configured Supabase
+project for authentication, event discovery and explicit versioned commands.
+Localhost intentionally keeps the connection blank so tests and device-only
+events cannot touch production data.
+
+**Platform administration is staged on this branch.** `/platform-admin.html`
+uses its own Supabase session namespace and requires email/password, TOTP AAL2,
+and a current private admin membership. Analysts can read metrics; moderators
+and super admins can review the whitelisted public content feed, make audited
+moderation decisions, and inspect the moderation log. The `106_admin.sql`
+migration and first super-admin membership must pass staging before production
+activation.
 
 **Not built:** start.gg import, Discord notifications, self-reporting and
 disputes, pools → top cut, printable brackets and signage, payments, per-player
@@ -74,17 +90,17 @@ privacy controls, stream tooling.
 `ROADMAP.md` has the outstanding work in rough order, including what is
 deliberately being left alone for now.
 
-## Before connecting a backend
+## Backend boundary
 
 `sql/001_schema.sql` is a historical design, **not** a safe install script —
 review found contact-consent, grants, identity and registration weaknesses. The
-replacement is in `sql/staging/`, with its contract under `backend/`, and it
-targets an empty staging database rather than an in-place upgrade. The setup
-notes in `config.js` point at that reviewed staging path.
+replacement is in `sql/staging/`, with its contract under `backend/`. New
+backend changes extend that ordered migration set; the historical file remains
+documentation rather than an install path.
 
-`config.js` takes a project URL and a publishable key, both public by design.
-A service role key or database password there would bypass row-level security
-entirely on a page whose source anyone can read.
+`config.js` holds the public project URL, publishable key, and CAPTCHA site key.
+A service role key, CAPTCHA secret, or database password must never be placed
+on a page whose source anyone can read.
 
 ## Deploying
 

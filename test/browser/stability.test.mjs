@@ -25,14 +25,14 @@
    half a test and fail a user.
    =========================================================================== */
 
-import { launch, openApp, standalone, reporter } from './harness.mjs';
+import { launch, openDemo, standalone, reporter } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('stability');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, errors });
+const { ctx, page } = await openDemo(browser, { base, errors });
 
 /* Walk the organiser tour to the step on the run view -- the route where the
    live clocks are, which is where the redraw was. */

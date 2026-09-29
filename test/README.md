@@ -1,20 +1,27 @@
 # Tests
 
 ```
-node test/run.mjs              # everything
-node test/run.mjs tv roster    # only suites whose filename matches
+node test/run.mjs              # everything (integration/release)
+node test/run.mjs tv roster    # selected suites, concise output
+node test/run.mjs --verbose tv # full live diagnostics
 node test/browser/tv.test.mjs  # one suite, directly
 node test/backend/contract-static.test.mjs # staging contract drift
 ```
 
+Prototype verification follows AGENTS.md: choose relevant existing checks, with
+no default requirement for new regression/smoke tests. Broader checks belong at
+integration and release milestones. The runner prints one result per suite and
+only failure diagnostics (last 64 KiB of text); use --verbose for full output.
+Node-only selections do not load Playwright or start a browser server.
+
 Two kinds, in two directories, for two different reasons.
 
-## The Node tests — pure functions, no dependencies
+## The Node tests — no dependencies
 
-`backend-client.test.mjs`, `bracket.test.mjs` and `theme.test.mjs` run on a bare
-`node` with nothing installed. The bracket and theme suites make 848 assertions
-about the two parts of this app that are pure functions; the adapter suite holds
-the explicit connected-mode boundary without claiming a database exists:
+The top-level `*.test.mjs` files run on bare `node` with nothing
+installed. The bracket and theme suites cover pure functions; other suites
+check the client and hosting boundaries without claiming a live database was
+exercised:
 
 - **`bracket.test.mjs`** — double elimination. Seeding order against the
   Challonge/start.gg convention, byes, forward pointers, losers-side drop
@@ -31,6 +38,14 @@ the explicit connected-mode boundary without claiming a database exists:
   identity, contact consent, failed acknowledgements and account-change races.
   `backend/contract-static.test.mjs` separately catches SQL/client name and
   grant drift; actual authorization still requires PostgreSQL.
+- **`auth-client.test.mjs`** — account and player identity handling in the auth
+  client.
+- **`captcha-client.test.mjs`** — browser CAPTCHA loading, tokens, and failure
+  handling.
+- **`connected-boundary.test.mjs`** — host-scoped production configuration and
+  explicit connected commands instead of a generic table outbox.
+- **`hosting.test.mjs`** — canonical links, invite URLs, and the Pages deploy
+  gate.
 
 ## The browser tests — everything that is not a pure function
 
@@ -84,6 +99,8 @@ of Playwright.
 | `operations` | Seeding scope, station assignment, report/correct/DQ history, finish prerequisites, and the 390px reporting dialog. |
 | `rehearsal` | A fresh eight-place Tōkon event from setup through import, play, correction, backup, reload, restore, and TV. |
 | `mobile-player` | Invite → sign-in intent → explicit entry → documents → check-in → station call at 390px and 320px. |
+| `auth` | Async sign-in dialogs and account flows in the browser. |
+| `platform-admin` | Separate admin session, MFA gate, permission checks, and admin UI accessibility. |
 
 For optional design-review screenshots, set `BRACKETS_SCREENSHOTS` to a local
 output directory before running `node test/run.mjs brand`. The test captures
@@ -113,12 +130,9 @@ found and left a human to notice something was wrong, which is not a test — it
 is a screenshot with extra steps. Every check ends in `ok()` and the process
 exits non-zero if any failed.
 
-**And prove the assertion can fail.** Each of these was checked by putting the
-original bug back and confirming the suite goes red. That step is not optional
-and it caught a bad test: the TV suite as first written played the demo forward
-to one depth, looked at the bracket, and passed — *with the original bug
-reintroduced*. The failure is depth-dependent by nature, so one depth proves
-nothing. It sweeps five now, and fails at exactly the three where the bug lived.
+**Optional assertion validation.** Reintroducing the original bug caught a weak
+TV assertion in the past. Use this technique when the assertion itself is in
+doubt; it is not a required step for prototype features or every new test.
 
 ### Notes
 

@@ -16,7 +16,7 @@
    without them.
    =========================================================================== */
 
-import { launch, openApp, goTo, generateBracket, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
+import { launch, openDemo, goTo, generateBracket, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
 
 const ROUTES = ['#/', `#/e/${DEMO_EVENT}/admin`, `#/e/${DEMO_EVENT}/admin/entrants`,
   `#/e/${DEMO_EVENT}/admin/seeding`, `#/e/${DEMO_EVENT}/admin/run`, `#/e/${DEMO_EVENT}`,
@@ -28,7 +28,7 @@ const report = reporter('wcag22');
 
 /* ---- 2.5.8 target size, at desktop and phone ---------------------------- */
 for (const width of [1280, 390]) {
-  const { ctx, page } = await openApp(browser, { base, width, height: 900 });
+  const { ctx, page } = await openDemo(browser, { base, width, height: 900 });
   await generateBracket(page, base);
   const small = [];
   for (const route of ROUTES) {
@@ -60,7 +60,7 @@ for (const width of [1280, 390]) {
    you just tabbed to is the failure mode, and it is invisible until somebody
    without a mouse tries to use the page. */
 {
-  const { ctx, page } = await openApp(browser, { base });
+  const { ctx, page } = await openDemo(browser, { base });
   await goTo(page, base, `#/e/${DEMO_EVENT}/admin/entrants`);
   const obscured = await page.evaluate(() => {
     const out = [];
@@ -84,7 +84,7 @@ for (const width of [1280, 390]) {
 
 /* ---- 2.5.7 no drag-only interaction ------------------------------------- */
 {
-  const { ctx, page } = await openApp(browser, { base });
+  const { ctx, page } = await openDemo(browser, { base });
   await goTo(page, base, `#/e/${DEMO_EVENT}/admin/seeding`);
   const { draggable, moves } = await page.evaluate(() => ({
     draggable: document.querySelectorAll('[draggable="true"]').length,

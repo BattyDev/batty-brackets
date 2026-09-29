@@ -11,7 +11,7 @@
    and the copy around that boundary.
    =========================================================================== */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openApp, openDemo, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
@@ -36,7 +36,7 @@ async function clickDialog(page, label) {
 
 async function exercise(width) {
   const errors = [];
-  const { ctx, page } = await openApp(browser, {
+  const { ctx, page } = await openDemo(browser, {
     base, width, height: 844, reducedMotion: 'reduce', errors,
   });
 
@@ -58,7 +58,7 @@ async function exercise(width) {
   report.ok(`${width}px: guest join asks for nickname before login`, await page.locator('[data-act-submit="guest-join"] input[name="tag"]').count() === 1);
   await page.locator('[data-act-submit="guest-join"] input[name="tag"]').fill(`Phone ${width}`);
   await page.locator('[data-act-submit="guest-join"] button[type="submit"]').click();
-  await page.waitForURL(`**/#/e/${DEMO_EVENT}`);
+  await page.waitForFunction((eventId) => location.hash === `#/e/${eventId}`, DEMO_EVENT);
   report.ok(`${width}px: nickname confirmation creates the entrant`, Boolean(await entryForMe(page)));
   report.ok(`${width}px: entry and session remain explicitly temporary`, await page.evaluate(async (eventId) => {
     const store = await import('./lib/store.js');
@@ -66,9 +66,14 @@ async function exercise(width) {
     const entry = store.entryFor(eventId, auth.currentPlayer().id);
     return auth.currentSession()?.temporary === true && entry?.source === 'guest' && entry?.temporary === true;
   }, DEMO_EVENT));
-  await page.waitForTimeout(350);
-  if (await page.getByRole('button', { name: 'Maybe later', exact: true }).count()) await clickDialog(page, 'Maybe later');
 
+  await page.waitForSelector('.player-now');
+  report.ok(String(width) + 'px: joining does not interrupt with an account-upgrade dialog',
+    await page.getByText('You’re in — save your record', { exact: true }).count() === 0);
+  report.ok(String(width) + 'px: consent stays available while rules and bracket stay secondary',
+    await page.locator('.player-now [data-act="sign-doc"]').count() === 1
+      && await page.locator('[aria-label="Event sections"] a[href*="/bracket"]').count() === 1
+      && await page.locator('[aria-label="Event sections"] a[href*="/rules"]').count() === 1);
   const deskText = await page.locator('.player-now').innerText();
   report.ok(`${width}px: entrant status and next task are immediate`,
     /Entered/i.test(deskText) && /NEXT TASK/i.test(deskText) && /Sign Code of conduct/i.test(deskText), deskText.slice(0, 300));
