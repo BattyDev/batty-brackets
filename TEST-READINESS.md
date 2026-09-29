@@ -229,9 +229,10 @@ and TV tab sharing localStorage do not prove server synchronization.
 9. Enter/reset the separate demo, return to the real event, and verify the real
    event data and session are unchanged.
 
-Until priorities 3 and 4 are complete, use LOCAL-REHEARSAL.md to review the
-existing host/local experience. Mark missing player behavior and live-server
-acceptance as blocked, not passed. No production deployment or live-server
+The player workflows from priorities 3 and 4 now have local and mocked
+coverage. Use [TESTER-SCRIPT.md](TESTER-SCRIPT.md) for the connected pilot
+sequence. Until a disposable staging backend and staging app URL are provided,
+live acceptance remains blocked. No production deployment or live-server
 validation was performed.
 
 ## Automated verification
@@ -258,3 +259,25 @@ September 28 follow-up changed the walk-up save and event refresh paths. The
 focused `node test/run.mjs connected-boundary live-refresh` run passed with
 installed Chrome; no live backend or manual cross-device verification was
 used.
+
+## Integrated tester-readiness pass — September 29, 2026
+
+**Assessment: not ready for a connected pilot.** The active checkout has no
+disposable staging endpoint configured. `config.js` leaves the local endpoint
+and key blank, and the process has no staging Supabase URL/key. The public
+production endpoint is selected only on the production hostname and was not
+used. Independent-client live checks and manual verification were not run.
+
+| Check | Outcome | Evidence and scope |
+|---|---|---|
+| Full existing suite, `node test/run.mjs` | **Failed: 26/29 passed; 0 skipped** | One integrated local browser/Node run with installed Chrome. Two failures were stale wait conditions: the guest signup assertion waited for a load event after a same-page hash change, and the tour assertion accepted the lazy-route placeholder as a loaded view. After tightening those existing checks, `node test/browser/brand.test.mjs` passed **63/63** and `node test/browser/tours.test.mjs` passed **44/44**. `browser/reporting.test.mjs` remains a local failure at its demo connected-scope probe (`The isolated demo cannot connect to a server`); it is outside this pilot's requested workflows. No full-suite rerun was done. |
+| Backend static-contract check, `node test/backend/contract-static.test.mjs` | **Passed** | Ran once after a scoped execution fallback: migration order, RPC parity, fixed search paths, admin AAL2 boundary, and private moderation data passed. |
+| Connected independent host/player/TV validation | **Blocked** | No disposable staging project or staging app URL is configured. Localhost is device-only; production was not used. |
+| Manual tester verification | **Not run** | Skipped as previously requested; no manual result is claimed. |
+
+No application-code fix was needed. The two pilot-relevant failures came from
+existing browser checks that did not wait for the completed client-side route;
+their stricter targeted reruns passed. The reporting failure was not changed
+because that moderation workflow is outside this request. Use TESTER-SCRIPT.md
+against a disposable staging environment before reassessing connected-pilot
+readiness.

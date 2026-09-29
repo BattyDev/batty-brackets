@@ -124,8 +124,14 @@ for (const tour of TOURS) {
     await page.locator('a[href="./index.html"]').count() > 0);
 
   await page.locator(`[data-demo-role="${tour.role}"]`).click();
-  await page.waitForFunction(() => new URLSearchParams(location.search).get('demo') === '1'
-    && Boolean(document.querySelector('main')?.textContent?.trim()));
+  await page.waitForFunction(({ role, playerId }) => {
+    if (new URLSearchParams(location.search).get('demo') !== '1') return false;
+    const main = document.querySelector('main');
+    if (role === 'host') return Boolean(main?.querySelector('.workspace-context'));
+    if (role === 'player') return location.hash.includes(`/p/${playerId}`)
+      && Boolean(main?.textContent?.includes('Kira'));
+    return Boolean(main?.querySelector('.tv-title'));
+  }, { role: tour.role, playerId: DEMO_PLAYER });
   const roleView = await page.evaluate((role) => ({
     hash: location.hash,
     content: document.querySelector('main')?.innerText || '',

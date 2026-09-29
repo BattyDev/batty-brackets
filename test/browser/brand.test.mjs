@@ -104,7 +104,8 @@ try {
     }, DEMO_EVENT);
     report.ok('nickname is collected before guest entry', page.url().endsWith(`#/join/${code}`) && !(await entryState()));
     await page.locator('[data-act-submit="guest-join"] button[type="submit"]').click();
-    await page.waitForURL(`**/#/e/${DEMO_EVENT}`);
+    await page.waitForFunction((eventId) => location.hash === `#/e/${eventId}`
+      && Boolean(document.querySelector('#main')?.textContent?.includes('Brand join probe')), DEMO_EVENT);
     report.ok('guest confirmation admits into available capacity', (await entryState())?.waitlisted === false);
     await page.waitForTimeout(350);
     if (await page.getByRole('button', { name: 'Maybe later', exact: true }).count()) await page.getByRole('button', { name: 'Maybe later', exact: true }).click();
