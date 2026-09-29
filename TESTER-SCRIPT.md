@@ -5,9 +5,12 @@
 **Target: the existing live environment, explicitly selected September 29.**
 App: `https://battybrackets.com/`; demo: `https://battybrackets.com/demo.html`.
 Backend: `bbqauqqymjxqcyurxmna` (battydevsite). Staging is deferred.
-Wait for migrations 106–108 and the release deployment to be confirmed before
-running the connected steps. Database application currently awaits explicit
-approval after automatic review rejected the scope of migration 106.
+**Ready for manual live testing:** release `389c61d` passed GitHub CI and
+deployed to Pages. Migrations 106–108 were applied after explicit approval.
+Migration 108 required parentheses around its CASE expression; the corrected
+version was applied successfully. The hosted SQL pilot check passed and rolled
+back all fixtures. Browser sign-in and independent-device behavior remain the
+purpose of the steps below.
 
 For local UI rehearsal only, run `python -m http.server 8000` from the
 `batty-brackets/` checkout and open:
