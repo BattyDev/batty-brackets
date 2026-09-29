@@ -64,6 +64,11 @@ export function view(ctx) {
     gameId: event.gameId,
     body: html`
       <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span>${raw(reportButton('event', event.id))}</div>
+      ${ctx.eventFreshness ? html`<div class="pane" style="max-width:800px;padding-top:12px;padding-bottom:0">
+        <div class="banner ${raw(ctx.eventFreshness.kind === 'error' ? 'banner-error' : 'banner-warn')}" role="status">
+          ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
+        </div>
+      </div>` : ''}
       <!-- On a phone, "what do I do now?" must arrive before a full bracket.
            The information navigation follows the personal desk on its home
            route, while detail routes keep it at the top for an obvious way

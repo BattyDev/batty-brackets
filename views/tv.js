@@ -171,6 +171,7 @@ export function view(ctx) {
             ${bracket ? html`<p class="tv-count ${raw(bracketComplete(bracket) ? 'complete' : '')}"
               data-tv-status>${countLeft(bracket)}</p>` : html`
               <p class="tv-count" data-tv-status>${checkIn.checkedIn} of ${checkIn.total} checked in</p>`}
+            ${ctx.eventFreshness ? html`<p class="tv-freshness ${raw(ctx.eventFreshness.kind)}" role="status">${ctx.eventFreshness.message}</p>` : ''}
           </div>
         </header>
 

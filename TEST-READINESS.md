@@ -6,10 +6,11 @@ Assumption: next week's target is independent host, player, and TV devices.
 
 ## Verdict
 
-The local tournament workflow is substantial enough to test now. The requested
-connected experience is not ready yet: live refresh, recovery from failed host
-saves, player match submission, and withdrawal need work. A polished local demo
-must not be presented as proof that these connected workflows work.
+The local tournament workflow is substantial enough to test now. Connected host
+save recovery and event refresh have provisional client-side checkpoints, but
+the connected experience still needs player match submission, withdrawal, and
+live-server acceptance. A polished local demo must not be presented as proof
+that these connected workflows work.
 
 Keep the vanilla app. Prioritize completing these flows over adding features.
 Platform administration, integrations, detailed profile customization, payments,
@@ -59,16 +60,20 @@ and pools/top-cut are outside this pilot's critical path.
    the local edit available for backup and require manual reconciliation.
 
 2. **Keep player and TV screens current.**
-   Event hydration in `app.js:389` runs on entry/navigation. The timers at the
-   end of that file update clocks and local overview rendering, not server
-   event data. A second device can remain on an old station call indefinitely.
+   A list refresh alone cannot update an active bracket, station, and result
+   bundle. Visible connected event routes use the existing event read.
 
-   Start with bounded polling of the visible event, plus refresh on foreground
-   and reconnect, using the existing read command. A proposed pilot target is
-   updates within 10 seconds while online. Pause hidden-page polling, prevent
-   overlapping reads, back off after failure, and show when data is stale.
-   Resolve step 1 before allowing background reads over host edits. A list
-   refresh alone is not a refresh of the active bracket/station bundle.
+   **Provisional task 2 checkpoint (September 28):** active connected UUID
+   event routes poll the existing event-bundle read every five seconds, pause
+   while hidden or offline, refresh on foreground/reconnect, prevent overlapping
+   reads, and back off after failures. Host, player, and TV views show
+   stale/offline state. The event row is merged through the same pending-save
+   guard as its child rows, so reads cannot replace host edits. A focused
+   browser check passed in separate host, phone, and TV contexts for a station
+   call, a result, disconnect/reconnect, navigation cleanup, and the TV cycle
+   display. Its transport was a mocked store backend. No disposable staging
+   backend is configured, so live-server and manual cross-device acceptance
+   remain unverified.
 
 3. **Finish the small player workflow.**
    `views/event.js` has joining, check-in, documents, and opponent/station
@@ -143,10 +148,10 @@ and TV tab sharing localStorage do not prove server synchronization.
 9. Enter/reset the separate demo, return to the real event, and verify the real
    event data and session are unchanged.
 
-Until the four implementation priorities are complete, use
-`LOCAL-REHEARSAL.md` to review the existing host/local experience. Mark missing player/live behavior as blocked,
-not passed. No production changes or live-server validation were performed in
-this review.
+Until priorities 3 and 4 are complete, use LOCAL-REHEARSAL.md to review the
+existing host/local experience. Mark missing player behavior and live-server
+acceptance as blocked, not passed. No production deployment or live-server
+validation was performed.
 
 ## Automated verification
 

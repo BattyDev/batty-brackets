@@ -217,6 +217,11 @@ export function view(ctx) {
          and not delivering it is worse for a screen-reader user than plain
          links, which they already know how to use. -->
     <div class="workspace-context"><span class="eyebrow">HOST CONTROLS</span><span>${data.event.name}</span><a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
+    ${ctx.eventFreshness ? html`<div class="pane" style="padding-top:12px;padding-bottom:0">
+      <div class="banner ${raw(ctx.eventFreshness.kind === 'error' ? 'banner-error' : 'banner-warn')}" role="status">
+        ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
+      </div>
+    </div>` : ''}
     <nav class="tabs" aria-label="Organiser sections">
       ${list(TABS.map((t) => html`
         <a class="tab" href="#/e/${eventId}/admin/${t.id}"

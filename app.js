@@ -391,15 +391,213 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
 const root = document.getElementById('app');
 let drawing = false;
 const routeHydration = new Map();
+const EVENT_REFRESH_INTERVAL_MS = 5000;
+const EVENT_REFRESH_MAX_BACKOFF_MS = 30000;
+const eventRefresh = {
+  eventId: null,
+  timer: null,
+  inFlight: false,
+  failures: 0,
+  lastSuccessAt: null,
+  error: null,
+  generation: 0,
+  refreshSoon: false,
+  redrawOnBlur: false,
+};
+
+function connectedEventRouteId(route = parseRoute()) {
+  if (!['admin', 'event', 'tv'].includes(route.name)) return null;
+  const eventId = route.params.eventId;
+  return eventId && store.syncState().connected && isUuid(eventId) ? eventId : null;
+}
+
+function clearEventRefreshTimer() {
+  if (eventRefresh.timer) clearTimeout(eventRefresh.timer);
+  eventRefresh.timer = null;
+}
+
+function eventRefreshAvailable() {
+  return document.visibilityState !== 'hidden' && store.syncState().online;
+}
+
+function scheduleEventRefresh(delay) {
+  clearEventRefreshTimer();
+  eventRefresh.timer = setTimeout(() => {
+    eventRefresh.timer = null;
+    refreshConnectedEvent();
+  }, delay);
+}
+
+function syncEventRefresh(route = parseRoute()) {
+  const eventId = connectedEventRouteId(route);
+  if (eventId !== eventRefresh.eventId) {
+    clearEventRefreshTimer();
+    eventRefresh.eventId = eventId;
+    eventRefresh.failures = 0;
+    eventRefresh.lastSuccessAt = null;
+    eventRefresh.error = null;
+    eventRefresh.refreshSoon = false;
+    eventRefresh.generation += 1;
+  }
+  if (!eventId || !eventRefreshAvailable()) {
+    clearEventRefreshTimer();
+    return;
+  }
+
+  const hydration = routeHydration.get(eventId);
+  if (!hydration || hydration.status === 'loading' || eventRefresh.inFlight) {
+    clearEventRefreshTimer();
+    return;
+  }
+  if (eventRefresh.timer) return;
+  const delay = hydration.status === 'error'
+    ? Math.min(EVENT_REFRESH_INTERVAL_MS * (2 ** Math.max(0, eventRefresh.failures - 1)), EVENT_REFRESH_MAX_BACKOFF_MS)
+    : EVENT_REFRESH_INTERVAL_MS;
+  scheduleEventRefresh(delay);
+}
+
+function requestEventRefreshNow() {
+  syncEventRefresh();
+  if (!eventRefresh.eventId || !eventRefreshAvailable()) return;
+  if (eventRefresh.inFlight) {
+    eventRefresh.refreshSoon = true;
+    return;
+  }
+  const hydration = routeHydration.get(eventRefresh.eventId);
+  if (!hydration || hydration.status === 'loading') return;
+  scheduleEventRefresh(0);
+}
+
+function currentRefreshError(error) {
+  return String(error?.message || error || 'Could not refresh this event from the server.');
+}
+
+function markEventRefreshSuccess(eventId) {
+  if (eventRefresh.eventId !== eventId) return;
+  eventRefresh.failures = 0;
+  eventRefresh.lastSuccessAt = Date.now();
+  eventRefresh.error = null;
+}
+
+function markEventRefreshFailure(eventId, error) {
+  if (eventRefresh.eventId !== eventId) return;
+  eventRefresh.failures += 1;
+  eventRefresh.error = currentRefreshError(error);
+}
+
+async function refreshConnectedEvent() {
+  const eventId = eventRefresh.eventId;
+  const generation = eventRefresh.generation;
+  if (!eventId || eventRefresh.inFlight || !eventRefreshAvailable()) return;
+  const hydration = routeHydration.get(eventId);
+  if (!hydration || hydration.status === 'loading') return;
+
+  const previousRevision = store.getEvent(eventId)?.revision;
+  const wasUnavailable = hydration.status !== 'done';
+  const hadError = Boolean(eventRefresh.error);
+  eventRefresh.inFlight = true;
+  try {
+    const result = await store.readRemoteEvent(eventId);
+    if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
+    routeHydration.set(eventId, { status: 'done', error: null });
+    markEventRefreshSuccess(eventId);
+    const changed = Number.isSafeInteger(result?.revision) && result.revision !== previousRevision;
+    if (changed || wasUnavailable || hadError) drawForEventRefresh();
+  } catch (error) {
+    if (generation !== eventRefresh.generation || eventRefresh.eventId !== eventId) return;
+    markEventRefreshFailure(eventId, error);
+    if (hydration.status !== 'done') {
+      routeHydration.set(eventId, { status: 'error', error: eventRefresh.error });
+    }
+    if (!hadError || wasUnavailable) drawForEventRefresh();
+  } finally {
+    eventRefresh.inFlight = false;
+    if (eventRefresh.refreshSoon && eventRefreshAvailable()) {
+      eventRefresh.refreshSoon = false;
+      requestEventRefreshNow();
+    } else {
+      eventRefresh.refreshSoon = false;
+      syncEventRefresh();
+    }
+  }
+}
+
+function eventFreshness(eventId) {
+  if (!eventId || !store.syncState().connected) return null;
+  const refresh = eventRefresh.eventId === eventId ? eventRefresh : null;
+  const online = store.syncState().online;
+  if (!online) {
+    return {
+      kind: 'warn',
+      message: refresh?.lastSuccessAt
+        ? `Offline. Showing event data from ${Math.max(1, Math.floor((Date.now() - refresh.lastSuccessAt) / 1000))} seconds ago.`
+        : 'Offline. Event data is unavailable until the connection returns.',
+    };
+  }
+  if (refresh?.error) {
+    return {
+      kind: 'error',
+      message: refresh.lastSuccessAt
+        ? `Event data is stale. Last successful refresh was ${Math.max(1, Math.floor((Date.now() - refresh.lastSuccessAt) / 1000))} seconds ago; retrying.`
+        : 'Event data is unavailable. Retrying the server read.',
+    };
+  }
+  return null;
+}
+
+function stableFocusIdentity(node) {
+  if (!node || node === document.body || !root.contains(node)) return null;
+  const attributes = [...node.attributes]
+    .filter(({ name }) => name === 'id' || name === 'data-focus-key'
+      || name.startsWith('data-act')
+      || ['data-field', 'data-id', 'data-event', 'data-match', 'data-station', 'data-screen', 'data-tab'].includes(name))
+    .map(({ name, value }) => [name, value]);
+  return attributes.length ? { tag: node.tagName, attributes } : null;
+}
+
+function matchingFocusNode(identity) {
+  if (!identity) return null;
+  const candidates = [...root.querySelectorAll(identity.tag.toLowerCase())]
+    .filter((node) => identity.attributes.every(([name, value]) => node.getAttribute(name) === value));
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function drawForEventRefresh() {
+  const focused = document.activeElement;
+  const identity = stableFocusIdentity(focused);
+  if (focused && root.contains(focused) && !identity) {
+    eventRefresh.redrawOnBlur = true;
+    return;
+  }
+  const value = focused && 'value' in focused && focused.value !== focused.defaultValue
+    ? focused.value : null;
+  const selection = focused && 'selectionStart' in focused
+    ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+  const checked = focused && 'checked' in focused && focused.checked !== focused.defaultChecked
+    ? focused.checked : null;
+  draw();
+  if (!identity) return;
+  const next = matchingFocusNode(identity);
+  if (!next) return;
+  if (value !== null && 'value' in next) next.value = value;
+  if (checked !== null && 'checked' in next) next.checked = checked;
+  next.focus();
+  if (selection && 'setSelectionRange' in next && selection.every(Number.isInteger)) {
+    try { next.setSelectionRange(...selection); } catch { /* not a text input */ }
+  }
+}
 
 function hydrateRemoteRoute(eventId) {
   if (routeHydration.get(eventId)?.status === 'loading') return;
   routeHydration.set(eventId, { status: 'loading', error: null });
   store.readRemoteEvent(eventId).then(() => {
     routeHydration.set(eventId, { status: 'done', error: null });
+    markEventRefreshSuccess(eventId);
     draw();
   }).catch((error) => {
-    routeHydration.set(eventId, { status: 'error', error: String(error?.message || error) });
+    const message = currentRefreshError(error);
+    routeHydration.set(eventId, { status: 'error', error: message });
+    markEventRefreshFailure(eventId, error);
     draw();
   });
 }
@@ -409,9 +607,11 @@ export function draw() {
      example, lazily creating a bracket), which notifies, which would draw
      again mid-draw. */
   if (drawing) return;
+  eventRefresh.redrawOnBlur = false;
   drawing = true;
   try {
     const route = parseRoute();
+    syncEventRefresh(route);
     const remoteEventRoute = route.params.eventId && store.syncState().connected
       && isUuid(route.params.eventId);
     const remoteHydration = remoteEventRoute && routeHydration.get(route.params.eventId);
@@ -421,7 +621,7 @@ export function draw() {
       render(root, shell(html`<div class="pane"><div class="banner ${raw(hydration?.status === 'error' ? 'banner-error' : 'banner-info')}">
         ${raw(icon(hydration?.status === 'error' ? 'alert' : 'clock'))}
         <div><b>${hydration?.status === 'error' ? 'This event is unavailable.' : 'Loading the event…'}</b>
-        ${hydration?.error ? html`<p class="body-small" style="margin:4px 0 0">${hydration.error}</p>` : ''}</div>
+        ${hydration?.status === 'error' ? html`<p class="body-small" style="margin:4px 0 0">${hydration.error} The page will retry while it is visible and online.</p>` : ''}</div>
       </div><p><a class="btn btn-tonal" href="#/">Back to events</a></p></div>`, {
         title: 'Event', back: '/',
       }));
@@ -436,6 +636,7 @@ export function draw() {
       me: auth.currentPlayer(),
       compact: compactViewport(),
       rolePreference: rolePreference(),
+      eventFreshness: eventFreshness(route.params.eventId),
       params: route.params,
       route: route.name,
       go,
@@ -636,7 +837,8 @@ on('undo', () => {
      entirely when the data is not the demo. */
   tour.snapshot();
 
-  store.subscribe(() => draw());
+  store.subscribe((_, event) => ['net', 'pull', 'pull-error'].includes(event?.type)
+    ? drawForEventRefresh() : draw());
   auth.onAuth(() => {
     draw();
     if (auth.isRemote()) store.pull().then(draw);
@@ -646,6 +848,20 @@ on('undo', () => {
     const eventId = parseRoute().params.eventId;
     if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
     draw();
+  });
+  window.addEventListener('online', requestEventRefreshNow);
+  window.addEventListener('offline', () => drawForEventRefresh());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestEventRefreshNow();
+    else syncEventRefresh();
+  });
+  root.addEventListener('focusout', () => {
+    if (!eventRefresh.redrawOnBlur) return;
+    queueMicrotask(() => {
+      if (!eventRefresh.redrawOnBlur) return;
+      eventRefresh.redrawOnBlur = false;
+      drawForEventRefresh();
+    });
   });
 
   /* Live clocks: DQ timers and how long a set has been out.
