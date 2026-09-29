@@ -15,16 +15,32 @@ state. The withdrawal check covers reload, ID reuse, and repeated taps.
 Chrome. The backend static-contract check and `git diff --check` also passed.
 These are local/mocked results; no live-server acceptance is claimed.
 
-**Live release preparation:** the user explicitly deferred staging and selected
-the existing live project (`bbqauqqymjxqcyurxmna`) on September 29. Read-only
-inspection found the base/guest schema installed, migrations 106–108 absent,
-and zero tournament events. Public auth settings advertise anonymous, email,
-and Discord sign-in. PR #6 prepares the release; CI must pass before merge.
-Automatic approval review rejected application of migration 106 because of
-its live policy, table, and trigger changes. Explicit approval for migrations
-106–108 is pending. No hosted migration or deployment has occurred, and
-independent-client live acceptance remains unverified. TESTER-SCRIPT.md now
-targets the live app once the database and release deployment are confirmed.
+**Ready for manual live testing:** the user selected the existing live project
+(`bbqauqqymjxqcyurxmna`) and explicitly approved migrations 106–108 after the
+initial automatic-review rejection. All three are now applied. Migration 108
+initially rolled back on a PL/pgSQL CASE-expression syntax error; parenthesizing
+that expression fixed it. The repository SQL now matches the applied version.
+
+PR #6 was squash-merged as `389c61d`; GitHub CI and Pages deployment succeeded.
+The public app rendered and the isolated demo initialized without browser page
+errors. The public event-list HTTP RPC succeeded. Guest/email/Discord sign-in
+are advertised by the public auth settings; actual sign-in is not yet verified.
+
+`test/backend/pilot-live.sql` passed against the hosted database: join/retry,
+pre-bracket withdrawal/retry, acknowledged host saves, stale-save rejection,
+entrant result/retry, outsider denial, host-only review, active withdrawal,
+DQ resolution, and public-read privacy. It uses real database roles/RPCs with
+simulated JWT claims, not independent browser authentication. All fixtures were
+rolled back; the event count remained zero. Private tables have no client grants.
+Independent host/player/TV sessions and unreliable-network behavior remain for
+the user's manual run in TESTER-SCRIPT.md.
+
+Security advisors were reviewed. Private-table deny-all RLS and intentional
+RPC/public-read notices match this design. The shared project's unrelated
+`raid_member_directory` security-definer view warning and disabled leaked-password
+protection remain outside this pilot change; see
+[view guidance](https://supabase.com/docs/guides/database/database-linter?lint=0010_security_definer_view)
+and [password guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
 The dated sections below preserve earlier evidence; this repair pass supersedes
 their outstanding reporting-test finding.
