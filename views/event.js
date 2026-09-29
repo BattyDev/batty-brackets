@@ -166,8 +166,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
   const station = current?.stationId ? store.get().stations[current.stationId] : null;
   const mySubmissions = Object.values(store.get().matchSubmissions || {})
     .filter(row => row.eventId === event.id && row.playerId === me.id);
-  const submission = mySubmissions.find(row => row.matchId === current?.id)
-    || mySubmissions.sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')))[0];
+  const submission = selectPlayerMatchSubmission(mySubmissions, current?.id);
   const statusLabel = myEntry.waitlisted ? 'Waitlisted' : out ? 'Eliminated'
     : current ? 'Called now' : myEntry.checkedInAt ? 'Checked in' : 'Entered';
 
@@ -267,6 +266,16 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 const resultDrafts = new Map();
 const submittingResults = new Set();
 const submittingWithdrawals = new Set();
+
+export function selectPlayerMatchSubmission(rows, matchId) {
+  const latestFirst = [...rows].sort((a, b) =>
+    String(b.submittedAt || b.createdAt || '').localeCompare(String(a.submittedAt || a.createdAt || '')));
+  if (!matchId) return latestFirst[0] || null;
+  const priority = { pending: 3, sending: 2, failed: 1 };
+  return latestFirst.filter(row => row.matchId === matchId)
+    .sort((a, b) => (priority[b.status] || 0) - (priority[a.status] || 0))[0]
+    || latestFirst[0] || null;
+}
 
 function submissionStatus(row) {
   if (row.status === 'sending') return 'Sending your choice to the host…';
