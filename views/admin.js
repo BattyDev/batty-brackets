@@ -784,6 +784,12 @@ function runTab(data) {
     .filter(row => row.eventId === event.id && row.status === 'pending') : [];
   const withdrawals = auth.isRemote() ? Object.values(store.get().withdrawals || {})
     .filter(row => row.eventId === event.id && row.status === 'pending') : [];
+  const recentResults = Object.values(store.get().results)
+    .filter((result) => result.eventId === event.id && !result.superseded)
+    .map((result) => ({ result, match: bracket.matches.find((row) => row.id === result.matchId) }))
+    .filter(({ match }) => match?.state === 'complete')
+    .sort((a, b) => (b.result.reportedAt || '').localeCompare(a.result.reportedAt || ''))
+    .slice(0, 6);
 
   return html`
     <div class="pane">
@@ -865,6 +871,27 @@ function runTab(data) {
           </button>
         </div>
       </section>
+
+      ${recentResults.length ? html`<section class="card card-outlined" style="margin-bottom:20px"
+          aria-label="Recent results and corrections">
+        <div class="row" style="margin-bottom:12px">
+          <h2 class="title-large spacer">Recent results</h2>
+          <span class="body-small dim">Correct a score here</span>
+        </div>
+        <div class="stack-sm">
+          ${list(recentResults.map(({ result, match }) => html`
+            <div class="card card-filled row" style="flex-wrap:wrap;gap:12px">
+              <div class="spacer" style="min-width:0">
+                <div class="body-small dim">${match.name}</div>
+                <div class="body-medium"><b>${players.get(result.winnerPlayerId)?.tag || 'Winner'}</b>
+                  ${result.scoreWinner}–${result.scoreLoser}
+                  <span class="dim">over</span> <b>${players.get(result.loserPlayerId)?.tag || 'Opponent'}</b></div>
+              </div>
+              <button class="btn btn-tonal btn-sm" data-act="report-open" data-match="${match.id}"
+                      aria-label="Correct result for ${match.name}">Correct result</button>
+            </div>`))}
+        </div>
+      </section>` : ''}
 
       <section style="margin-bottom:20px">
         <div class="row" style="margin-bottom:12px">

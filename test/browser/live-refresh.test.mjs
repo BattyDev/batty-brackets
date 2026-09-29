@@ -2,7 +2,7 @@
    A shared in-memory backend stands in for the RPC boundary. This exercises
    separate localStorage contexts, not a live Supabase project. */
 
-import { launch, openApp, goTo, standalone, reporter } from './harness.mjs';
+import { launch, openApp, standalone, reporter } from './harness.mjs';
 import { singleElimination } from '../../lib/bracket.js';
 
 const EVENT_ID = '20000000-0000-4000-8000-000000000002';
@@ -61,6 +61,8 @@ const reads = new Map();
 const activeReads = new Map();
 const maxConcurrentReads = new Map();
 const readGates = new Map();
+const heldHostSave = createGate();
+let holdFirstHostSave = true;
 const report = reporter('live-refresh');
 const { base, close } = await standalone();
 const browser = await launch();
@@ -69,7 +71,7 @@ let blockedRouteRead;
 
 function readKey(clientId, eventId) { return clientId + ':' + eventId; }
 
-function createReadGate() {
+function createGate() {
   let markStarted;
   let release;
   let released = false;
@@ -109,6 +111,14 @@ async function openConnected(clientId, hash, width = 1280) {
   await page.exposeFunction('__mockSaveRemoteEvent', async (eventId, expectedRevision, snapshot) => {
     if (eventId !== EVENT_ID) throw new Error('Unexpected event save: ' + eventId);
     if (expectedRevision !== serverBundle.revision) throw new Error('Mock server rejected a stale event revision.');
+    /* Hold the first host save until the test has confirmed its local render.
+       This separates immediate feedback from backend acceptance without
+       relying on timing a browser-exposed callback. */
+    if (clientId === 'host-device' && holdFirstHostSave) {
+      holdFirstHostSave = false;
+      heldHostSave.markStarted();
+      await heldHostSave.blocked;
+    }
     const revision = serverBundle.revision + 1;
     serverBundle = {
       ...serverBundle,
@@ -137,7 +147,17 @@ async function openConnected(clientId, hash, width = 1280) {
     });
     store.cacheRemote({ ...eventBundle, events: [eventBundle.event] }, { silent: true });
   }, { clientId, eventBundle: copy(serverBundle) });
-  await goTo(page, base, hash);
+  /* Keep the connected adapter attached to this page. goTo() performs a full
+     navigation, which correctly resets this in-memory mock just like it would
+     reset any runtime-only backend adapter in production. */
+  await page.evaluate((nextHash) => { window.location.hash = nextHash; }, hash);
+  await page.waitForFunction((nextHash) => {
+    const main = document.querySelector('#main');
+    return window.location.hash === nextHash
+      && Boolean(main?.textContent?.trim())
+      && !main.querySelector('[aria-busy="true"]');
+  }, hash, { timeout: 15000 });
+  await page.waitForTimeout(120);
   return { ctx, page, pageErrors };
 }
 
@@ -172,13 +192,26 @@ try {
   report.ok('TV remains in its existing rotation mode', tvCycleInitially);
 
   await host.page.locator('[data-act="call-next"][data-station="' + STATION_ID + '"]').click();
+  const hostSaveStarted = await Promise.race([
+    heldHostSave.started.then(() => true),
+    new Promise((resolve) => setTimeout(() => resolve(false), 2000)),
+  ]);
+  report.ok('the host save reached the mocked backend', hostSaveStarted);
+  const localCallVisibleBeforeAck = await host.page.waitForFunction(async () => {
+    const store = await import('./lib/store.js');
+    return store.syncState().pending > 0
+      && document.querySelectorAll('.stations .station.busy').length === 1;
+  }, null, { timeout: 3000 }).then(() => true).catch(() => false);
+  report.ok('host shows its station call while the mocked save is still pending', localCallVisibleBeforeAck);
+  heldHostSave.release();
   const hostSavedCall = await host.page.waitForFunction(async () => {
     const store = await import('./lib/store.js');
     return store.syncState().pending === 0
       && store.get().stations['40000000-0000-4000-8000-000000000001']?.matchId;
   }, null, { timeout: 5000 }).then(() => true).catch(() => false);
   report.ok('host station call was acknowledged by the mocked backend',
-    hostSavedCall && serverBundle.revision >= 2);
+    hostSavedCall && serverBundle.revision >= 2,
+    'server revision ' + serverBundle.revision);
 
   const phoneSawCall = await phone.page.waitForFunction(async () => {
     const store = await import('./lib/store.js');
@@ -211,7 +244,8 @@ try {
       && Object.values(store.get().results).some((result) => result.matchId === 'W1-1');
   }, null, { timeout: 5000 }).then(() => true).catch(() => false);
   report.ok('host result was acknowledged by the mocked backend',
-    hostSavedResult && serverBundle.revision >= 3);
+    hostSavedResult && serverBundle.revision >= 3,
+    'server revision ' + serverBundle.revision);
 
   const heldWhileOffline = await phone.page.evaluate(async () => {
     const store = await import('./lib/store.js');
@@ -238,7 +272,7 @@ try {
   await routeSwap.page.waitForFunction(() => document.querySelector('.tv-title')?.textContent.trim() === 'Refresh acceptance');
   const routeSwapAKey = readKey('route-swap', EVENT_ID);
   const routeSwapBKey = readKey('route-swap', EVENT_B_ID);
-  blockedRouteRead = createReadGate();
+  blockedRouteRead = createGate();
   readGates.set(routeSwapAKey, blockedRouteRead);
   await routeSwap.page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
   const aReadStarted = await Promise.race([
@@ -281,6 +315,7 @@ try {
     [...maxConcurrentReads.entries()].map(([key, active]) => key + ': ' + active).join(', '));
   report.noErrors([...host.pageErrors, ...phone.pageErrors, ...tv.pageErrors, ...routeSwap.pageErrors]);
 } finally {
+  heldHostSave.release();
   blockedRouteRead?.release();
   if (routeSwap) await routeSwap.ctx.close();
   await host.ctx.close();

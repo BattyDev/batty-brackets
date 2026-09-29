@@ -84,6 +84,7 @@ const routeModules = new Map();
 const routeModuleLoads = new Map();
 const routeModuleErrors = new Map();
 const routeModuleAttempts = new Map();
+let lastHash = window.location.hash;
 const routeTitles = {
   new: 'New event', admin: 'Host workspace', tv: 'Venue display', recovery: 'Backup and recovery',
 };
@@ -899,8 +900,16 @@ on('undo', () => {
   });
   window.addEventListener('brackets-recovery-change', draw);
   window.addEventListener('hashchange', () => {
-    const eventId = parseRoute().params.eventId;
-    if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
+    const hash = window.location.hash;
+    const navigated = hash !== lastHash;
+    lastHash = hash;
+    /* Views use a synthetic hashchange as their shared redraw signal. Only a
+       real URL change should discard connected-event hydration; otherwise a
+       local host edit flashes the loading view and waits for another read. */
+    if (navigated) {
+      const eventId = parseRoute().params.eventId;
+      if (eventId && store.syncState().connected && isUuid(eventId)) routeHydration.delete(eventId);
+    }
     draw();
   });
   window.addEventListener('online', requestEventRefreshNow);

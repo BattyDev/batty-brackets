@@ -110,6 +110,17 @@ try {
   state = await snapshot();
   const first = state.bracket.matches[0].id;
   const unaffected = state.results.find(r => r.matchId !== first && r.matchId !== state.bracket.matches.at(-1).id).id;
+  await goTo(page, base, `#/e/${id}/admin/run`);
+  const recentCorrection = page.locator(`[aria-label="Recent results and corrections"] [data-act="report-open"][data-match="${first}"]`);
+  report.ok('Run puts a manual correction shortcut above the full bracket', await recentCorrection.count() === 1);
+  report.ok('the recent correction shortcut is visible in the first viewport',
+    await recentCorrection.evaluate((button) => {
+      const box = button.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight;
+    }));
+  await recentCorrection.click();
+  report.ok('the shortcut opens the existing correction controls', await page.locator('#unreport').count() === 1);
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   await openMatch(first);
   await page.locator('#unreport').click();
   await confirmIf('Confirm correction');

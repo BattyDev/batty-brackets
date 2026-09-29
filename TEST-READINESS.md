@@ -158,6 +158,23 @@ and pools/top-cut are outside this pilot's critical path.
    skipped; no disposable staging backend was configured, so this is not
    live-server evidence.
 
+   **Provisional task 7 checkpoint (September 28):** A disposable 100-entrant,
+   255-match double-elimination event with five stations was exercised locally.
+   The host called a match and reported its result; separate phone and TV
+   browser contexts read the acknowledged mock snapshots, with the TV seeing
+   the call on its next five-second poll. This surfaced a connected-route
+   redraw bug: a synthetic `hashchange` from a local edit discarded completed
+   hydration and briefly replaced the host view with a loading screen. The
+   router now clears hydration only when the URL actually changes, and the
+   mocked-save regression confirms the station stays visible before server
+   acknowledgment. Run also surfaces six recent completed results with a
+   direct correction action; the focused browser check confirmed it is visible
+   near the top of the first viewport and opens the existing correction flow.
+   `node test/run.mjs operations roster tv live-refresh` passed all four
+   selected suites with installed Chrome. No live backend or manual
+   cross-device verification was used; connected acceptance remains
+   unverified.
+
 ## Performance evidence and limits
 
 - Fresh localhost player arrival at 390px, measured before and after task 6
@@ -170,6 +187,14 @@ and pools/top-cut are outside this pilot's critical path.
 - A disposable 100-entrant local demo generated 255 bracket matches. Five
   repeated desktop run-view draws at 1440px measured **47.8–57.2 ms** on this
   computer. This measures rendering work, not first paint or server saves.
+- Task 7's 100-entrant local exercise measured roster searches at **4.3–11.9
+  ms**, full Run view redraws at **17.7–30.6 ms**, station call plus redraw at
+  **46.2–74.3 ms**, and result save plus redraw at **51.7 ms**. A connected
+  mock snapshot serialized to **119,523 bytes** (**119,611 bytes** with the
+  modeled RPC envelope). One mocked run observed **107–110 ms** from a host
+  save to store acknowledgment; the independent TV showed the call after its
+  next poll at about **5.05 seconds**. These are local samples using an
+  in-memory mock, not live-server timing or a concurrency result.
 - `connectedEventState` in `lib/store.js:854` sends the full roster, bracket,
   stations and results for host saves. Measure real payload/save latency at 100
   entrants before replacing it with narrow commands. No 100-user concurrency
