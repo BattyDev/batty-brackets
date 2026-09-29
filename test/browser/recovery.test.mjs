@@ -277,9 +277,11 @@ try {
     });
     report.ok('quota failure keeps the in-memory write but reports failed durability',
       quota.memory === 'Memory copy' && /storage limit|could not save/i.test(quota.error || ''), JSON.stringify(quota));
-    await goTo(page, base, '#/recovery');
+    await page.evaluate(() => { window.location.hash = '#/recovery'; });
+    await page.waitForSelector('#recovery-title');
+    const localSaveScreen = await page.locator('main').innerText();
     report.ok('the recovery screen repeats the local-save failure honestly',
-      await page.locator('main').innerText().then((text) => /Local save needs attention/i.test(text)));
+      /Local save needs attention/i.test(localSaveScreen), localSaveScreen);
     report.noErrors(errors);
     await ctx.close();
   }
@@ -362,9 +364,11 @@ try {
       restoredPending.before === restoredPending.after
         && restoredPending.review === 1 && restoredPending.pending === 1,
       JSON.stringify(restoredPending));
-    await goTo(page, base, '#/recovery');
+    await page.evaluate(() => { window.location.hash = '#/recovery'; });
+    await page.waitForSelector('#recovery-title');
     report.ok('the recovery screen exposes explicit approval for restored writes',
-      await page.getByRole('button', { name: 'Approve restored writes' }).count() === 1);
+      await page.getByRole('button', { name: 'Approve restored writes' }).count() === 1,
+      await page.locator('main').innerText());
 
     const resetUndo = await page.evaluate(async () => {
       const store = await import('./lib/store.js');

@@ -29,13 +29,9 @@ import { isDemoMode } from './lib/demo-mode.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
 
 import * as home from './views/home.js';
-import * as setup from './views/setup.js';
-import * as admin from './views/admin.js';
 import * as player from './views/player.js';
 import * as publicEvent from './views/event.js';
-import * as tv from './views/tv.js';
 import * as authView from './views/auth.js';
-import * as recovery from './views/recovery.js';
 
 /* --------------------------------------------------------------------------
    Supabase
@@ -72,17 +68,47 @@ async function connect() {
 const ROUTES = [
   { pattern: /^\/?$/, view: home, name: 'home' },
   { pattern: /^\/host$/, view: home, name: 'host' },
-  { pattern: /^\/new$/, view: setup, name: 'new' },
-  { pattern: /^\/recovery$/, view: recovery, name: 'recovery' },
+  { pattern: /^\/new$/, load: (attempt = 0) => import('./views/setup.js' + (attempt ? '?retry=' + attempt : '')), name: 'new' },
+  { pattern: /^\/recovery$/, load: (attempt = 0) => import('./views/recovery.js' + (attempt ? '?retry=' + attempt : '')), name: 'recovery' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
-  { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, view: admin, name: 'admin', keys: ['eventId', 'tab'] },
+  { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, load: (attempt = 0) => import('./views/admin.js' + (attempt ? '?retry=' + attempt : '')), name: 'admin', keys: ['eventId', 'tab'] },
   /* Before the generic event route, which would otherwise match /tv as a tab
      and render the event page with an unknown tab. */
-  { pattern: /^\/e\/([^/]+)\/tv$/, view: tv, name: 'tv', keys: ['eventId'] },
+  { pattern: /^\/e\/([^/]+)\/tv$/, load: (attempt = 0) => import('./views/tv.js' + (attempt ? '?retry=' + attempt : '')), name: 'tv', keys: ['eventId'] },
   { pattern: /^\/e\/([^/]+)(?:\/([^/]+))?$/, view: publicEvent, name: 'event', keys: ['eventId', 'tab'] },
   { pattern: /^\/me(?:\/([^/]+))?$/, view: player, name: 'me', keys: ['tab'] },
   { pattern: /^\/p\/([^/]+)$/, view: player, name: 'player', keys: ['playerId'] },
 ];
+
+const routeModules = new Map();
+const routeModuleLoads = new Map();
+const routeModuleErrors = new Map();
+const routeModuleAttempts = new Map();
+const routeTitles = {
+  new: 'New event', admin: 'Host workspace', tv: 'Venue display', recovery: 'Backup and recovery',
+};
+
+function hasPendingSetupPublish() {
+  try { return JSON.parse(localStorage.getItem('battydev.brackets.draft') || 'null')?.pendingPublish === true; }
+  catch { return false; }
+}
+
+function loadRouteModule(route) {
+  if (routeModules.has(route.name)) return Promise.resolve(routeModules.get(route.name));
+  if (routeModuleLoads.has(route.name)) return routeModuleLoads.get(route.name);
+  const loading = route.load(routeModuleAttempts.get(route.name) || 0).then((module) => {
+    routeModules.set(route.name, module);
+    routeModuleErrors.delete(route.name);
+    routeModuleAttempts.delete(route.name);
+    /* The setup draft may be waiting for the return from Discord OAuth. Read
+       only its small flag on boot; load the wizard itself only when that
+       callback needs to resume or someone visits /new. */
+    if (route.name === 'new' && hasPendingSetupPublish()) module.resumePendingPublish();
+    return module;
+  }).finally(() => routeModuleLoads.delete(route.name));
+  routeModuleLoads.set(route.name, loading);
+  return loading;
+}
 
 /* Presentation memory only: it chooses the first navigation on a compact
    phone, never event access or host authorization. */
@@ -645,6 +671,37 @@ export function draw() {
       focusMainIfNavigated(route.path);
       return;
     }
+
+    if (route.load) {
+      const module = routeModules.get(route.name);
+      if (!module) {
+        const error = routeModuleErrors.get(route.name);
+        if (!error && !routeModuleLoads.has(route.name)) {
+          loadRouteModule(route).then(() => {
+            if (parseRoute().name === route.name) draw();
+          }).catch((loadError) => {
+            routeModuleErrors.set(route.name, loadError);
+            if (parseRoute().name === route.name) draw();
+          });
+        }
+        const title = routeTitles[route.name] || 'Page';
+        render(root, shell(html`
+          <div class="pane" aria-busy="${raw(error ? 'false' : 'true')}">
+            <div class="banner ${raw(error ? 'banner-error' : 'banner-info')}" role="status">
+              ${raw(icon(error ? 'alert' : 'clock'))}
+              <div><b>${error ? 'This page could not be loaded.' : `Loading ${title.toLowerCase()}…`}</b>
+                ${error ? html`<p class="body-small" style="margin:4px 0 0">${String(error?.message || error)}</p>` : ''}
+              </div>
+            </div>
+            ${error ? html`<button class="btn btn-tonal" data-act="route-retry" data-route="${route.name}">Retry loading this page</button>` : ''}
+          </div>`, { title, back: '/' }));
+        drawChrome();
+        announceRoute(title);
+        focusMainIfNavigated(route.path);
+        return;
+      }
+    }
+
     const ctx = {
       state: store.get(),
       session: auth.currentSession(),
@@ -657,7 +714,8 @@ export function draw() {
       go,
       draw,
     };
-    const out = route.view.view(ctx);
+    const viewModule = route.load ? routeModules.get(route.name) : route.view;
+    const out = viewModule.view(ctx);
     render(root, out.chromeless
       ? chromelessShell(out.body, out.gameId)
       : shell(out.body, out));
@@ -703,6 +761,12 @@ function drawChrome() {
 on('go', ({ path }) => go(path));
 on('noop', () => {});
 on('recovery-open', () => go('/recovery'));
+on('route-retry', ({ route: name }) => {
+  if (parseRoute().name !== name) return;
+  routeModuleErrors.delete(name);
+  routeModuleAttempts.set(name, (routeModuleAttempts.get(name) || 0) + 1);
+  draw();
+});
 on('choose-role', ({ role }) => { go(rememberRole(role) === 'host' ? '/host' : '/'); });
 
 /* The theme button toggles against what you can SEE, not against what is
@@ -886,10 +950,16 @@ on('undo', () => {
   draw();
 
   /* Somebody who hit the wizard's sign-in gate and chose Discord left the page
-     entirely and has just come back on a fresh load. Their draft is on disk;
-     this puts them back in front of it. */
-  const setup = await import('./views/setup.js');
-  setup.resumePendingPublish();
+     entirely and has just come back on a fresh load. Only that callback needs
+     the wizard before its route is opened. */
+  if (hasPendingSetupPublish()) {
+    const setupRoute = ROUTES.find((route) => route.name === 'new');
+    loadRouteModule(setupRoute).catch((error) => {
+      routeModuleErrors.set('new', error);
+      if (parseRoute().name !== 'new') window.location.hash = '#/new';
+      else draw();
+    });
+  }
 
   /* Sets up the "join" search param -> invite code shortcut, so a QR code
      on a flyer can be battybrackets.com/?join=TKN14B and land straight on

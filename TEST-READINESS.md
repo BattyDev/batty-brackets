@@ -121,7 +121,7 @@ and pools/top-cut are outside this pilot's critical path.
    Local client, static SQL contract, mocked-backend, bracket, mobile player,
    and host-operations checks passed. SQL execution, live-server acceptance,
    and manual cross-device verification remain unverified without disposable
-   staging. Optional post-join upgrade remains separate work.
+   staging. The automatic post-join upgrade interruption is resolved by task 6 below.
 
 4. **Separate the demo and trim initial mobile loading.**
    **Provisional task 5 checkpoint (September 28):** `demo.html` now offers
@@ -141,17 +141,32 @@ and pools/top-cut are outside this pilot's critical path.
    Manual verification was skipped; no disposable staging backend was
    configured, so this is not live-server evidence.
 
-   Static view imports at `app.js:30-37` still load the host editor, setup, TV,
-   profile, and recovery modules for a phone arrival. Route-based lazy loading
-   remains a separate performance follow-up; do not add a framework/build
-   system for it. Keep a useful loading/retry state while connection/auth
-   initialization runs.
+   **Provisional task 6 checkpoint (September 28):** The host editor, setup,
+   TV, and recovery views now load on their own routes. Direct hash links and
+   delegated actions remain in use; lazy routes show a loading message and a
+   retry action if a module request fails. A pending setup publish draft still
+   resumes after an OAuth return without loading the wizard on ordinary visits.
+   The phone event desk focuses on entry, required consent/check-in, current or
+   next opponent and station, result submission, and withdrawal. Rules and the
+   full bracket remain secondary links; the automatic account-upgrade dialog
+   after joining is gone.
+
+   Focused local Edge browser checks passed for player join, consent and
+   check-in at 390px and 320px, plus setup, recovery, TV, roster, host
+   operations, and event flows. A one-time failed recovery module request
+   showed the retry state and recovered on retry. Manual verification was
+   skipped; no disposable staging backend was configured, so this is not
+   live-server evidence.
 
 ## Performance evidence and limits
 
-- Fresh localhost page at 390px: 25 JavaScript resources and approximately
-  **762 KiB decoded resources total**, with the host editor loaded. This is not
-  compressed production transfer size or a cellular latency measurement.
+- Fresh localhost player arrival at 390px, measured before and after task 6
+  with browser resource timings: **26 JS resources / 711,396 decoded JS bytes**
+  and **28 same-origin resources / 824,337 decoded bytes** before; **21 JS
+  resources / 489,910 decoded JS bytes** and **23 same-origin resources /
+  602,851 decoded bytes** after. That is five fewer fetched resources and
+  221,486 fewer decoded bytes (31% less JS, 27% less overall). This is local
+  decoded size, not compressed production transfer or cellular latency.
 - A disposable 100-entrant local demo generated 255 bracket matches. Five
   repeated desktop run-view draws at 1440px measured **47.8–57.2 ms** on this
   computer. This measures rendering work, not first paint or server saves.

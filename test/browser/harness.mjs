@@ -223,7 +223,10 @@ export async function openDemo(browser, options = {}) {
 export async function goTo(page, base, hash) {
   const demo = new URL(page.url()).searchParams.get('demo') === '1';
   await page.goto(`${base}${demo ? 'index.html?demo=1' : 'index.html'}${hash}`);
-  await page.waitForFunction(() => Boolean(document.querySelector('main')?.textContent?.trim()));
+  await page.waitForFunction(() => {
+    const main = document.querySelector('#main');
+    return Boolean(main?.textContent?.trim()) && !main.querySelector('[aria-busy="true"]');
+  });
   await page.waitForTimeout(120); // one frame for layout to settle
 }
 

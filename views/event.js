@@ -25,7 +25,6 @@ import { gameById, resolveRuleset, fieldVisible, formatValue, setLength } from '
 import { gameHero, gameMark } from '../data/themes.js';
 import { standings } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
-import { readinessFor } from '../lib/auth.js';
 import { reportButton } from './report.js';
 
 export function view(ctx) {
@@ -157,13 +156,14 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
   const required = (event.documents || []).filter((d) => d.required);
   const signed = new Set(myEntry.signedDocuments || []);
   const unsigned = required.filter((d) => !signed.has(d.id));
-  const readiness = readinessFor(players.get(me.id) || me, event);
 
   const nameOf = (entrantId) => {
     const entry = entries.find((e) => e.id === entrantId);
     return players.get(entry?.playerId)?.tag || '—';
   };
   const station = current?.stationId ? store.get().stations[current.stationId] : null;
+  const needsEntryAction = !myEntry.waitlisted && !out
+    && (unsigned.length > 0 || (!myEntry.checkedInAt && ['registration', 'checkin', 'seeding', 'running'].includes(event.status)));
   const mySubmissions = Object.values(store.get().matchSubmissions || {})
     .filter(row => row.eventId === event.id && row.playerId === me.id);
   const submission = selectPlayerMatchSubmission(mySubmissions, current?.id);
@@ -175,7 +175,8 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static chip-info" style="margin-top:10px">${statusLabel}</span></header>
       ${withdrawal ? html`<div class="banner ${raw(withdrawal.status === 'failed' ? 'banner-warn' : 'banner-info')}" role="status" style="margin-bottom:16px"><div><b>Withdrawal</b><p class="body-small">${withdrawal.status === 'pending' ? 'Request sent. The host must record a DQ or forfeit in your next open set; the bracket has not changed yet.' : withdrawal.status === 'resolved' ? 'The host recorded your DQ. Check the bracket for your opponent’s next state.' : withdrawal.status === 'sending' ? 'Sending your withdrawal request…' : withdrawal.status === 'failed' ? 'Delivery was not confirmed. Retry the saved request when connected.' : 'Your entry was withdrawn before bracket generation.'}</p>${withdrawal.status === 'failed' ? html`<button class="btn btn-filled btn-sm" data-act="withdraw-entry" data-event="${event.id}">Retry withdrawal</button>` : ''}</div></div>` : ''}
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
-      ${!current && !next && !waiting && !out ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Complete the next task below. Check-in appears here as soon as the host opens it.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
+      ${needsEntryAction ? raw(nextTaskCard({ event, myEntry, unsigned })) : ''}
+      ${!current && !next && !waiting && !out && !needsEntryAction ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Finish required consent or check in here when it opens.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
       ${current ? html`
         <section class="card card-elevated next-set" aria-labelledby="current-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
           <p class="eyebrow" style="color:var(--md-primary)">GO NOW</p>
@@ -187,7 +188,6 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
               <div class="body-small">Called ${relativeTime(current.calledAt)}. The DQ window is
               ${ruleset?.values?.dqTimer || 5} minutes from when it was called.</div>
             </div>` : ''}
-          ${raw(headToHeadLine(me.id, entries, players, current, myEntry))}
           ${auth.isRemote() ? raw(matchResultForm({ event, current, entries, players, ruleset, submission })) : ''}
         </section>` : ''}
 
@@ -201,7 +201,6 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           <h2 id="next-set-heading" class="headline-small" style="margin:6px 0">vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</h2>
           <div class="body-medium dim">${next.name}</div>
           <p class="body-small" style="margin:12px 0 0">Stay close. Your station appears here when the host calls the set.</p>
-          ${raw(headToHeadLine(me.id, entries, players, next, myEntry))}
         </section>` : ''}
 
       ${!current && !next && waiting ? html`
@@ -220,46 +219,9 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           </p>
         </div>` : ''}
 
-      ${!current ? raw(nextTaskCard({ event, myEntry, unsigned, readiness })) : ''}
-
-      <section class="card card-outlined entry-checklist" style="margin-bottom:16px">
-        <div class="section-heading"><b class="title-large">Your entry</b><span class="eyebrow">BEFORE YOU PLAY</span></div>
-        <div class="stack-sm" style="margin-top:12px">
-          ${raw(checkRow('Seed', myEntry.seed ? `#${myEntry.seed}` : 'not seeded yet', Boolean(myEntry.seed)))}
-          ${raw(checkRow('Checked in', myEntry.checkedInAt ? 'yes' : 'not yet', Boolean(myEntry.checkedInAt)))}
-          ${event.entryFee ? raw(checkRow('Entry fee', myEntry.paidAt ? 'paid' : `${formatMoney(event.entryFee, event.currency)} owing`, Boolean(myEntry.paidAt))) : ''}
-          ${list(required.map((doc) => raw(checkRow(doc.title, signed.has(doc.id) ? 'signed' : 'not signed', signed.has(doc.id)))))}
-        </div>
-
-        ${!myEntry.checkedInAt && ['checkin', 'seeding'].includes(event.status) ? html`
-          <button class="btn btn-filled btn-block" data-act="self-checkin" data-entry="${myEntry.id}" style="margin-top:16px">
-            ${raw(icon('check'))} Check in
-          </button>` : ''}
-
-        ${unsigned.length ? html`
-          <div class="stack-sm" style="margin-top:12px">
-            ${list(unsigned.map((doc) => html`
-              <button class="btn btn-tonal btn-block" data-act="sign-doc" data-entry="${myEntry.id}" data-doc="${doc.id}">
-                ${raw(icon('doc'))} Read and sign: ${doc.title}
-              </button>`))}
-          </div>` : ''}
-      </section>
-
       ${auth.isRemote() && !['complete', 'draft'].includes(event.status) && !['pending', 'sending', 'resolved', 'withdrawn', 'failed'].includes(withdrawal?.status) ? html`<button class="btn btn-tonal btn-block" data-act="withdraw-entry" data-event="${event.id}" style="margin-bottom:16px">Withdraw from event</button>` : ''}
 
-      ${readiness.length ? html`
-        <div class="banner ${raw(readiness.some((p) => p.level === 'error') ? 'banner-error' : 'banner-warn')}" style="margin-bottom:16px">
-          ${raw(icon('alert'))}
-          <div>
-            <b>Before your first set</b>
-            <ul style="margin:6px 0 0;padding-left:20px">
-              ${list(readiness.map((p) => html`<li class="body-small">${p.text}</li>`))}
-            </ul>
-            <a class="btn btn-tonal btn-sm" href="#/me" style="margin-top:8px">Fix it on your profile</a>
-          </div>
-        </div>` : ''}
 
-      ${raw(eventHeader(event, game, entries))}
     </div>`;
 }
 
@@ -328,7 +290,7 @@ function matchResultForm({ event, current, entries, players, ruleset, submission
   </form>`;
 }
 
-function nextTaskCard({ event, myEntry, unsigned, readiness }) {
+function nextTaskCard({ event, myEntry, unsigned }) {
   if (myEntry.waitlisted || event.status === 'complete') return '';
   let title = 'You are ready';
   let copy = 'Keep this page handy. Your opponent and station will appear above when the host calls you.';
@@ -349,15 +311,7 @@ function nextTaskCard({ event, myEntry, unsigned, readiness }) {
   } else if (!myEntry.checkedInAt && event.status === 'running') {
     title = 'Find the host';
     copy = 'The tournament is already running and you are not checked in. The host needs to confirm your status.';
-  } else if (event.entryFee && !myEntry.paidAt) {
-    title = `Pay ${formatMoney(event.entryFee, event.currency)} at the desk`;
-    copy = 'Only the host can mark an entry paid. Keep the receipt or confirmation they give you.';
-  } else if (readiness.length) {
-    title = 'Finish your player details';
-    copy = readiness[0].text;
-    action = html`<a class="btn btn-tonal btn-block" href="#/me">Open your profile</a>`;
   }
-
   return html`
     <section class="card card-filled" aria-labelledby="next-task-heading" style="margin-bottom:16px">
       <p class="eyebrow">NEXT TASK</p>
@@ -365,36 +319,6 @@ function nextTaskCard({ event, myEntry, unsigned, readiness }) {
       <p class="body-medium" style="margin:0 0 ${raw(action ? '12px' : '0')}">${copy}</p>
       ${raw(action)}
     </section>`;
-}
-
-function checkRow(label, value, ok) {
-  return html`
-    <div class="row" style="flex-wrap:nowrap">
-      ${raw(icon(ok ? 'check' : 'close', 'icon-sm'))}
-      <span class="body-medium spacer">${label}</span>
-      <span class="body-medium ${raw(ok ? '' : 'dim')}">${value}</span>
-    </div>`;
-}
-
-/* "You have played them twice and lost both" is exactly what a player wants
-   before a set and no bracket site tells them. It is one lookup because
-   results are keyed on players. */
-function headToHeadLine(myPlayerId, entries, players, match, myEntry) {
-  const opponentEntryId = match.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId;
-  const opponentPlayerId = entries.find((e) => e.id === opponentEntryId)?.playerId;
-  if (!opponentPlayerId) return '';
-
-  const h2h = store.headToHead(myPlayerId, opponentPlayerId);
-  if (!h2h.sets.length) {
-    return html`<p class="body-small dim" style="margin:12px 0 0">You have not played them before.</p>`;
-  }
-  const last = h2h.sets[0];
-  const wonLast = last.winnerPlayerId === myPlayerId;
-  return html`
-    <p class="body-small dim" style="margin:12px 0 0">
-      Head to head: <b>${h2h.wins}–${h2h.losses}</b>.
-      Last time you ${wonLast ? 'won' : 'lost'} ${last.scoreWinner}–${last.scoreLoser}, ${relativeTime(last.reportedAt)}.
-    </p>`;
 }
 
 function eventHeader(event, game, entries) {

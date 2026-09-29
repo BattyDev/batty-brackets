@@ -51,28 +51,6 @@ async function temporarySession(tag, captchaToken) {
   return session;
 }
 
-const shownGuestOffers = new Set();
-async function offerGuestUpgrade(event) {
-  const me = auth.currentPlayer();
-  if (!me || !auth.currentSession()?.temporary) return;
-  const key = `${event.id}:${me.id}`;
-  if (shownGuestOffers.has(key)) return;
-  shownGuestOffers.add(key);
-  const { dialog } = await import('../lib/ui.js');
-  const { openGuestUpgrade } = await import('./auth.js');
-  dialog({
-    title: 'You’re in — save your record',
-    body: html`<p class="body-large">You joined <b>${event.name}</b> as <b>${me.tag}</b>.</p>
-      <p class="body-medium">Create an account later to keep this fight record on another phone and customise your player profile. You can keep playing as a guest for now.</p>
-      ${!auth.isRemote() ? html`<p class="body-small dim">This guest profile is saved on this device until you choose to upgrade it.</p>` : ''}`,
-    actions: [
-      { label: 'Maybe later', kind: 'text' },
-      { label: 'Customize profile', kind: 'tonal', onClick: () => { window.location.hash = '#/me'; } },
-      { label: 'Create account', kind: 'filled', onClick: () => openGuestUpgrade(() => rerender()) },
-    ],
-  });
-}
-
 function ensureRemoteLookup(code) {
   const normalized = String(code || '').trim().toUpperCase();
   if (!normalized || !auth.isRemote() || !auth.isSignedIn()) return;
@@ -447,7 +425,6 @@ on('guest-join', async (_data, form) => {
     rememberPlayerExperience();
     snack(entry.waitlisted ? 'On the waitlist.' : entry.checkedInAt ? 'Joined and checked in.' : `Entered ${event.name}.`);
     window.location.hash = `#/e/${eventId}`;
-    setTimeout(() => offerGuestUpgrade(event), 250);
   } catch (err) {
     captcha.reset(form);
     codeLookup = { code, status: 'error', error: String(err?.message || err) };
