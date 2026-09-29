@@ -23,6 +23,7 @@ import { gameById, GAMES } from '../data/games.js';
 import { formatMoney } from '../lib/guidance.js';
 import { brandMark } from '../lib/brand.js';
 import { gameMark } from '../data/themes.js';
+import { isDemoMode } from '../lib/demo-mode.js';
 
 const STATUS = {
   draft: { label: 'Draft', chip: '' },
@@ -114,7 +115,7 @@ function roleChoice() {
         <button class="role-choice-option role-choice-player" type="button" data-act="choose-role" data-role="player"><span class="role-choice-icon">${raw(icon('esports'))}</span><span class="role-choice-copy"><b>Player</b><span>Join a tournament, check in, and find your next set.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
         <button class="role-choice-option role-choice-host" type="button" data-act="choose-role" data-role="host"><span class="role-choice-icon">${raw(icon('tune'))}</span><span class="role-choice-copy"><b>Host</b><span>Run your bracket, manage arrivals, and keep the room moving.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
       </div>
-      <p class="role-choice-footnote">Have a tournament code? <a href="#/join">Join directly</a> — you won’t need to choose a role first.</p>
+      <p class="role-choice-footnote">Have a tournament code? <a href="#/join">Join directly</a> — you won’t need to choose a role first. <a href="./demo.html">Explore the sample demo</a>.</p>
     </section></div>`;
 }
 
@@ -122,11 +123,11 @@ function roleChoice() {
    Signed out
    -------------------------------------------------------------------------- */
 
-/* A first visit starts with the actual event list. The two doors explain the
-   task before sign-in, and demo actions borrow the existing real walkthroughs. */
+/* A first visit starts with the actual event list. The separate demo page is
+   the explicit route into the sample tournament and its walkthroughs. */
 function landing(ctx) {
   const live = store.listEvents().filter(e => ['registration', 'checkin', 'seeding', 'running'].includes(e.status));
-  const demo = store.getEvent('evt_demo_tokon')?.demo;
+  const demo = isDemoMode() && store.getEvent('evt_demo_tokon')?.demo;
   return html`
     <div class="pane lobby publication">
       <header class="lobby-heading">
@@ -158,7 +159,7 @@ function landing(ctx) {
           </section>
         </aside>
       </div>
-      <footer class="lobby-footer"><span>Good games. Same time next week. · By BattyDev.</span>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} Try the venue display</button>` : ''}</footer>
+      <footer class="lobby-footer"><span>Good games. Same time next week. · By BattyDev.</span><a class="btn btn-text" href="./demo.html">Explore the sample demo</a>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} Try the venue display</button>` : ''}</footer>
     </div>`;
 }
 
@@ -172,7 +173,7 @@ function hostHome(ctx) {
   });
   const active = events.filter(e => e.status !== 'complete');
   const past = events.filter(e => e.status === 'complete');
-  const demo = store.getEvent('evt_demo_tokon')?.demo;
+  const demo = isDemoMode() && store.getEvent('evt_demo_tokon')?.demo;
   return html`<div class="pane host-home">
     <header class="workspace-heading"><div><p class="eyebrow">HOST WORKSPACE</p><h2>Put on a good local.</h2><p>Pick an event to manage arrivals, seed the bracket, and run the room.</p></div>
       <a class="btn btn-filled" href="#/new">${raw(icon('plus'))} Create event</a></header>

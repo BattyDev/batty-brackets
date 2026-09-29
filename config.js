@@ -13,9 +13,8 @@
  * server, and the app says so plainly in the corner ("On this device") rather
  * than pretending to be signed in to something.
  *
- * On a connected deployment, signed-out visitors get the demo locally only
- * when no active public events are available. Signed-in accounts don't get
- * fictional rows mixed into their event list.
+ * Sample data is available through demo.html and uses its own local storage.
+ * Normal event and account paths never seed it automatically.
  *
  * Both values are public by design and safe to commit. The url is an endpoint;
  * the publishable key only ever grants what RLS allows. Do NOT put a service

@@ -1,14 +1,14 @@
 /* Local event links must not promise cross-device registration. A demo uses
    exactly the same view as a real event, so test both: hiding a code only for
    demo rows would leave the organiser's first actual weekly misleading. */
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openDemo, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('local');
 const errors = [];
 try {
-  const { ctx, page } = await openApp(browser, { base, errors });
+  const { ctx, page } = await openDemo(browser, { base, errors });
   for (const demo of [true, false]) {
     await page.evaluate(async ({ id, demo }) => {
       const store = await import('./lib/store.js');

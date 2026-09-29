@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Explore Batty Brackets · Demo</title>
+<meta name="description" content="Explore the host, player, and live TV views with isolated sample data.">
+<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10131d" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="assets/brand/bracket-badge.svg?v=2">
+<link rel="stylesheet" href="brackets.css?v=10">
+</head>
+<body>
+<main class="demo-entry" id="main">
+  <header class="demo-entry-heading">
+    <a class="demo-entry-brand" href="./index.html" aria-label="Batty Brackets real app">Batty Brackets<span>.</span></a>
+    <a class="btn btn-text" href="./index.html">Back to the real app</a>
+  </header>
+  <section aria-labelledby="demo-title">
+    <p class="eyebrow">DEVICE ONLY · SAMPLE EVENT</p>
+    <h1 id="demo-title" class="headline-large">Choose a view</h1>
+    <p class="body-large demo-entry-intro">Try the same working tournament screens used by hosts, players, and the venue display. Your demo changes stay separate from real events and sign-in.</p>
+    <nav class="demo-entry-choices" aria-label="Choose a demo view">
+      <a class="demo-entry-choice" data-demo-role="host" href="./index.html?demo=1#/e/evt_demo_tokon/admin">
+        <span class="demo-entry-choice-title">Host</span>
+        <span>Manage arrivals, seed the bracket, and run the room.</span>
+      </a>
+      <a class="demo-entry-choice" data-demo-role="player" href="./index.html?demo=1#/p/plr_demo01">
+        <span class="demo-entry-choice-title">Player</span>
+        <span>See a player record and the events around it.</span>
+      </a>
+      <a class="demo-entry-choice" data-demo-role="tv" href="./index.html?demo=1#/e/evt_demo_tokon/tv">
+        <span class="demo-entry-choice-title">TV</span>
+        <span>View the live station queue and event display.</span>
+      </a>
+    </nav>
+  </section>
+  <footer class="demo-entry-footer">
+    <div>
+      <b>Sample data is local to this demo.</b>
+      <p class="body-small">No demo changes are sent to the event server or used for your real sign-in.</p>
+      <p class="body-small" id="demo-reset-status" role="status" aria-live="polite"></p>
+    </div>
+    <button class="btn btn-outlined" id="reset-demo" type="button">Reset sample data</button>
+  </footer>
+</main>
+<script type="module" src="demo-entry.js"></script>
+</body>
+</html>

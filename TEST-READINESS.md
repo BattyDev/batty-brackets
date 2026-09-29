@@ -124,17 +124,28 @@ and pools/top-cut are outside this pilot's critical path.
    staging. Optional post-join upgrade remains separate work.
 
 4. **Separate the demo and trim initial mobile loading.**
-   `app.js:604-622` seeds demos into the normal entry path; home also exposes
-   tour actions. Give the showcase its own entry page and isolated storage,
-   leave real workflows free of seeded events/tour chrome, and retain the same
-   underlying view modules so the demo does not become a second application.
-   Old cached demo data needs a non-destructive transition; do not wipe real
-   events or the user's account session.
+   **Provisional task 5 checkpoint (September 28):** `demo.html` now offers
+   Host, Player, and TV entry links, a sample reset, and a return to the real
+   app. The same application views run with a dedicated demo storage namespace;
+   demo mode skips backend and real-auth initialization. Tour progress and TV
+   preferences are demo-scoped, and the player tour's borrowed identity stays
+   in that store. Normal event work no longer seeds samples or shows tours.
+   Ordinary boot removes only rows marked as legacy demo data, their generated
+   brackets, and a legacy borrowed demo session while preserving real events
+   and a real session.
 
-   Static view imports at `app.js:30-37` load the host editor, setup, TV, profile
-   and recovery modules even for a phone arrival. Lazy-load by route; prioritize
-   the join/current-match screen. Do not add a framework/build system for this.
-   Keep a useful loading/retry state while connection/auth initialization runs.
+   Focused local browser checks passed for all three entry paths, all three
+   tours, reset isolation, legacy-cache cleanup, normal-app no-seed behavior,
+   and the existing local, flow, and tour-card stability checks. Mock project
+   configuration confirmed the demo path did not request the Supabase client.
+   Manual verification was skipped; no disposable staging backend was
+   configured, so this is not live-server evidence.
+
+   Static view imports at `app.js:30-37` still load the host editor, setup, TV,
+   profile, and recovery modules for a phone arrival. Route-based lazy loading
+   remains a separate performance follow-up; do not add a framework/build
+   system for it. Keep a useful loading/retry state while connection/auth
+   initialization runs.
 
 ## Performance evidence and limits
 
@@ -194,6 +205,12 @@ validation was performed.
 - `git diff --check`: passed.
 - Additional disposable probes: failed-save/list-refresh behavior and the
   local resource/render measurements above.
+
+- **Task 5 focused checks (September 28):** `node test/run.mjs tours`, `node
+  test/run.mjs local stability`, and `node test/run.mjs flows` each passed with
+  installed Chrome; zero selected suites were skipped. These are local browser
+  checks. The demo's configured-project boundary used a fake project config
+  and blocked CDN client request; no backend or production write was involved.
 
 Existing suites exercise local and mocked flows; a green run does not cover
 the missing workflows above or validate production RPC deployment. This

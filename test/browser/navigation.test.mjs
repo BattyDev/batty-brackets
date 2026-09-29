@@ -26,14 +26,14 @@
    that keeps it is fine.
    =========================================================================== */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openApp, openDemo, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
 const report = reporter('navigation');
 const errors = [];
 
-const { ctx, page } = await openApp(browser, { base, width: 1280, height: 600, errors });
+const { ctx, page } = await openDemo(browser, { base, width: 1280, height: 600, errors });
 const scrollY = () => page.evaluate(() => window.scrollY);
 
 /* ---- forward navigation starts at the top ------------------------------- */

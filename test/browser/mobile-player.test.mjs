@@ -11,7 +11,7 @@
    and the copy around that boundary.
    =========================================================================== */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
+import { launch, openApp, openDemo, goTo, standalone, reporter, DEMO_EVENT } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
@@ -36,7 +36,7 @@ async function clickDialog(page, label) {
 
 async function exercise(width) {
   const errors = [];
-  const { ctx, page } = await openApp(browser, {
+  const { ctx, page } = await openDemo(browser, {
     base, width, height: 844, reducedMotion: 'reduce', errors,
   });
 

@@ -50,12 +50,13 @@ import * as store from '../lib/store.js';
 import { gameById, resolveRuleset } from '../data/games.js';
 import { readyMatches } from '../lib/bracket.js';
 import { brandSignature } from '../lib/brand.js';
+import { scopedBrowserKey } from '../lib/demo-mode.js';
 
 /* Display state is per-device and never synced: the laptop driving the TV has
    its own idea of which screen is showing, and it is nobody else's business.
    Held in localStorage so a browser that reloads (or a venue PC that reboots
    between weeklies) comes back to the same screen. */
-const LS = 'battydev.brackets.tv';
+const LS = scopedBrowserKey('battydev.brackets.tv');
 
 const read = () => {
   try { return JSON.parse(localStorage.getItem(LS)) || {}; }

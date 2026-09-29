@@ -1,6 +1,6 @@
 /* Public reporting entry points and the device-only fail-closed path. */
 
-import { launch, openApp, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
+import { launch, openDemo, goTo, standalone, reporter, DEMO_EVENT, DEMO_PLAYER } from './harness.mjs';
 
 const { base, close } = await standalone();
 const browser = await launch();
@@ -8,7 +8,7 @@ const report = reporter('reporting');
 const errors = [];
 
 {
-  const { ctx, page } = await openApp(browser, { base, width: 390, height: 844, errors });
+  const { ctx, page } = await openDemo(browser, { base, width: 390, height: 844, errors });
   await goTo(page, base, `#/e/${DEMO_EVENT}/entrants`);
 
   report.ok('event view exposes an accessible report entry point',

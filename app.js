@@ -25,6 +25,7 @@ import { createBackend, isUuid } from './lib/backend.js';
 import { brandMark, brandSignature } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
+import { isDemoMode } from './lib/demo-mode.js';
 import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
 
 import * as home from './views/home.js';
@@ -389,6 +390,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
    -------------------------------------------------------------------------- */
 
 const root = document.getElementById('app');
+const demoMode = isDemoMode();
 let drawing = false;
 const routeHydration = new Map();
 const eventReadRequests = new Map();
@@ -766,6 +768,7 @@ on('tour-prev', () => { tour.previous(); });
 on('tour-stop', () => { tour.stop(); draw(); snack('Tour ended — everything still works. Reset when you are done.'); });
 on('tour-dismiss', () => { tour.dismiss(); draw(); });
 on('tour-reset', () => {
+  if (!demoMode) return;
   const restored = tour.reset();
   snack(restored ? 'Demo reset to how it started.' : 'Nothing to reset.');
   window.location.hash = `#/e/${tour.DEMO_EVENT}`;
@@ -795,60 +798,34 @@ on('undo', () => {
      inside it. */
   installThemes();
 
-  /* ---- who gets the demo ----------------------------------------------
-     A guest does. That is the whole point of it: somebody following a link
-     with no account should land on a working tournament rather than an empty
-     state, and be able to walk through every screen without signing up.
-
-     The rule is therefore about the VISITOR, not about the deployment:
-
-       * no backend at all  -> demo (the local-only mode, and how this runs
-         today)
-       * backend, signed out -> use the public list; if no events are
-         browseable, seed the demo locally only
-       * backend, signed in  -> no demo. A real account must look empty when it
-         is empty; seeding fiction into somebody's own event list would be
-         indefensible.
-
-     Seeding it for a signed-out visitor of a live deployment is safe because
-     every write in data/demo.js passes `queueIt: false`, so not one demo row
-     can reach the server. It exists in that browser and nowhere else.
-
-     Signing in later does not wipe it — the demo and the account's real events
-     simply coexist locally, and the demo rows are the ones carrying `demo:
-     true`, which is also what scopes the reset. */
   const cfg = window.BRACKETS_CONFIG || {};
   const configured = Boolean(cfg.url && cfg.key);
 
   store.boot({
-    demo: !configured,
-    scope: configured ? { projectUrl: cfg.url, accountId: 'anonymous' } : null,
+    demo: demoMode,
+    scope: !demoMode && configured ? { projectUrl: cfg.url, accountId: 'anonymous' } : null,
   });
 
-  const connection = await connect();
-  if (connection) {
-    const { client, backend } = connection;
-    /* The production boot path crosses the connected boundary exactly once:
-       an explicit RPC adapter. It never attaches the legacy generic outbox
-       and never performs a table pull. */
-    store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
-    await auth.initAuth(client, { connectedBackend: backend });
-    /* Pull only the public/account-visible list through bkt_list_events. A
-       signed-out visitor gets local sample events when that list has nothing
-       active to browse. The demo rows never enter the server write queue. */
-    const publicList = await store.pull();
-    if (publicList && !auth.isSignedIn()
-      && !store.listEvents().some((event) => ['registration', 'checkin', 'seeding', 'running'].includes(event.status))) {
-      store.seedDemo({ allowExistingData: true });
-    }
-  } else {
+  if (demoMode) {
+    /* Demo mode is a separate device-only store and never initializes the
+       configured backend or adopts the site's real authentication session. */
     await auth.initAuth(null);
+  } else {
+    const connection = await connect();
+    if (connection) {
+      const { client, backend } = connection;
+      /* The production boot path crosses the connected boundary exactly once:
+         an explicit RPC adapter. It never attaches the legacy generic outbox
+         and never performs a table pull. */
+      store.attachBackend(backend, { projectUrl: cfg.url, accountId: 'anonymous' });
+      await auth.initAuth(client, { connectedBackend: backend });
+      await store.pull();
+    } else {
+      await auth.initAuth(null);
+    }
   }
 
-  /* Capture the pristine demo before anything can touch it, so reset always
-     has something correct to restore. No-op once captured, and a no-op
-     entirely when the data is not the demo. */
-  tour.snapshot();
+  if (demoMode) tour.snapshot();
 
   store.subscribe((_, event) => ['net', 'pull', 'pull-error'].includes(event?.type)
     ? drawForEventRefresh() : draw());
