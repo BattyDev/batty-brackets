@@ -452,6 +452,7 @@ on('join-event', async ({ event: eventId }) => {
       }
       snack(entry.waitlisted ? 'On the waitlist.' : entry.checkedInAt ? 'Joined and checked in.' : `Entered ${event.name}.`);
       window.location.hash = `#/e/${eventId}`;
+      rerender();
     } catch (err) {
       snack(`Could not join: ${String(err?.message || err)}`);
     }
