@@ -66,6 +66,21 @@ store.cacheRemote({
   entries: [{ id: entryId, eventId, playerId, waitlisted: false }],
 });
 assert.equal(Object.keys(store.get().players).length, 1);
+backend.listEvents = async () => ({
+  events: [{ id: eventId, name: 'Remote', gameId: 'mvci', revision: 1 }], orgs: [], players: [],
+});
+await store.pull();
+assert.equal(store.get().players[playerId]?.tag, 'A',
+  'event-list refresh preserves profiles belonging to retained visible entries');
+backend.listEvents = async () => ({ events: [], orgs: [], players: [] });
+await store.pull();
+assert.deepEqual(store.get().players, {}, 'profiles are pruned when their event is no longer visible');
+assert.deepEqual(store.get().entries, {}, 'entries are pruned when their event is no longer visible');
+store.cacheRemote({
+  players: [{ id: playerId, tag: 'A' }],
+  events: [{ id: eventId, name: 'Remote', gameId: 'mvci', revision: 1 }],
+  entries: [{ id: entryId, eventId, playerId, waitlisted: false }],
+});
 store.apply('entries', entryId, { checkedInAt: '2026-09-16T12:00:00.000Z' });
 await new Promise(resolve => setTimeout(resolve, 0));
 assert.equal(saves.length, 1, 'connected organizer writes use one versioned state command');
