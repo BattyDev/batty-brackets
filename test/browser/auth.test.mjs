@@ -47,6 +47,34 @@ try {
   await page.waitForSelector('dialog.m3', { state: 'detached' });
   report.ok('successful password fallback closes only after completion', true);
 
+  // hCaptcha places its interactive challenge beside the dialog in body. It
+  // must remain clickable while the underlying application remains inert.
+  await page.evaluate(async () => {
+    const { dialog } = await import('./lib/ui.js');
+    dialog({ title: 'CAPTCHA probe', body: '<div data-hcaptcha-widget></div>',
+      actions: [{ label: 'Cancel' }] });
+    const portal = document.createElement('button');
+    portal.id = 'captcha-portal-probe';
+    portal.textContent = 'Provider challenge probe';
+    portal.style.cssText = 'position:fixed;inset:40px auto auto 40px;z-index:2147483647';
+    portal.onclick = () => { portal.dataset.clicked = 'true'; };
+    document.body.append(portal);
+  });
+  await page.getByRole('button', { name: 'Provider challenge probe', exact: true }).click();
+  report.ok('provider challenge outside the form is interactive',
+    await page.locator('#captcha-portal-probe').getAttribute('data-clicked') === 'true');
+  report.ok('application remains inert while CAPTCHA form is open',
+    await page.locator('.app').evaluate(el => el.inert));
+  await page.evaluate(async () => {
+    document.querySelector('#captcha-portal-probe').remove();
+    (await import('./lib/ui.js')).dialog({ title: 'Replacement probe', body: '<p>Next form</p>',
+      actions: [{ label: 'Cancel' }] });
+  });
+  report.ok('replacing a CAPTCHA dialog removes its scrim and restores app state',
+    await page.locator('.dialog-scrim').count() === 0
+      && !(await page.locator('.app').evaluate(el => el.inert)));
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
   report.noErrors(errors);
   await ctx.close();
 } finally {

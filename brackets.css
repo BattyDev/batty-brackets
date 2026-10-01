@@ -783,6 +783,13 @@ dialog.m3 {
   box-shadow: var(--elev-3);
 }
 dialog.m3::backdrop { background: color-mix(in srgb, var(--md-scrim) 40%, transparent); }
+.dialog-scrim {
+  position: fixed; inset: 0; z-index: 100;
+  background: color-mix(in srgb, var(--md-scrim) 40%, transparent);
+}
+dialog.m3.external-overlay {
+  position: fixed; inset: 0; margin: auto; height: fit-content; z-index: 101;
+}
 dialog.m3 .dialog-head { padding: 24px 24px 16px; }
 dialog.m3 .dialog-head h2 { font: var(--headline-small); }
 dialog.m3 .dialog-body { padding: 0 24px; overflow-y: auto; max-height: 62dvh; }
