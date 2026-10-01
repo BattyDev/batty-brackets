@@ -300,6 +300,10 @@ function passwordStep(email, { mode, alsoDiscord = false }) {
       ${signup ? '' : html`<button class="btn btn-text" id="forgot" style="margin-top:8px">Forgot it?</button>`}`,
     actions: [
       { label: 'Back', kind: 'text', onClick: () => { setTimeout(() => emailStep(email), 0); } },
+      ...(mode === 'unknown' ? [{
+        label: 'Create account', kind: 'text',
+        onClick: () => { setTimeout(() => passwordStep(email, { mode: 'signup' }), 0); },
+      }] : []),
       {
         label: signup ? 'Create account' : 'Sign in',
         kind: 'filled',
