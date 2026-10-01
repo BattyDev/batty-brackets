@@ -397,7 +397,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
             <span class="pill">${raw(icon(item.icon))}</span>
             <span>${item.label}</span>
           </a>`))}
-        ${!me ? html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('person'))}</span><span>Sign in</span></button>` : ''}
+        ${!me ? html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('person'))}</span><span>Sign in</span></button>` : html`<button class="nav-item" data-act="sign-out"><span class="pill">${raw(icon('person'))}</span><span>Sign out</span></button>`}
       </nav>
 
       <!-- tabindex="-1" so the skip link and the post-navigation focus move
