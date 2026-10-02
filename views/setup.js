@@ -507,8 +507,11 @@ function stepSignups() {
             <input class="spacer" type="text" value="${doc.title}"
                    data-act-input="wizard-doc-title" data-index="${i}"
                    style="padding:8px;border:1px solid var(--md-outline-variant);border-radius:var(--shape-xs);background:transparent;color:inherit;font:var(--body-medium)">
-            <button class="chip ${raw(doc.required ? 'selected' : '')}" data-act="wizard-doc-required"
-                    data-index="${i}" aria-pressed="${doc.required}">Required</button>
+            <label class="row-tight" style="min-height:44px">
+              <input type="checkbox" ${raw(doc.required ? 'checked' : '')}
+                     data-act-change="wizard-doc-required" data-index="${i}">
+              <span>Required</span>
+            </label>
             <button class="btn btn-icon" data-act="wizard-doc-remove" data-index="${i}" aria-label="Remove">${raw(icon('trash'))}</button>
           </div>`))}
         <button class="btn btn-text" data-act="wizard-doc-add">${raw(icon('plus'))} Add a document</button>
@@ -777,10 +780,10 @@ on('wizard-doc-add', () => {
   rerender();
 });
 on('wizard-doc-remove', ({ index }) => { draft.documents.splice(Number(index), 1); rerender(); });
-on('wizard-doc-required', ({ index }) => {
+on('wizard-doc-required', ({ index }, el) => {
   const doc = draft.documents[Number(index)];
-  doc.required = !doc.required;
-  rerender();
+  doc.required = el.checked;
+  saveDraft();
 });
 on('wizard-doc-title', ({ index }, el) => { draft.documents[Number(index)].title = el.value; saveDraft(); });
 
