@@ -32,7 +32,8 @@ try {
   await page.locator('[data-act="wizard-step"][data-step="1"]').click();
   await page.locator('[data-act-input="wizard-field"][data-field="stationCount"]').fill('6');
 
-  await page.locator('[data-act="wizard-step"][data-step="3"]').click();
+  await page.getByRole('button', { name: 'Next: Rules', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Sign-ups', exact: true }).click();
   report.ok('local sign-ups explain the device boundary',
     await page.locator('.local-device-note').innerText().then((t) =>
       t.includes('stay on this device') && t.includes('another phone')));
@@ -40,10 +41,15 @@ try {
     await page.locator('[data-act="wizard-set"][data-field="visibility"]').count() === 0
     && !/How people find it/i.test(await page.locator('main').innerText()));
 
-  await page.locator('[data-act="wizard-step"][data-step="2"]').click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   report.ok('Tōkon makes the provisional status visible in Rules',
     /Provisional|not a standard/i.test(await page.locator('main').innerText()));
-  await page.locator('[data-act="wizard-step"][data-step="4"]').click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  report.ok('bottom navigation preserves the entered event name',
+    await page.locator('[data-field="name"]').inputValue() === 'Tōkon setup rehearsal');
+  await page.getByRole('button', { name: 'Next: Rules', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Sign-ups', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Publish', exact: true }).click();
 
   const create = page.getByRole('button', { name: 'Sign in and create the event', exact: true });
   report.ok('publish is blocked until the organizer reviews provisional rules',

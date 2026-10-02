@@ -126,6 +126,10 @@ export function view(ctx) {
         </div>
 
         ${raw([stepGame, stepShape, stepRules, stepSignups, stepPublish][draft.step](ctx, game))}
+        <nav class="row" aria-label="Event setup navigation" style="justify-content:space-between;gap:12px;margin-top:24px">
+          ${draft.step > 0 ? html`<button class="btn btn-outlined" data-act="wizard-step" data-step="${draft.step - 1}">Back</button>` : html`<span></span>`}
+          ${draft.step < STEPS.length - 1 ? html`<button class="btn btn-filled" data-act="wizard-step" data-step="${draft.step + 1}" ${raw(!game ? 'disabled' : '')}>Next: ${STEPS[draft.step + 1]}</button>` : ''}
+        </nav>
       </div>`,
   };
 }
