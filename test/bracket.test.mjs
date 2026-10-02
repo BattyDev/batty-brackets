@@ -171,7 +171,7 @@ console.log('byes');
 }
 
 console.log('double elimination');
-for (const n of [4, 8, 16, 32]) {
+for (const n of [2, 4, 8, 16, 32]) {
   const bracket = doubleElimination(entrants(n));
   const size = bracketSize(n);
   const w = bracket.matches.filter((m) => m.bracket === 'W').length;
@@ -209,6 +209,21 @@ for (const n of [4, 8, 16, 32]) {
 
 /* Simulate a whole 8-entrant event, better seed always winning, and check it
    drains to one champion having played the right number of sets. */
+for (const reset of [true, false]) {
+  const bracket = doubleElimination(entrants(2), { grandFinalsReset: reset });
+  let matches = reportResult(bracket.matches, 'W1-1', { winnerId: 'e1', scoreA: 2, scoreB: 0 });
+  eq(`two-player reset=${reset}: first-set loser reaches grand finals`,
+    readyMatches(matches)[0]?.slots.map(slot => slot.entrantId), ['e1', 'e2']);
+  matches = reportResult(matches, 'GF-1', { winnerId: 'e2', scoreA: 0, scoreB: 2 });
+  if (reset) {
+    eq('two-player upset activates the reset', readyMatches(matches).map(match => match.id), ['GF-2']);
+    matches = reportResult(matches, 'GF-2', { winnerId: 'e2', scoreA: 0, scoreB: 2 });
+  }
+  eq(`two-player reset=${reset}: bracket drains`, readyMatches(matches), []);
+  const table = standings({ ...bracket, matches }, new Map(entrants(2).map(entry => [entry.id, entry])));
+  eq(`two-player reset=${reset}: grand-final winner is champion`, table[0]?.entrant.id, 'e2');
+}
+
 console.log('full simulation');
 {
   const roster = entrants(8);
