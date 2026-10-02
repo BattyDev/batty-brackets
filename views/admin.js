@@ -1105,6 +1105,20 @@ function settingsTab(data) {
         </div>
       </section>
 
+      <section class="card card-outlined" style="margin-bottom:16px">
+        <b class="title-medium">Documents required for check-in</b>
+        <p class="body-small dim" style="margin:4px 0 12px">Changes save immediately. Checked documents must be signed before a player can check in.</p>
+        <div class="stack-sm">
+          ${list((event.documents || []).map((doc) => html`
+            <label class="row-tight" style="min-height:44px">
+              <input type="checkbox" ${raw(doc.required ? 'checked' : '')}
+                     data-act-change="event-document-required" data-document="${doc.id}">
+              <span>${doc.title || 'Untitled document'} — required</span>
+            </label>`))}
+          ${!(event.documents || []).length ? html`<p class="body-small dim">This event has no documents.</p>` : ''}
+        </div>
+      </section>
+
       <section style="margin-bottom:16px">
         <div class="row" style="margin-bottom:8px">
           <b class="title-medium spacer">Rules</b>
@@ -2079,6 +2093,15 @@ on('event-visibility', ({ value }) => {
 on('event-field', ({ field, type }, el) => {
   const value = type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
   store.apply('events', currentEventId(), { [field]: value });
+});
+
+on('event-document-required', ({ document }, el) => {
+  const eventId = currentEventId();
+  const event = store.getEvent(eventId);
+  if (!(event.documents || []).some((doc) => doc.id === document)) return;
+  const documents = event.documents.map((doc) => doc.id === document
+    ? { ...doc, required: el.checked } : { ...doc });
+  store.apply('events', eventId, { documents });
 });
 
 on('live-setting', ({ field, type }, el) => {

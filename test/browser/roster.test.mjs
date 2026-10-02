@@ -100,6 +100,17 @@ report.ok('clearing filters restores every row', (await rowCount()) === all);
 report.ok('clearing filters also clears the selection',
   await page.evaluate(() => !document.querySelector('.bulk-bar')));
 
+await goTo(page, base, `#/e/${DEMO_EVENT}/admin/settings`);
+const requirement = page.locator('[data-act-change="event-document-required"]').first();
+const wasRequired = await requirement.isChecked();
+const documentId = await requirement.getAttribute('data-document');
+await requirement.setChecked(!wasRequired);
+await page.reload();
+const savedRequirement = page.locator(`[data-act-change="event-document-required"][data-document="${documentId}"]`);
+report.ok('document requirements changed in settings survive a reload',
+  await savedRequirement.isChecked() === !wasRequired);
+await savedRequirement.setChecked(wasRequired);
+
 report.noErrors(errors);
 await ctx.close();
 await browser.close();
