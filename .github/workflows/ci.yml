@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend permissions and registration
+    name: Backend permissions, registration, and moderation
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -34,7 +34,7 @@ jobs:
       - name: Execute migrations and permission checks in disposable PostgreSQL
         env:
           PGPASSWORD: disposable-test
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f test/backend/registration-run.sql
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f test/backend/run.sql
 
   test:
     runs-on: ubuntu-latest

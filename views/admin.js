@@ -217,7 +217,9 @@ export function view(ctx) {
          tabpanel, arrow-key roving focus and no page change; promising that
          and not delivering it is worse for a screen-reader user than plain
          links, which they already know how to use. -->
-    <div class="workspace-context"><span class="eyebrow">HOST CONTROLS</span><span>${data.event.name}</span><a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
+    <div class="workspace-context"><span class="eyebrow">HOST CONTROLS</span><span>${data.event.name}</span>
+      ${store.syncState().configured && !data.event.demo ? html`<button class="btn btn-text btn-sm" data-act="signup-share">${raw(icon('link', 'icon-sm'))} Share signup</button>` : ''}
+      <a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
     ${ctx.eventFreshness ? html`<div class="pane" style="padding-top:12px;padding-bottom:0">
       <div class="banner ${raw(ctx.eventFreshness.kind === 'error' ? 'banner-error' : 'banner-warn')}" role="status">
         ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
@@ -497,17 +499,17 @@ function entrantsTab(data) {
         </div>` : ''}
 
       ${rows.length ? html`
-        <div class="table-wrap" data-keep-scroll="entrants">
-          <table class="data">
+        <div class="table-wrap roster-wrap" data-keep-scroll="entrants">
+          <table class="data roster-table">
             <caption class="sr-only">
               Entrants — ${visible.length} shown. Seed, tag and team are editable in place.
             </caption>
             <thead>
               <tr>
                 <th class="check" scope="col">
-                  <input type="checkbox" id="select-all" data-act-change="select-all"
+                  <label class="roster-select"><input type="checkbox" id="select-all" data-act-change="select-all"
                          ${raw(selected.length === visible.length && visible.length ? 'checked' : '')}>
-                  <label class="sr-only" for="select-all">Select all entrants</label>
+                  <span class="sr-only">Select all entrants</span></label>
                 </th>
                 <!-- aria-sort on the header, not just an arrow glyph: it is
                      what tells a screen-reader user which column the table is
@@ -537,11 +539,11 @@ function entrantsTab(data) {
                 return html`
                 <tr class="${raw(ui.selected.has(entry.id) ? 'selected' : '')}">
                   <td class="check">
-                    <input type="checkbox" id="sel-${entry.id}" data-act-change="select-row" data-id="${entry.id}"
+                    <label class="roster-select"><input type="checkbox" id="sel-${entry.id}" data-act-change="select-row" data-id="${entry.id}"
                            ${raw(ui.selected.has(entry.id) ? 'checked' : '')}>
-                    <label class="sr-only" for="sel-${entry.id}">Select ${player?.tag || 'entrant'}</label>
+                    <span class="sr-only">Select ${player?.tag || 'entrant'}</span></label>
                   </td>
-                  <td class="num" style="width:64px">
+                  <td class="num" data-label="Seed" style="width:64px">
                     <input type="number" value="${entry.seed ?? ''}" data-act-change="entry-seed" data-id="${entry.id}"
                            data-focus-key="seed-${entry.id}" aria-label="Seed for ${player?.tag}">
                   </td>
@@ -557,21 +559,21 @@ function entrantsTab(data) {
                       ${entry.waitlisted ? html`<span class="chip chip-static chip-assist" style="min-height:20px;padding:0 6px;font:var(--label-small)">waitlist</span>` : ''}
                     </div>
                   </td>
-                  <td><input type="text" value="${entry.group || ''}" data-act-change="entry-group" data-id="${entry.id}"
+                  <td data-label="Team or venue"><input type="text" value="${entry.group || ''}" data-act-change="entry-group" data-id="${entry.id}"
                              data-focus-key="group-${entry.id}" style="min-width:100px"
                              aria-label="Team or venue for ${player?.tag || 'entrant'}"></td>
-                  <td><button class="chip ${raw(entry.checkedInAt ? 'chip-ok' : '')}" data-act="toggle-checkin" data-id="${entry.id}"
+                  <td data-label="Check-in"><button class="chip ${raw(entry.checkedInAt ? 'chip-ok' : '')}" data-act="toggle-checkin" data-id="${entry.id}"
                       style="min-height:26px;padding:0 10px" aria-pressed="${Boolean(entry.checkedInAt)}"
                       aria-label="${player?.tag || 'Entrant'} is ${entry.checkedInAt ? 'checked in' : 'not checked in'} — activate to change"
                       >${entry.checkedInAt ? 'In' : 'Out'}</button></td>
-                  <td><button class="chip ${raw(paymentFor(entry, event).paid ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
+                  <td data-label="Payment"><button class="chip ${raw(paymentFor(entry, event).paid ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
                         style="min-height:36px;padding:0 10px"
                         aria-label="Edit payment for ${player?.tag || 'entrant'}"
                         >${paymentFor(entry, event).due === 0 ? 'Free' : paymentFor(entry, event).paid ? 'Paid' : `${paymentFor(entry, event).received ? 'Partial' : 'Owes'} ${formatMoney(paymentFor(entry, event).balance, event.currency)}`}</button></td>
-                  <td>${missing.length
+                  <td data-label="Documents">${missing.length
                     ? html`<span class="chip chip-static chip-error" style="min-height:22px;padding:0 8px;font:var(--label-small)" title="${missing.map((d) => d.title).join(', ')}">${missing.length} missing</span>`
                     : html`<span class="chip chip-static chip-ok" style="min-height:22px;padding:0 8px;font:var(--label-small)">ok</span>`}</td>
-                  <td class="dim body-small">${player?.connections?.discord || player?.email || '—'}</td>
+                  <td data-label="Contact" class="dim body-small">${player?.connections?.discord || player?.email || '—'}</td>
                   <td><button class="btn btn-icon" data-act="entrant-menu" data-id="${entry.id}" aria-label="More for ${player?.tag}">${raw(icon('chevronDown'))}</button></td>
                 </tr>`;
               }))}
@@ -843,29 +845,30 @@ function runTab(data) {
             const match = live.find((m) => m.id === station.matchId || m.stationId === station.id);
             const over = match ? Date.now() - new Date(match.calledAt).getTime() > dq * 60000 : false;
             return html`
-              <div class="station ${raw(match ? 'busy' : 'open')}">
+              <div class="station ${raw(match ? 'busy' : station.closed ? 'closed' : 'open')}" role="group" aria-label="${station.label}">
                 <div class="station-head">
                   ${raw(icon('station', 'icon-sm'))}
-                  <span class="spacer">${station.label}</span>
+                  <b class="spacer station-label">${station.label}</b>
                   <button class="btn btn-icon" data-act="station-edit" data-id="${station.id}" aria-label="Edit ${station.label}">${raw(icon('settings', 'icon-sm'))}</button>
                   ${station.stream ? html`<span class="chip chip-static chip-info" style="min-height:20px;padding:0 6px;font:var(--label-small)">stream</span>` : ''}
                 </div>
+                <p class="station-status">${match ? station.closed ? 'Set called · new calls paused' : 'Set called' : station.closed ? 'Closed to new calls' : queue.length ? 'Ready to call' : 'Waiting for a ready set'}${station.platform ? ` · ${data.game?.platforms?.find(p => p.value === station.platform)?.label || station.platform}` : ''}</p>
                 ${match ? html`
-                  <div class="body-medium"><b>${nameOf(match.slots[0].entrantId)}</b> v <b>${nameOf(match.slots[1].entrantId)}</b></div>
+                  <div class="station-players"><b>${nameOf(match.slots[0].entrantId)}</b><span>versus</span><b>${nameOf(match.slots[1].entrantId)}</b></div>
                   <div class="body-small dim">${match.name}</div>
                   <div class="row" style="margin-top:8px;gap:6px" data-live-scope>
                     <span class="timer ${raw(over ? 'over' : '')}">${raw(icon('clock', 'icon-sm'))}
-                      <span data-live-since="${match.calledAt}" data-live-over="${dq}">${elapsed(match.calledAt)}</span>
+                      Called <span data-live-since="${match.calledAt}" data-live-over="${dq}">${elapsed(match.calledAt)}</span> ago
                     </span>
                     <span class="spacer"></span>
-                    <button class="btn btn-filled btn-sm" data-act="report-open" data-match="${match.id}">Report</button>
+                    <button class="btn btn-filled btn-sm" data-act="report-open" data-match="${match.id}" aria-label="Report result for ${nameOf(match.slots[0].entrantId)} versus ${nameOf(match.slots[1].entrantId)} at ${station.label}">Report result</button>
                   </div>
-                  ${over ? html`<div class="body-small" style="color:var(--md-error);margin-top:6px">DQ window (${dq} min) has passed</div>` : ''}`
+                  ${over ? html`<div class="body-small" style="color:var(--md-error);margin-top:6px">Call is past the ${dq} min grace period. Check whether the players arrived.</div>` : ''}`
                 : html`
-                  <div class="body-small dim">Free</div>
-                  ${queue.length ? html`
+                  ${station.closed ? html`<button class="btn btn-outlined btn-sm btn-block" data-act="station-edit" data-id="${station.id}">Open station controls</button>` : queue.length ? html`
+                    <p class="body-medium station-next"><b>Next:</b> ${nameOf(queue[0].slots[0].entrantId)} versus ${nameOf(queue[0].slots[1].entrantId)}</p>
                     <button class="btn btn-tonal btn-sm btn-block" style="margin-top:8px"
-                            data-act="call-next" data-station="${station.id}">Call the next set</button>` : ''}`}
+                            data-act="call-next" data-station="${station.id}" aria-label="Call the next set at ${station.label}">Call the next set here</button>` : ''}`}
               </div>`;
           }))}
           <button class="station" data-act="station-add" style="border:1px dashed var(--md-outline);background:none;cursor:pointer;color:var(--md-on-surface-variant)">
@@ -2161,14 +2164,43 @@ on('event-platform', ({ value }, el) => {
   store.apply('events', event.id, { platforms: [...platforms] });
 });
 
+on('signup-share', async () => {
+  const event = store.getEvent(currentEventId());
+  if (!store.syncState().configured || event?.demo || !event?.inviteCode) return;
+  try {
+    const { qrSvg, saveQrPng } = await import('../lib/qr.js');
+    const url = joinUrl(event.inviteCode);
+    const sharing = dialog({ title: 'Share signup', body: html`
+      <div class="signup-share">
+        <p class="title-medium">${event.name}</p>
+        <div class="signup-qr">${raw(qrSvg(url))}</div>
+        <p class="body-medium">Players can scan this code with their phone camera to open signup.</p>
+        <p class="signup-code">Join code: <b>${event.inviteCode}</b></p>
+        <p class="signup-url body-small">${url}</p>
+        <button class="btn btn-tonal" data-act="copy-text" data-text="${url}">${raw(icon('copy', 'icon-sm'))} Copy signup link</button>
+      </div>`, actions: [
+        { label: 'Close', kind: 'text' },
+        { label: 'Save QR image', kind: 'filled', onClick: () => {
+          saveQrPng(url, `batty-signup-${event.inviteCode}.png`); return false;
+        } },
+      ] });
+    bindDelegation(sharing);
+  } catch (error) {
+    console.error('[signup-share]', error);
+    snack('Could not create the QR code. You can still copy the join link from Overview.');
+  }
+});
+
 on('station-edit', ({ id }) => {
   const station = store.get().stations[id]; const event = store.getEvent(station.eventId); const game = gameById(event.gameId);
   dialog({ title: 'Edit station', body: html`
     <label class="field"><span class="field-label">Station label</span><input id="station-label" maxlength="120" value="${station.label}"></label>
-    <label class="field"><span class="field-label">Platform</span><select id="station-platform"><option value="">Any platform</option>${list(game.platforms.map(platform => html`<option value="${platform.value}" ${raw(station.platform === platform.value ? 'selected' : '')}>${platform.label}</option>`))}</select></label>`, actions: [
+    <label class="field"><span class="field-label">Platform</span><select id="station-platform"><option value="">Any platform</option>${list(game.platforms.map(platform => html`<option value="${platform.value}" ${raw(station.platform === platform.value ? 'selected' : '')}>${platform.label}</option>`))}</select></label>
+    <label class="row-tight" style="min-height:44px"><input id="station-open" type="checkbox" ${raw(station.closed ? '' : 'checked')}><span>Open for new calls</span></label>
+    <p class="field-help">Pausing new calls keeps the current set assigned so you can still report its result.</p>`, actions: [
       { label: 'Cancel', kind: 'text' }, { label: 'Save station', kind: 'filled', onClick: dlg => {
         const label = dlg.querySelector('#station-label').value.trim(); if (!label) { snack('Enter a station label.'); return false; }
-        store.apply('stations', id, { label, platform: dlg.querySelector('#station-platform').value || null }); snack('Station updated'); rerender(); return true;
+        store.apply('stations', id, { label, platform: dlg.querySelector('#station-platform').value || null, closed: !dlg.querySelector('#station-open').checked }); snack('Station updated'); rerender(); return true;
       } },
     ] });
 });

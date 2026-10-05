@@ -12,5 +12,6 @@ set bkt.staging='on';
 \ir ../../sql/staging/107_match_submissions.sql
 \ir ../../sql/staging/108_withdrawals.sql
 \ir ../../sql/staging/20261005202914_registration_ux.sql
+\ir ../../sql/staging/20261005215644_moderation_states.sql
 \ir security.sql
 \ir registration-security.sql

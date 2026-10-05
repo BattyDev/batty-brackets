@@ -1033,12 +1033,27 @@ button.match { display: block; width: 100%; text-align: left; border: 0; cursor:
 }
 .station.busy { box-shadow: inset 0 0 0 2px var(--warn); }
 .station.open { box-shadow: inset 0 0 0 2px var(--ok); }
+.station.closed { background: var(--md-surface-container); }
 .station-head {
   display: flex; align-items: center; gap: 8px;
   font: var(--title-small); margin-bottom: 8px;
 }
 .station .timer { font: var(--label-medium); font-variant-numeric: tabular-nums; }
 .station .timer.over { color: var(--md-error); font-weight: 700; }
+.station-label { font: var(--title-large); overflow-wrap: anywhere; }
+.station-status { font: var(--label-medium); color: var(--md-on-surface-variant); margin: 0 0 12px; }
+.station-players { display: grid; gap: 2px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.station-players b { font: var(--title-medium); }
+.station-players span { font: var(--body-small); color: var(--md-on-surface-variant); }
+.station-next { margin-bottom: 8px; overflow-wrap: anywhere; }
+.station .btn-block { white-space: normal; min-height: 44px; }
+.station [data-live-scope] { flex-wrap: wrap; }
+.signup-share { display: grid; justify-items: center; gap: 12px; text-align: center; }
+.signup-share p { margin: 0; }
+.signup-qr { width: min(240px, 100%); background: #fff; border-radius: 8px; padding: 8px; }
+.signup-qr svg { display: block; width: 100%; height: auto; }
+.signup-code { font: var(--body-large); }
+.signup-url { overflow-wrap: anywhere; max-width: 100%; color: var(--md-on-surface-variant); }
 
 /* ---- the entrant table ---------------------------------------------------
    A real table, not a div grid, because a TO will select a range with shift,
@@ -1088,6 +1103,37 @@ table.data .check { width: 48px; text-align: center; }
 table.data td input:hover { border-color: var(--md-outline-variant); }
 table.data td input:focus { outline: none; border-color: var(--md-primary); background: var(--md-surface); }
 table.data .check { width: 44px; }
+.roster-select { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+
+/* Keep the same editable controls and sorting on phones, with each entrant's
+   check-in and payment visible without horizontal scrolling. */
+@media (max-width: 599px) {
+  .roster-wrap { overflow: visible; max-height: none; box-shadow: none; background: none; }
+  table.roster-table, .roster-table thead, .roster-table tbody { display: block; }
+  .roster-table thead tr { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  table.roster-table thead th { position: static; border: 0; padding: 0 4px; background: none; }
+  .roster-table thead th:last-child { display: none; }
+  table.roster-table th button.th-sort { min-height: 44px; }
+  .roster-table tbody tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px; position: relative; margin-bottom: 12px; padding: 12px;
+    background: var(--md-surface-container-lowest); border: 1px solid var(--md-outline-variant);
+    border-radius: var(--shape-md);
+  }
+  .roster-table tbody tr.selected { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+  table.roster-table tbody td { padding: 0; border: 0; min-width: 0; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+  table.roster-table tbody td[data-label]::before { content: attr(data-label); display: block; font: var(--label-medium); margin-bottom: 4px; }
+  table.roster-table tbody td:nth-child(3) { grid-row: 1; grid-column: 1 / -1; padding: 0 44px; min-height: 44px; display: flex; align-items: center; }
+  .roster-table tbody td:nth-child(3) .row-tight { flex-wrap: wrap !important; gap: 6px; min-width: 0; }
+  .roster-table tbody td:nth-child(3) .body-medium { min-width: 0 !important; flex: 1; font: var(--title-medium); }
+  table.roster-table tbody td:nth-child(3) input { width: auto; flex: 1; }
+  .roster-table tbody td:first-child { position: absolute; top: 12px; left: 8px; width: 44px; }
+  .roster-table tbody td:last-child { position: absolute; top: 12px; right: 8px; }
+  table.roster-table tbody td.num { width: auto !important; }
+  table.roster-table td input:not([type='checkbox']) { min-height: 44px; min-width: 0 !important; border-color: var(--md-outline-variant); }
+  .roster-table .roster-select { width: 44px; height: 44px; }
+  table.roster-table td .chip[data-act] { min-height: 44px !important; white-space: normal; }
+}
 
 /* Bulk action bar — appears when rows are selected. Not a floating toolbar
    that covers the rows you just picked; it takes the top of the table. */

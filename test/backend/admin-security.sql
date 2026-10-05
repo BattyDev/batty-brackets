@@ -102,6 +102,9 @@ select pg_temp.admin_fails($q$update public.bkt_stations set label='Organizer ov
 set local request.jwt.claim.sub='00000000-0000-0000-0000-000000000001';
 set role authenticated;
 select public.bkt_admin_moderate('hide','result','70000000-0000-4000-8000-000000000001',null,null,'result dispute');
+select public.bkt_admin_moderate('quarantine','result','70000000-0000-4000-8000-000000000001',null,null,'review disputed result');
+select pg_temp.admin_assert(exists(select 1 from jsonb_array_elements(public.bkt_admin_queue('quarantined')->'items') item
+ where item->>'target_kind'='result' and item->>'state'='quarantined'),'result quarantine stores the correct state');
 reset role;
 set local request.jwt.claim.sub='';
 set local role anon;
