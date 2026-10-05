@@ -51,10 +51,10 @@ insert into bkt_private.contacts(event_id,player_id,contact)
 do $$ declare v text; begin
  foreach v in array array[
    'public.bkt_admin_access()',
-   'public.bkt_admin_queue(text,integer)',
-   'public.bkt_admin_content(text,integer)',
+   'public.bkt_admin_queue(text,text,integer,jsonb)',
+   'public.bkt_admin_content(text,text,integer,jsonb)',
    'public.bkt_admin_moderate(text,text,uuid,text,jsonb,text)',
-   'public.bkt_admin_audit(integer,timestamptz)',
+   'public.bkt_admin_audit(text,integer,jsonb)',
    'public.bkt_admin_metrics(timestamptz,timestamptz)'
  ] loop
    perform pg_temp.admin_assert(not has_function_privilege('anon',v,'EXECUTE'),'anon denied '||v);
@@ -89,7 +89,9 @@ select pg_temp.admin_assert((public.bkt_admin_content('player')->'items'->0->>'v
 select public.bkt_admin_moderate('quarantine','org','30000000-0000-4000-8000-000000000001','name',null,'org review');
 select pg_temp.admin_assert((public.bkt_admin_content('org')->'items'->0->>'value')='[quarantined]','org text quarantine');
 select public.bkt_admin_moderate('replace','event','40000000-0000-4000-8000-000000000001','venue','"Side Hall"'::jsonb,'venue correction');
-select pg_temp.admin_assert((public.bkt_admin_content('event')->'items'->1->>'value')='Side Hall','event text replacement');
+select pg_temp.admin_assert(exists(select 1 from jsonb_array_elements(public.bkt_admin_content('event')->'items') item
+ where item->>'target_id'='40000000-0000-4000-8000-000000000001' and item->>'target_field'='venue'
+ and item->>'value'='Side Hall'),'event text replacement');
 select public.bkt_admin_moderate('hide','entry','50000000-0000-4000-8000-000000000001','crew',null,'roster review');
 select pg_temp.admin_assert((public.bkt_admin_content('entry')->'items'->0->>'value')='[hidden]','roster text hide');
 select public.bkt_admin_moderate('lock','station','60000000-0000-4000-8000-000000000001','label',null,'final station label');
