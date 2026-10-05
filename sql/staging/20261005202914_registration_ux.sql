@@ -424,7 +424,7 @@ begin
  if not found or not bkt_private.can_read(p_event_id) then
    raise exception 'event_unavailable' using errcode='42501';
  end if;
- if v_event.status not in ('registration','checkin') then raise exception 'signing_closed' using errcode='55000'; end if;
+ if v_event.status not in ('registration','checkin','seeding','running') then raise exception 'signing_closed' using errcode='55000'; end if;
  if p_typed_name is null or length(trim(p_typed_name)) not between 1 and 160 or octet_length(trim(p_typed_name))>640 then
    raise exception 'invalid_signature_name' using errcode='22023';
  end if;

@@ -57,7 +57,7 @@ begin
  execute 'reset role';
  if has_table_privilege('authenticated','bkt_private.entry_payments','SELECT') or has_function_privilege('anon','public.bkt_record_payment(uuid,numeric,numeric,text,bigint)','EXECUTE') then raise exception 'Payment privileges expanded'; end if;
  if not exists(select 1 from bkt_private.signatures s where s.entry_id=registration_security.entry_id and s.document_body='Respect the room.') then raise exception 'Signed content was not retained'; end if;
- update public.bkt_events set documents='[{"id":"conduct","title":"Conduct","body":"Respect the room and follow station calls.","required":true,"version":1}]' where id=event_id;
+ update public.bkt_events set status='running',documents='[{"id":"conduct","title":"Conduct","body":"Respect the room and follow station calls.","required":true,"version":1}]' where id=event_id;
  if (select (documents->0->>'version')::integer from public.bkt_events where id=event_id)<>2 then raise exception 'Changed text did not advance its version'; end if;
 
  perform set_config('request.jwt.claim.sub',player_user::text,true);
@@ -70,6 +70,7 @@ begin
  rejected:=false;
  begin perform public.bkt_sign_document(event_id,'conduct',1,'UX player'); exception when invalid_parameter_value then rejected:=true; end;
  if not rejected then raise exception 'Obsolete document was signed'; end if;
+ perform public.bkt_sign_document(event_id,'conduct',2,'UX player');
  execute 'reset role';
 end $$;
 rollback;
