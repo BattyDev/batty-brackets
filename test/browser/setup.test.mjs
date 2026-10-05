@@ -24,6 +24,7 @@ try {
   await page.locator('[data-act-input="wizard-field"][data-field="name"]').fill('Tōkon setup rehearsal');
   await page.locator('[data-act-input="wizard-field"][data-field="venue"]').fill('Rehearsal venue');
   await page.locator('[data-act-input="wizard-field"][data-field="capacity"]').fill('24');
+  await page.locator('[data-act-input="wizard-field"][data-field="entryFee"]').fill('10.50');
   await page.locator('[data-act-input="wizard-field"][data-field="stationCount"]').fill('65');
   await page.locator('[data-act="wizard-step"][data-step="4"]').click();
   report.ok('publish rejects a station count above the supported limit',
@@ -33,13 +34,25 @@ try {
   await page.locator('[data-act-input="wizard-field"][data-field="stationCount"]').fill('6');
 
   await page.getByRole('button', { name: 'Next: Rules', exact: true }).click();
-  await page.getByRole('button', { name: 'Next: Sign-ups', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Registration', exact: true }).click();
   report.ok('local sign-ups explain the device boundary',
     await page.locator('.local-device-note').innerText().then((t) =>
       t.includes('stay on this device') && t.includes('another phone')));
   report.ok('local sign-ups hide unusable visibility and invite controls',
     await page.locator('[data-act="wizard-set"][data-field="visibility"]').count() === 0
     && !/How people find it/i.test(await page.locator('main').innerText()));
+
+  await page.getByRole('button', { name: 'Add a document', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Review', exact: true }).click();
+  report.ok('empty document text blocks publication', await page.locator('[data-act="wizard-publish"]').isDisabled()
+    && /Every document needs a title/i.test(await page.locator('main').innerText()));
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByLabel('Document title', { exact: true }).fill('Venue agreement');
+  await page.getByLabel('Document text shown to players', { exact: true }).fill('Respect players and follow station calls.');
+  await page.getByLabel('Required', { exact: true }).check();
+  await page.getByRole('button', { name: 'Preview document', exact: true }).click();
+  report.ok('document preview shows the actual text', /Respect players/.test(await page.getByRole('dialog').innerText()));
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   report.ok('Tōkon makes the provisional status visible in Rules',
@@ -48,8 +61,8 @@ try {
   report.ok('bottom navigation preserves the entered event name',
     await page.locator('[data-field="name"]').inputValue() === 'Tōkon setup rehearsal');
   await page.getByRole('button', { name: 'Next: Rules', exact: true }).click();
-  await page.getByRole('button', { name: 'Next: Sign-ups', exact: true }).click();
-  await page.getByRole('button', { name: 'Next: Publish', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Registration', exact: true }).click();
+  await page.getByRole('button', { name: 'Next: Review', exact: true }).click();
 
   const create = page.getByRole('button', { name: 'Sign in and create the event', exact: true });
   report.ok('publish is blocked until the organizer reviews provisional rules',
@@ -78,6 +91,8 @@ try {
   report.ok('creation preserves the entered capacity and station count',
     created.event?.capacity === 24
     && created.stations === 6);
+  report.ok('creation preserves fees and readable required documents', created.event?.entryFee === 10.50
+    && created.event.documents[0].body === 'Respect players and follow station calls.' && created.event.documents[0].required);
   report.ok('the local created dialog does not offer a cross-device link',
     created.copyLink === false && /Other devices cannot join/i.test(created.localCopy));
 

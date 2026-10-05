@@ -125,8 +125,8 @@ export function seedDemoData({ apply, uid, inviteCode, setSession }) {
     presetId: 'tokon-standard-0-3',
     overrides: { dqTimer: 5 },
     documents: [
-      { id: 'doc_coc', title: 'Code of conduct', required: true, version: 2 },
-      { id: 'doc_media', title: 'Stream and photo release', required: false, version: 1 },
+      { id: 'doc_coc', title: 'Code of conduct', body: 'Sample event policy: respect other players, follow station calls, and ask the host for help with disputes. This is demonstration text.', required: true, version: 2 },
+      { id: 'doc_media', title: 'Stream and photo release', body: 'Sample notice: matches at the stream station may appear in the event broadcast. Ask the host about a different station. This is demonstration text.', required: false, version: 1 },
     ],
     createdAt: ago(14),
     demo: true,
@@ -172,7 +172,7 @@ export function seedDemoData({ apply, uid, inviteCode, setSession }) {
     inviteCode: 'SSB63',
     presetId: 'ssbu-standard',
     overrides: {},
-    documents: [{ id: 'doc_coc', title: 'Code of conduct', required: true, version: 2 }],
+    documents: [{ id: 'doc_coc', title: 'Code of conduct', body: 'Sample event policy: respect other players, follow station calls, and ask the host for help with disputes. This is demonstration text.', required: true, version: 2 }],
     createdAt: ago(6),
     demo: true,
   }, { queueIt: false });

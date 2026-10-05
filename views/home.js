@@ -347,10 +347,11 @@ function joinView(ctx, code) {
   };
 }
 
-function guestForm(event, waitlisted = false, code = '') {
+export function guestForm(event, waitlisted = false, code = '') {
   const hasDocuments = Boolean(event?.documents?.some((doc) => doc.required));
   const label = waitlisted ? 'Join the waitlist'
-    : hasDocuments ? 'Join and start check-in' : 'Join and check in';
+    : event?.status !== 'checkin' ? 'Join the event'
+    : hasDocuments ? 'Join and review documents' : 'Join and check in';
   return html`<form class="guest-entry-form card card-outlined" data-act-submit="guest-join" style="margin-top:16px">
     ${event ? html`<input type="hidden" name="event" value="${event.id}">` : ''}
     <input type="hidden" name="code" value="${code}">

@@ -25,6 +25,8 @@ import * as store from '../lib/store.js';
 import * as auth from '../lib/auth.js';
 import { GAMES, gameById, resolveRuleset, allFields, fieldVisible, evoLabel } from '../data/games.js';
 import { gameArt, gameHero, gameMark, themeFor } from '../data/themes.js';
+import { documentText, validAmount } from '../lib/registration.js';
+import { formatMoney } from '../lib/guidance.js';
 
 /* Wizard state.
    --------------------------------------------------------------------------
@@ -44,12 +46,14 @@ import { gameArt, gameHero, gameMark, themeFor } from '../data/themes.js';
 const DRAFT_KEY = 'battydev.brackets.draft';
 let draft = null;
 let publishing = false;
+let draftSaved = true;
 
 function saveDraft() {
   try {
     if (draft) localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     else localStorage.removeItem(DRAFT_KEY);
-  } catch { /* private mode: the draft is still fine in memory */ }
+    draftSaved = true;
+  } catch { draftSaved = false; }
 }
 
 function loadDraft() {
@@ -84,7 +88,7 @@ function freshDraft() {
     currency: 'USD',
     presetId: null,
     overrides: {},
-    documents: [{ id: 'doc_coc', title: 'Code of conduct', required: true, version: 1 }],
+    documents: [],
     visibility: 'public',
     provisionalRulesReviewed: false,
     gameSearch: '',
@@ -101,10 +105,18 @@ function defaultStart() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const STEPS = ['Game', 'Shape', 'Rules', 'Sign-ups', 'Publish'];
+const STEPS = ['Game', 'Event details', 'Rules', 'Registration', 'Review'];
+
+function stepComplete(i, game) {
+  if (i === 0) return Boolean(game);
+  if (i === 1) return !validate(game).some(p => !/document|provisional/i.test(p));
+  if (i === 2) return Boolean(game) && !validate(game).some(p => /provisional/i.test(p));
+  if (i === 3) return !validate(game).some(p => /document/i.test(p));
+  return false;
+}
 
 export function view(ctx) {
-  if (!draft) draft = loadDraft() || freshDraft();
+  if (!draft) { draft = loadDraft() || freshDraft(); saveDraft(); }
   const game = draft.gameId ? gameById(draft.gameId) : null;
 
   return {
@@ -114,21 +126,22 @@ export function view(ctx) {
     gameId: draft.gameId,
     body: html`
       <div class="pane setup-workspace" style="max-width:760px">
-        <header class="setup-heading"><p class="eyebrow">CREATE AN EVENT · STEP ${draft.step + 1} OF ${STEPS.length}</p><h2>${STEPS[draft.step]}</h2></header>
+        <header class="setup-heading" tabindex="-1"><p class="eyebrow">CREATE AN EVENT · STEP ${draft.step + 1} OF ${STEPS.length}</p><h2>${STEPS[draft.step]}</h2></header>
+        <div class="row setup-draft-status"><span class="body-small dim spacer">${draftSaved ? 'Draft saved on this device · resume here anytime' : 'Browser storage unavailable · keep this tab open to retain your draft'}</span><button class="btn btn-text btn-sm" data-act="wizard-discard">Discard draft</button></div>
         <div class="row" style="margin-bottom:20px;gap:6px">
           ${list(STEPS.map((label, i) => html`
             <button class="chip ${raw(i === draft.step ? 'selected' : '')}"
                     data-act="wizard-step" data-step="${i}"
                     ${raw(i > draft.step && !draft.gameId ? 'disabled' : '')}
                     aria-pressed="${i === draft.step}">
-              ${i < draft.step ? raw(icon('check', 'icon-sm')) : ''}${label}
+              ${i < draft.step && stepComplete(i, game) ? raw(icon('check', 'icon-sm')) : ''}${label}
             </button>`))}
         </div>
 
         ${raw([stepGame, stepShape, stepRules, stepSignups, stepPublish][draft.step](ctx, game))}
-        <nav class="row" aria-label="Event setup navigation" style="justify-content:space-between;gap:12px;margin-top:24px">
-          ${draft.step > 0 ? html`<button class="btn btn-outlined" data-act="wizard-step" data-step="${draft.step - 1}">Back</button>` : html`<span></span>`}
-          ${draft.step < STEPS.length - 1 ? html`<button class="btn btn-filled" data-act="wizard-step" data-step="${draft.step + 1}" ${raw(!game ? 'disabled' : '')}>Next: ${STEPS[draft.step + 1]}</button>` : ''}
+        <nav class="row setup-actions" aria-label="Event setup navigation">
+          ${draft.step > 0 ? html`<button class="btn btn-outlined" data-act="wizard-step" data-step="${draft.step - 1}"><span aria-hidden="true">←</span> Back</button>` : html`<span></span>`}
+          ${draft.step < STEPS.length - 1 ? html`<button class="btn btn-filled" data-act="wizard-step" data-step="${draft.step + 1}" ${raw(!game ? 'disabled' : '')}>Next: ${STEPS[draft.step + 1]} ${raw(icon('chevron', 'icon-sm'))}</button>` : html`<span class="body-small dim">Review, then create above</span>`}
         </nav>
       </div>`,
   };
@@ -142,7 +155,7 @@ function stepGame() {
   return html`
     <h2 class="headline-small" style="margin-bottom:4px">What are you running?</h2>
     <p class="body-medium dim" style="margin-bottom:16px">
-      The game decides which settings exist. You can change everything later, including after the bracket is made.
+      Choose the game to see its rules and platforms. Review the game and bracket format before starting matches.
     </p>
     <div class="row" style="gap:8px;margin-bottom:16px">
       <label class="field spacer" style="max-width:320px">
@@ -212,7 +225,7 @@ function visibleGames() {
 
 function stepShape(ctx, game) {
   return html`
-    ${raw(gameHero(game, { title: 'The basics', subtitle: 'Everything here stays editable later.' }))}
+    ${raw(gameHero(game, { title: 'The basics', subtitle: 'Set the details players need before they enter.' }))}
     <h2 class="sr-only">The basics</h2>
 
     <div class="stack">
@@ -268,7 +281,7 @@ function stepShape(ctx, game) {
           <p class="field-help">
             ${draft.venueType === 'online'
               ? 'Checked at sign-up: an entrant with no ID for a platform you run on is flagged before the set is called, not after.'
-              : 'What the venue actually has. The run view will not send a PC-only entrant to a console station.'}
+              : 'Select the platforms available at your venue. Set individual station platforms in Run matches.'}
           </p>
         </div>` : ''}
 
@@ -279,9 +292,9 @@ function stepShape(ctx, game) {
 
       <div class="row" style="gap:16px;align-items:flex-start">
         <label class="field spacer" style="min-width:140px">
-          <span class="field-label">Entrant capacity (optional)</span>
+          <span class="field-label">Entrant capacity${auth.isRemote() ? ' (required, 2–256)' : ' (optional)'}</span>
           <input type="number" min="2" data-act-input="wizard-field" data-field="capacity"
-                 value="${draft.capacity}" placeholder="No limit"
+                 max="256" value="${draft.capacity}" placeholder="${auth.isRemote() ? 'Enter capacity' : 'No limit'}"
                  aria-describedby="capacity-help">
         </label>
         ${draft.venueType === 'offline' ? html`
@@ -292,11 +305,12 @@ function stepShape(ctx, game) {
                    aria-describedby="station-help">
           </label>` : ''}
         <label class="field spacer" style="min-width:140px">
-          <span class="field-label">Entry fee</span>
-          <input type="number" min="0" data-act-input="wizard-field" data-field="entryFee"
+          <span class="field-label">Entry fee (${draft.currency})</span>
+          <input type="number" min="0" step="0.01" data-act-input="wizard-field" data-field="entryFee"
                  value="${draft.entryFee}" placeholder="0">
         </label>
       </div>
+      <p class="field-help">Record payments collected at the desk. Players pay the host; this site does not process a card payment.</p>
       <div class="field-help" style="margin-top:-8px">
         <p id="capacity-help" style="margin:0 0 4px">Over the capacity goes on a waitlist rather than being turned away — locals always get drop-outs.</p>
         ${draft.venueType === 'offline' ? html`<p id="station-help" style="margin:0">Enter the number of stations you can actually run. Labels and platforms can be adjusted after creation.</p>` : ''}
@@ -495,7 +509,7 @@ function optionHelp(field, value) {
 
 function stepSignups() {
   return html`
-    <h2 class="headline-small" style="margin-bottom:20px">Sign-ups</h2>
+    <h2 class="headline-small" style="margin-bottom:20px">Registration</h2>
 
     <div class="card card-outlined" style="margin-bottom:16px">
       <div class="row-tight" style="margin-bottom:12px;color:var(--md-primary)">
@@ -503,17 +517,22 @@ function stepSignups() {
       </div>
       <div class="stack-sm">
         ${list(draft.documents.map((doc, i) => html`
-          <div class="row" style="gap:8px;flex-wrap:nowrap">
-            <input class="spacer" type="text" value="${doc.title}"
+          <section class="document-editor card card-filled">
+          <div class="row" style="gap:8px">
+            <label class="field spacer"><span class="field-label">Document title</span><input type="text" value="${doc.title}" maxlength="160"
                    data-act-input="wizard-doc-title" data-index="${i}"
-                   style="padding:8px;border:1px solid var(--md-outline-variant);border-radius:var(--shape-xs);background:transparent;color:inherit;font:var(--body-medium)">
+                   ></label>
             <label class="row-tight" style="min-height:44px">
               <input type="checkbox" ${raw(doc.required ? 'checked' : '')}
                      data-act-change="wizard-doc-required" data-index="${i}">
               <span>Required</span>
             </label>
-            <button class="btn btn-icon" data-act="wizard-doc-remove" data-index="${i}" aria-label="Remove">${raw(icon('trash'))}</button>
-          </div>`))}
+            <button class="btn btn-icon" data-act="wizard-doc-remove" data-index="${i}" aria-label="Remove ${doc.title || 'document'}">${raw(icon('trash'))}</button>
+          </div>
+          <label class="field"><span class="field-label">Document text shown to players</span><textarea aria-label="Document text shown to players" rows="6" maxlength="30000" data-act-input="wizard-doc-body" data-index="${i}" placeholder="Paste the complete document here. Players read this before agreeing.">${documentText(doc, draft)}</textarea></label>
+          <button class="btn btn-text btn-sm" data-act="wizard-doc-preview" data-index="${i}">Preview document</button>
+          </section>`))}
+        ${draft.documents.length ? '' : html`<p class="body-small dim">No documents required. Add your own code of conduct or agreement if needed.</p>`}
         <button class="btn btn-text" data-act="wizard-doc-add">${raw(icon('plus'))} Add a document</button>
       </div>
       <p class="field-help" style="padding-left:0">
@@ -524,9 +543,7 @@ function stepSignups() {
       <div class="banner banner-warn" style="margin-top:12px">
         ${raw(icon('alert'))}
         <div class="body-small">
-          <b>If under-18s can enter, this is not enough on its own.</b>
-          A minor cannot give consent, so a waiver needs a guardian — and that is a real legal
-          question for your venue, not a checkbox. This records agreement; it does not make it valid.
+          This records agreement to your text. Use documents appropriate to your venue, including any guardian requirements.
         </div>
       </div>
     </div>
@@ -539,7 +556,7 @@ function stepSignups() {
         <p class="body-medium dim" style="margin:0 0 16px">
           Publishing generates a short invite code and a link. The code is readable over a PA
           and has no 0, O, 1 or I in it. Anyone can enter with either; you can also add people
-          yourself, in bulk, from a spreadsheet.
+          yourself at the desk using Add entrant.
         </p>
 
         <p class="label-large" style="margin-bottom:8px">Who can find it</p>
@@ -600,7 +617,7 @@ function stepPublish(ctx, game) {
         ${raw(summaryRow('Format', draft.format === 'double' ? 'Double elimination' : 'Single elimination'))}
         ${raw(summaryRow('Where', draft.venueType === 'online' ? 'Online' : draft.venue || 'A venue'))}
         ${raw(summaryRow('Starts', draft.startsAt.replace('T', ' ')))}
-        ${raw(summaryRow('Entry', draft.entryFee ? `$${draft.entryFee}` : 'Free'))}
+        ${raw(summaryRow('Entry', Number(draft.entryFee) ? formatMoney(Number(draft.entryFee), draft.currency) : 'Free'))}
         ${raw(summaryRow('Entrant capacity', draft.capacity ? `${draft.capacity} then waitlist` : 'No limit'))}
         ${draft.venueType === 'offline' ? raw(summaryRow('Stations', draft.stationCount || '—')) : ''}
         ${raw(summaryRow('Ruleset', ruleset ? `${ruleset.presetName} v${ruleset.presetVersion}${Object.keys(draft.overrides).length ? ` · ${Object.keys(draft.overrides).length} changed` : ''}` : '—'))}
@@ -656,7 +673,7 @@ function stepPublish(ctx, game) {
       ${raw(icon('check'))} ${publishing ? 'Creating…' : (auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event')}
     </button>
     <p class="body-small dim" style="text-align:center;margin-top:12px">
-      Nothing here is final — every setting stays editable while the event is running.
+      Event details and documents can be edited in Settings. Review the game and format before starting the bracket.
     </p>`;
 }
 
@@ -679,8 +696,10 @@ function validate(game) {
   if (auth.isRemote() && draft.capacity === '') {
     out.push('Connected events need an entrant capacity (2–256).');
   }
-  if (auth.isRemote() && draft.entryFee && Number(draft.entryFee) !== 0) {
-    out.push('Connected pilot events are free while payments are being built.');
+  if (draft.entryFee !== '' && !validAmount(draft.entryFee)) out.push('Entry fee must be a non-negative amount with up to two decimal places.');
+  if (!draft.startsAt || !Number.isFinite(new Date(draft.startsAt).getTime())) out.push('Choose a valid start date and time.');
+  for (const doc of draft.documents) {
+    if (!doc.title.trim() || !documentText(doc, draft)) out.push('Every document needs a title and its complete text. Remove unused documents.');
   }
   if (draft.venueType === 'offline' && (!Number.isInteger(Number(draft.stationCount))
     || Number(draft.stationCount) < 1 || Number(draft.stationCount) > 64)) {
@@ -702,7 +721,18 @@ function validate(game) {
    forgotten. */
 const rerender = () => { saveDraft(); window.dispatchEvent(new HashChangeEvent('hashchange')); };
 
-on('wizard-step', ({ step }) => { draft.step = Number(step); rerender(); });
+function changeStep(step) {
+  draft.step = Number(step);
+  rerender();
+  requestAnimationFrame(() => {
+    document.querySelector('.setup-heading')?.focus({ preventScroll: true });
+    document.querySelector('.setup-heading')?.scrollIntoView({ block: 'start' });
+  });
+}
+on('wizard-step', ({ step }) => changeStep(step));
+on('wizard-discard', () => dialog({ title: 'Discard this draft?', body: html`<p>Your unpublished event will be removed from this device.</p>`, actions: [
+  { label: 'Keep draft', kind: 'text' }, { label: 'Discard', kind: 'filled', onClick: () => { discardDraft(); rerender(); } },
+] }));
 
 on('wizard-game', ({ game }) => {
   const g = gameById(game);
@@ -712,8 +742,7 @@ on('wizard-game', ({ game }) => {
   draft.provisionalRulesReviewed = false;
   draft.platforms = g.platforms.length === 1 ? [g.platforms[0].value] : [];
   if (!draft.name) draft.name = `${g.short} Tuesdays #1`;
-  draft.step = 1;
-  rerender();
+  changeStep(1);
 });
 
 on('wizard-field', ({ field }, el) => { draft[field] = el.value; saveDraft(); });
@@ -776,7 +805,7 @@ on('wizard-provisional-review', (d, el) => {
 on('wizard-reset-field', ({ field }) => { delete draft.overrides[field]; rerender(); });
 
 on('wizard-doc-add', () => {
-  draft.documents.push({ id: store.uid('doc'), title: 'New document', required: false, version: 1 });
+  draft.documents.push({ id: store.uid('doc'), title: '', body: '', required: false, version: 1 });
   rerender();
 });
 on('wizard-doc-remove', ({ index }) => { draft.documents.splice(Number(index), 1); rerender(); });
@@ -786,6 +815,11 @@ on('wizard-doc-required', ({ index }, el) => {
   saveDraft();
 });
 on('wizard-doc-title', ({ index }, el) => { draft.documents[Number(index)].title = el.value; saveDraft(); });
+on('wizard-doc-body', ({ index }, el) => { draft.documents[Number(index)].body = el.value; saveDraft(); });
+on('wizard-doc-preview', ({ index }) => {
+  const doc = draft.documents[Number(index)];
+  dialog({ title: doc.title || 'Document preview', body: html`<div class="document-body">${documentText(doc, draft) || 'Add the complete document text before publishing.'}</div>`, actions: [{ label: 'Close', kind: 'text' }] });
+});
 
 /* --------------------------------------------------------------------------
    The sign-in gate
@@ -885,7 +919,7 @@ async function publish() {
         venueType: draft.venueType, venue: draft.venue.trim(), platforms: draft.platforms,
         startsAt: new Date(draft.startsAt).toISOString(),
         capacity: draft.capacity ? Number(draft.capacity) : null,
-        entryFee: 0, currency: draft.currency,
+        entryFee: Number(draft.entryFee) || 0, currency: draft.currency,
         visibility: draft.visibility === 'unlisted' ? 'unlisted' : 'public',
         presetId: draft.presetId || game.presets[0].id,
         overrides: draft.overrides, documents: draft.documents, stations,
@@ -969,7 +1003,7 @@ async function publish() {
             <p class="body-small" style="margin:4px 0 0">Add entrants from this computer and connect it to the venue TV for the room display. Other devices cannot join this event yet.</p>
           </div>
         </div>`}
-      <p class="body-small dim">Next: add entrants — one at a time, or paste a spreadsheet of them.</p>`,
+      <p class="body-small dim">${remote ? 'Next: share the link or use Add entrant at the desk.' : 'Next: add entrants one at a time, or paste a spreadsheet.'}</p>`,
     actions: [
       ...(remote ? [{ label: 'Copy the link', kind: 'text', onClick: async () => {
         const { copy } = await import('../lib/ui.js');
