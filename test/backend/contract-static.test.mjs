@@ -17,7 +17,10 @@ const guest = read('sql/staging/105_guest_join.sql');
 const admin = read('sql/staging/106_admin.sql');
 const submissions = read('sql/staging/107_match_submissions.sql');
 const withdrawals = read('sql/staging/108_withdrawals.sql');
-const run = read('test/backend/run.sql');
+const fullRun = read('test/backend/run.sql');
+assert.match(fullRun, /\\ir registration-run\.sql[\s\S]*\\ir admin-security\.sql/,
+  'the full harness must retain the registration and admin permission checks');
+const run = fullRun.replace('\\ir registration-run.sql', read('test/backend/registration-run.sql'));
 const adapter = read('lib/backend.js');
 
 assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*107_match_submissions\.sql[\s\S]*108_withdrawals\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,
@@ -137,3 +140,12 @@ assert.match(withdrawals, /old\.by_dq and not old\.superseded and new\.supersede
 assert.match(adapter, /call\('bkt_withdraw_entry'/);
 
 console.log('PASS backend static contract: migration order, RPC parity, fixed search paths, admin AAL2 boundary, and private moderation data');
+
+const registration = read('sql/staging/20261005202914_registration_ux.sql');
+assert.match(registration, /entry_payments enable row level security/);
+assert.match(registration, /revoke all on bkt_private\.entry_payments from public,anon,authenticated/);
+assert.match(registration, /public\.bkt_record_payment[\s\S]*security definer set search_path=pg_catalog/);
+assert.match(registration, /p_expected_revision<>v_event\.revision/);
+assert.match(registration, /p_entry\.player_id=bkt_private\.me\(\) or bkt_private\.is_staff/);
+assert.match(registration, /document_title,document_body/);
+assert.match(adapter, /call\('bkt_record_payment'/);

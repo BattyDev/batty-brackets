@@ -94,7 +94,7 @@ try {
       return event.inviteCode;
     }, DEMO_EVENT);
     await goTo(page, base, `#/join/${code}`);
-    report.ok('waitlisted entrants do not consume admitted capacity', (await page.locator('[data-act-submit="guest-join"] button').textContent()).includes('Join and start check-in'));
+    report.ok('waitlisted entrants do not consume admitted capacity', (await page.locator('[data-act-submit="guest-join"] button').textContent()).includes('Join the event'));
     await page.locator('[data-act-submit="guest-join"] input[name="tag"]').fill('Brand join probe');
     const entryState = () => page.evaluate(async (id) => {
       const store = await import('./lib/store.js');

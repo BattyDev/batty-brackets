@@ -634,6 +634,24 @@ a.card:hover, button.card:hover { box-shadow: var(--elev-2); }
 }
 .field textarea { min-height: 96px; resize: vertical; }
 .field select { appearance: none; cursor: pointer; padding-right: 44px; }
+.setup-actions {
+  --setup-rail: 0px;
+  position: fixed; bottom: 0; z-index: 10; justify-content: space-between;
+  left: calc(var(--setup-rail) + (100vw - var(--setup-rail)) / 2);
+  transform: translateX(-50%); width: min(760px, calc(100vw - var(--setup-rail)));
+  gap: 12px; margin-top: 24px; padding: 12px 16px;
+  background: var(--md-surface); border-top: 1px solid var(--md-outline-variant);
+}
+.setup-draft-status { margin-bottom: 12px; }
+.setup-heading { scroll-margin-top: 96px; }
+.document-body { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50dvh; overflow: auto; padding: 16px; background: var(--md-surface-container); border-radius: var(--shape-sm); }
+.document-editor textarea { width: 100%; }
+.setup-actions .btn { min-height: 48px; }
+@media (max-width: 599px) { .setup-actions { bottom: calc(80px + env(safe-area-inset-bottom)); } .setup-heading { scroll-margin-top: 144px; } }
+@media (min-width: 600px) { .setup-actions { --setup-rail: 88px; padding-inline: 24px; } }
+@media (min-width: 1000px) { .setup-actions { --setup-rail: 184px; padding-inline: 36px; } }
+.setup-workspace { padding-bottom: 180px; }
+.pane:has([data-act='generate-bracket']) { padding-bottom: 180px; }
 .field .select-arrow {
   position: absolute; right: 14px; top: 18px; pointer-events: none;
   color: var(--md-on-surface-variant);

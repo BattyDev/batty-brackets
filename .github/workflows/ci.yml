@@ -14,6 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  backend:
+    name: Backend permissions and registration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: disposable-test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute migrations and permission checks in disposable PostgreSQL
+        env:
+          PGPASSWORD: disposable-test
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f test/backend/registration-run.sql
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -48,7 +70,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: test
+    needs: [test, backend]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:

@@ -111,6 +111,31 @@ report.ok('document requirements changed in settings survive a reload',
   await savedRequirement.isChecked() === !wasRequired);
 await savedRequirement.setChecked(wasRequired);
 
+await goTo(page, base, `#/e/${DEMO_EVENT}/admin/entrants`);
+const paymentButton = page.locator('[data-act="toggle-paid"]').first();
+const paymentEntry = await paymentButton.getAttribute('data-id');
+await paymentButton.click();
+await page.getByLabel('Player charge (USD)', { exact: true }).fill('12.50');
+await page.getByLabel('Total amount received (USD)', { exact: true }).fill('5.25');
+await page.getByLabel('Payment note (optional)', { exact: true }).fill('Cash');
+await page.getByRole('button', { name: 'Save payment', exact: true }).click();
+await page.reload();
+report.ok('individual charges and partial payments survive reload', await page.evaluate(async id => {
+  const store = await import('./lib/store.js'); const row = store.get().entries[id];
+  return row.amountDue === 12.50 && row.amountPaid === 5.25 && row.paymentNote === 'Cash' && row.paidAt === null;
+}, paymentEntry));
+report.ok('roster shows the remaining amount with cents', /Partial.*7\.25/.test(await page.locator(`[data-act="toggle-paid"][data-id="${paymentEntry}"]`).innerText()));
+
+await goTo(page, base, `#/e/${DEMO_EVENT}/admin/settings`);
+await page.locator(`[data-act="event-document-edit"][data-document="${documentId}"]`).click();
+if (!await page.locator('#document-body').count()) throw new Error(`Document editor did not open: ${errors.join(' | ')}`);
+await page.getByLabel('Complete text shown to players', { exact: true }).fill('Updated conduct: respect players and follow station calls.');
+await page.getByRole('button', { name: 'Save document', exact: true }).click();
+report.ok('editing document text advances the version and clears old acceptance', await page.evaluate(async ({eventId, documentId}) => {
+  const store = await import('./lib/store.js'); const doc = store.getEvent(eventId).documents.find(d => d.id === documentId);
+  return doc.version === 3 && store.entriesFor(eventId).every(e => !e.signedDocuments.includes(documentId));
+}, { eventId: DEMO_EVENT, documentId }));
+
 report.noErrors(errors);
 await ctx.close();
 await browser.close();

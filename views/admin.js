@@ -32,6 +32,7 @@ import {
 } from '../lib/bracket.js';
 import { suggestionsFor, guidanceSummary, formatMoney, normaliseTag } from '../lib/guidance.js';
 import * as csv from '../lib/csv.js';
+import { documentText, paymentFor, validAmount } from '../lib/registration.js';
 import { gameHero } from '../data/themes.js';
 
 const TABS = [
@@ -76,7 +77,7 @@ const COLUMNS = [
   { key: 'tag', label: 'Tag', get: (r) => (r.player?.tag || '').toLowerCase() },
   { key: 'group', label: 'Team / venue', get: (r) => (r.entry.group || '~').toLowerCase() },
   { key: 'checkedIn', label: 'In', get: (r) => (r.entry.checkedInAt ? 0 : 1), numeric: true },
-  { key: 'paid', label: 'Paid', get: (r) => (r.entry.paidAt ? 0 : 1), numeric: true, needsFee: true },
+  { key: 'paid', label: 'Payment', get: (r, event) => paymentFor(r.entry, event).balance, numeric: true },
   { key: 'signed', label: 'Signed', get: (r, event) => missingDocs(r.entry, event).length, numeric: true },
   { key: 'contact', label: 'Contact', get: (r) => (r.player?.connections?.discord || r.player?.email || '~').toLowerCase() },
 ];
@@ -93,7 +94,7 @@ const missingDocs = (entry, event) => {
 const FILTERS = [
   { key: 'not-in', label: 'Not checked in', test: (r) => !r.entry.checkedInAt },
   { key: 'in', label: 'Checked in', test: (r) => Boolean(r.entry.checkedInAt) },
-  { key: 'unpaid', label: 'Owes', needsFee: true, test: (r) => !r.entry.paidAt },
+  { key: 'unpaid', label: 'Owes', test: (r, event) => !paymentFor(r.entry, event).paid },
   { key: 'unsigned', label: 'Not signed', test: (r, event) => missingDocs(r.entry, event).length > 0 },
   { key: 'waitlist', label: 'Waitlist', test: (r) => Boolean(r.entry.waitlisted) },
   { key: 'walkup', label: 'Walk-ups', test: (r) => Boolean(r.player?.claimable) },
@@ -414,7 +415,7 @@ function overviewTab(data, suggestions, ctx) {
         <div class="grid-cards">
           ${raw(statCard('Entrants', entries.length, event.capacity ? `of ${event.capacity} cap` : 'no cap', 'group'))}
           ${raw(statCard('Checked in', checkedIn, `${entries.length - checkedIn} still out`, 'check'))}
-          ${event.entryFee ? raw(statCard('Collected', formatMoney(paid * event.entryFee, event.currency), `${entries.length - paid} unpaid`, 'money')) : ''}
+          ${raw(statCard('Collected', formatMoney(entries.reduce((total, e) => total + paymentFor(e, event).received, 0), event.currency), `${entries.filter(e => !paymentFor(e, event).paid).length} outstanding`, 'money'))}
           ${bracket ? raw(statCard('Sets played', `${played}/${total}`, total - played ? `${total - played} to go` : 'all done', 'bracket')) : ''}
         </div>
       </section>
@@ -563,11 +564,10 @@ function entrantsTab(data) {
                       style="min-height:26px;padding:0 10px" aria-pressed="${Boolean(entry.checkedInAt)}"
                       aria-label="${player?.tag || 'Entrant'} is ${entry.checkedInAt ? 'checked in' : 'not checked in'} — activate to change"
                       >${entry.checkedInAt ? 'In' : 'Out'}</button></td>
-                  ${event.entryFee ? html`
-                    <td><button class="chip ${raw(entry.paidAt ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
-                        style="min-height:26px;padding:0 10px" aria-pressed="${Boolean(entry.paidAt)}"
-                        aria-label="${player?.tag || 'Entrant'} has ${entry.paidAt ? 'paid' : 'not paid'} — activate to change"
-                        >${entry.paidAt ? 'Paid' : 'Owes'}</button></td>` : ''}
+                  <td><button class="chip ${raw(paymentFor(entry, event).paid ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
+                        style="min-height:36px;padding:0 10px"
+                        aria-label="Edit payment for ${player?.tag || 'entrant'}"
+                        >${paymentFor(entry, event).due === 0 ? 'Free' : paymentFor(entry, event).paid ? 'Paid' : `${paymentFor(entry, event).received ? 'Partial' : 'Owes'} ${formatMoney(paymentFor(entry, event).balance, event.currency)}`}</button></td>
                   <td>${missing.length
                     ? html`<span class="chip chip-static chip-error" style="min-height:22px;padding:0 8px;font:var(--label-small)" title="${missing.map((d) => d.title).join(', ')}">${missing.length} missing</span>`
                     : html`<span class="chip chip-static chip-ok" style="min-height:22px;padding:0 8px;font:var(--label-small)">ok</span>`}</td>
@@ -746,10 +746,11 @@ function seedingTab(data) {
         </section>
       </div>
 
-      <div class="row" style="margin-top:24px">
+      <div class="row setup-actions" style="margin-top:24px">
         <button class="btn btn-filled btn-lg" data-act="generate-bracket" ${raw(pool.length < 2 ? 'disabled' : '')}>
-          ${raw(icon('bracket'))} ${bracket ? 'Regenerate the bracket' : 'Generate the bracket'}
+          ${raw(icon('bracket'))} ${bracket ? 'Regenerate the bracket' : 'Generate the bracket and start matches'}
         </button>
+        <span class="body-small dim">${pool.length} entrants · ${data.stations.length} stations · event moves to Running</span>
       </div>
     </div>`;
 }
@@ -846,6 +847,7 @@ function runTab(data) {
                 <div class="station-head">
                   ${raw(icon('station', 'icon-sm'))}
                   <span class="spacer">${station.label}</span>
+                  <button class="btn btn-icon" data-act="station-edit" data-id="${station.id}" aria-label="Edit ${station.label}">${raw(icon('settings', 'icon-sm'))}</button>
                   ${station.stream ? html`<span class="chip chip-static chip-info" style="min-height:20px;padding:0 6px;font:var(--label-small)">stream</span>` : ''}
                 </div>
                 ${match ? html`
@@ -1077,14 +1079,16 @@ function settingsTab(data) {
             <span class="field-label">Venue</span>
             <input type="text" value="${event.venue || ''}" data-act-change="event-field" data-field="venue">
           </label>
+          <label class="field"><span class="field-label">Starts (local time)</span><input type="datetime-local" value="${event.startsAt ? new Date(new Date(event.startsAt).getTime() - new Date(event.startsAt).getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}" data-act-change="event-field" data-field="startsAt"></label>
+          <fieldset class="stack-sm"><legend class="label-large">Platforms</legend>${list(game.platforms.map(platform => html`<label class="row-tight" style="min-height:44px"><input type="checkbox" ${raw((event.platforms || []).includes(platform.value) ? 'checked' : '')} data-act-change="event-platform" data-value="${platform.value}"><span>${platform.label}</span></label>`))}</fieldset>
           <div class="row" style="gap:12px">
             <label class="field spacer" style="min-width:130px">
-              <span class="field-label">Cap</span>
-              <input type="number" value="${event.capacity ?? ''}" data-act-change="event-field" data-field="capacity" data-type="number">
+              <span class="field-label">Entrant capacity</span>
+              <input type="number" min="2" max="256" value="${event.capacity ?? ''}" data-act-change="event-field" data-field="capacity" data-type="number">
             </label>
             <label class="field spacer" style="min-width:130px">
-              <span class="field-label">Entry fee</span>
-              <input type="number" value="${event.entryFee ?? 0}" data-act-change="event-field" data-field="entryFee" data-type="number">
+              <span class="field-label">Entry fee (${event.currency || 'USD'})</span>
+              <input type="number" min="0" step="0.01" value="${event.entryFee ?? 0}" data-act-change="event-field" data-field="entryFee" data-type="number">
             </label>
           </div>
 
@@ -1114,8 +1118,10 @@ function settingsTab(data) {
               <input type="checkbox" ${raw(doc.required ? 'checked' : '')}
                      data-act-change="event-document-required" data-document="${doc.id}">
               <span>${doc.title || 'Untitled document'} — required</span>
-            </label>`))}
+            </label>
+            <div class="row"><span class="body-small dim spacer">Version ${doc.version || 1} · ${documentText(doc, event) ? 'Text ready' : 'Missing document text'}</span><button class="btn btn-outlined btn-sm" data-act="event-document-edit" data-document="${doc.id}">Edit / preview ${doc.title || 'document'}</button></div>`))}
           ${!(event.documents || []).length ? html`<p class="body-small dim">This event has no documents.</p>` : ''}
+          <button class="btn btn-text" data-act="event-document-edit">${raw(icon('plus'))} Add a document</button>
         </div>
       </section>
 
@@ -1180,7 +1186,7 @@ function liveSetting(field, value, event, game) {
       <div>
         <p class="label-large" style="margin-bottom:6px">${field.label}</p>
         <label class="field">
-          <select data-act-change="live-setting" data-field="${field.key}" data-type="choice">
+          <select aria-label="${field.label}" data-act-change="live-setting" data-field="${field.key}" data-type="choice">
             ${list(field.options.map((opt) => html`
               <option value="${opt.value}" ${raw(opt.value === value ? 'selected' : '')}>${opt.label}</option>`))}
           </select>
@@ -1189,7 +1195,7 @@ function liveSetting(field, value, event, game) {
         ${field.help ? html`<p class="field-help">${field.help}</p>` : ''}
       </div>`;
   }
-  if (field.type === 'multi') return '';
+  if (field.type === 'multi') return html`<fieldset class="stack-sm"><legend class="label-large">${field.label}</legend>${list(field.options.map(opt => html`<label class="row-tight" style="min-height:44px"><input type="checkbox" ${raw((value || []).includes(opt.value) ? 'checked' : '')} data-act-change="live-setting" data-field="${field.key}" data-type="multi" data-value="${opt.value}"><span>${opt.label}</span></label>`))}</fieldset>`;
   if (field.type === 'longtext') {
     return html`
       <label class="field">
@@ -1285,12 +1291,38 @@ on('toggle-checkin', ({ id }) => {
   store.apply('entries', id, { checkedInAt: entry.checkedInAt ? null : new Date().toISOString() });
 });
 
-on('toggle-paid', ({ id }) => {
+async function recordPayment(id, payment) {
   const entry = store.get().entries[id];
-  store.apply('entries', id, { paidAt: entry.paidAt ? null : new Date().toISOString() });
+  const event = store.getEvent(entry.eventId);
+  if (auth.isRemote()) await store.recordPaymentRemote(id, payment);
+  else store.apply('entries', id, { amountDue: payment.amountDue, amountPaid: payment.amountPaid,
+    paymentNote: payment.note || '', paidAt: payment.amountPaid >= (payment.amountDue ?? event.entryFee ?? 0) ? new Date().toISOString() : null });
+}
+
+on('toggle-paid', ({ id }) => {
+  document.querySelector('dialog[open]')?.close();
+  const entry = store.get().entries[id];
+  const event = store.getEvent(entry.eventId);
+  const payment = paymentFor(entry, event);
+  dialog({ title: `Payment · ${store.getPlayer(entry.playerId)?.tag || 'Entrant'}`, body: html`
+    <p class="body-small dim">Manual record of money collected by the host. This does not charge the player.</p>
+    <label class="field"><span class="field-label">Player charge (${event.currency || 'USD'})</span><input id="payment-due" type="number" min="0" step="0.01" value="${payment.due}"></label>
+    <label class="field"><span class="field-label">Total amount received (${event.currency || 'USD'})</span><input id="payment-received" type="number" min="0" step="0.01" value="${payment.received}"></label>
+    <label class="field"><span class="field-label">Payment note (optional)</span><input id="payment-note" maxlength="500" value="${entry.paymentNote || ''}" placeholder="Cash, transfer, discount, or correction"></label>
+    <p class="field-help">Set a charge of 0 for a waived entry. Enter the total received, including previous partial payments.</p>
+    <p id="payment-error" role="alert" class="body-small"></p>`, actions: [
+      { label: 'Cancel', kind: 'text' }, { label: 'Save payment', kind: 'filled', onClick: async dlg => {
+        const due = dlg.querySelector('#payment-due').value;
+        const received = dlg.querySelector('#payment-received').value;
+        if (!validAmount(due) || !validAmount(received)) { dlg.querySelector('#payment-error').textContent = 'Use non-negative amounts with up to two decimal places.'; return false; }
+        try { await recordPayment(id, { amountDue: Number(due), amountPaid: Number(received), note: dlg.querySelector('#payment-note').value.trim() }); }
+        catch (error) { dlg.querySelector('#payment-error').textContent = String(error.message || error); return false; }
+        snack('Payment recorded'); rerender(); return true;
+      } },
+    ] });
 });
 
-on('bulk', ({ op }) => {
+on('bulk', async ({ op }) => {
   const ids = [...ui.selected];
   if (!ids.length) return;
   const now = new Date().toISOString();
@@ -1301,8 +1333,10 @@ on('bulk', ({ op }) => {
     store.applyMany(ids.map((id) => ({ collection: 'entries', id, patch: { checkedInAt: op === 'checkin' ? now : null } })));
     snack(`${ids.length} ${op === 'checkin' ? 'checked in' : 'un-checked in'}`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
   } else if (op === 'paid') {
-    store.applyMany(ids.map((id) => ({ collection: 'entries', id, patch: { paidAt: now } })));
-    snack(`${ids.length} marked paid`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
+    try {
+      for (const id of ids) { const entry = store.get().entries[id]; const due = paymentFor(entry, store.getEvent(entry.eventId)).due; await recordPayment(id, { amountDue: entry.amountDue ?? null, amountPaid: due, note: entry.paymentNote || '' }); }
+      snack(`${ids.length} marked paid`);
+    } catch (error) { snack(`Payment update stopped: ${error.message}`); }
   } else if (op === 'seed-sequential') {
     /* Re-seed the SELECTION in their current relative order, starting at the
        lowest seed in the selection. Used to close gaps after removing people
@@ -1363,10 +1397,11 @@ on('entrant-add', () => {
       </p>`,
     actions: [
       { label: 'Cancel', kind: 'text' },
-      { label: 'Add', kind: 'filled', onClick: (dlg) => {
+      { label: 'Add', kind: 'filled', onClick: async (dlg) => {
         const tag = dlg.querySelector('#tag').value.trim();
         if (!tag) return false;
-        addWalkUp(eventId, tag, dlg.querySelector('#group').value.trim());
+        const result = await addWalkUp(eventId, tag, dlg.querySelector('#group').value.trim());
+        if (!result) return false;
         rerender();
         return true;
       } },
@@ -1404,7 +1439,7 @@ async function addWalkUp(eventId, tag, group) {
     seed: entries.length + 1,
     group: group || null,
     registeredAt: new Date().toISOString(),
-    checkedInAt: new Date().toISOString(),
+    checkedInAt: !waitlisted && !(event.documents || []).some(doc => doc.required) ? new Date().toISOString() : null,
     source: 'door',
     waitlisted,
     signedDocuments: [],
@@ -1424,6 +1459,8 @@ on('entrant-menu', ({ id }) => {
     body: html`
       <div class="list">
         <a class="list-item" href="#/p/${entry.playerId}">${raw(icon('person'))}<span class="headline">Open their profile</span></a>
+        ${entry.waitlisted ? html`<button class="list-item" data-act="entrant-admit" data-id="${id}">${raw(icon('check'))}<span class="headline">Admit from waitlist</span></button>` : ''}
+        <button class="list-item" data-act="toggle-paid" data-id="${id}">${raw(icon('money'))}<span class="headline">Edit payment amount</span></button>
         ${player?.claimable ? html`
           <button class="list-item" data-act="copy-text" data-text="${player.claimCode}">
             ${raw(icon('key'))}
@@ -1440,6 +1477,15 @@ on('entrant-menu', ({ id }) => {
   /* Dialogs are appended outside main and the chrome delegation roots. Without
      their own binding the roster's DQ button looked active but did nothing. */
   bindDelegation(menu);
+});
+
+on('entrant-admit', ({ id }) => {
+  const entry = store.get().entries[id]; const event = store.getEvent(entry.eventId);
+  if (!entry.waitlisted) return;
+  if (!['registration', 'checkin', 'seeding'].includes(event.status) || store.get().brackets[event.id]) { snack('Admit waitlisted players before generating the bracket.'); return; }
+  if (event.capacity && store.entriesFor(event.id).filter(e => !e.waitlisted).length >= event.capacity) { snack('No spot available. Remove an entrant or increase capacity first.'); return; }
+  store.apply('entries', id, { waitlisted: false, checkedInAt: null });
+  document.querySelector('dialog[open]')?.close(); snack('Admitted — the player can complete check-in'); rerender();
 });
 
 /* ---- import / export ---- */
@@ -1919,7 +1965,7 @@ on('report-open', ({ match: matchId, submission: submissionId }) => {
   dialog({
     title: match.name,
     body: html`
-      <p class="body-medium dim">First to ${target} — best of ${target * 2 - 1}. Tap the winner's score.</p>
+      <p class="body-medium dim">First to ${target} — best of ${target * 2 - 1}. Choose each player's score, then review the result.</p>
       <div class="stack" style="margin:16px 0">
         ${list([[a, 'a'], [b, 'b']].map(([slot, side]) => html`
           <div class="card card-outlined">
@@ -1933,6 +1979,7 @@ on('report-open', ({ match: matchId, submission: submissionId }) => {
             </div>
           </div>`))}
       </div>
+      <p id="result-preview" class="body-medium" aria-live="polite">Choose scores to see who advances.</p>
       ${submissionId ? '' : html`<button class="btn btn-danger-text btn-block" id="dq-a">Disqualify ${nameOf(a.entrantId)}</button>
       <button class="btn btn-danger-text btn-block" id="dq-b">Disqualify ${nameOf(b.entrantId)}</button>`}
       ${match.state === 'complete' ? html`
@@ -1969,6 +2016,10 @@ on('report-open', ({ match: matchId, submission: submissionId }) => {
         && !dlg.querySelector(`[data-score-side="${other}"][aria-pressed="true"]`)) {
         dlg.querySelector(`[data-score-side="${other}"][data-score="0"]`)?.setAttribute('aria-pressed', 'true');
       }
+      const scoreA = Number(dlg.querySelector('[data-score-side="a"][aria-pressed="true"]')?.dataset.score ?? -1);
+      const scoreB = Number(dlg.querySelector('[data-score-side="b"][aria-pressed="true"]')?.dataset.score ?? -1);
+      dlg.querySelector('#result-preview').textContent = scoreA >= 0 && scoreB >= 0 && Math.max(scoreA, scoreB) === target && scoreA !== scoreB
+        ? `${nameOf(scoreA > scoreB ? a.entrantId : b.entrantId)} wins ${Math.max(scoreA, scoreB)}–${Math.min(scoreA, scoreB)} and advances.` : 'Choose a winning score and the other player’s score.';
     }
   });
   dlg.querySelector('#dq-a')?.addEventListener('click', () => { saveResult(matchId, b.entrantId, 0, target, true); dlg.close(); });
@@ -2091,14 +2142,69 @@ on('event-visibility', ({ value }) => {
 });
 
 on('event-field', ({ field, type }, el) => {
-  const value = type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
+  let value = type === 'number' ? (el.value === '' ? null : Number(el.value)) : el.value;
+  const event = store.getEvent(currentEventId());
+  let error = '';
+  if (field === 'name' && !String(value).trim()) error = 'Enter an event name.';
+  if (field === 'entryFee' && !validAmount(el.value)) error = 'Use a non-negative fee with up to two decimal places.';
+  if (field === 'capacity' && (auth.isRemote() || el.value !== '') && (!Number.isInteger(value) || value < 2 || value > 256)) error = 'Capacity must be a whole number from 2 to 256.';
+  if (field === 'capacity' && value && value < store.entriesFor(event.id).filter(e => !e.waitlisted).length) error = 'Capacity cannot be lower than the admitted entrant count.';
+  if (field === 'startsAt') { if (!value || !Number.isFinite(new Date(value).getTime())) error = 'Choose a valid start time.'; else value = new Date(value).toISOString(); }
+  if (error) { snack(error); rerender(); return; }
   store.apply('events', currentEventId(), { [field]: value });
+});
+
+on('event-platform', ({ value }, el) => {
+  const event = store.getEvent(currentEventId()); const platforms = new Set(event.platforms || []);
+  if (el.checked) platforms.add(value); else platforms.delete(value);
+  if (!platforms.size && event.venueType === 'online') { snack('Online events need at least one platform.'); rerender(); return; }
+  store.apply('events', event.id, { platforms: [...platforms] });
+});
+
+on('station-edit', ({ id }) => {
+  const station = store.get().stations[id]; const event = store.getEvent(station.eventId); const game = gameById(event.gameId);
+  dialog({ title: 'Edit station', body: html`
+    <label class="field"><span class="field-label">Station label</span><input id="station-label" maxlength="120" value="${station.label}"></label>
+    <label class="field"><span class="field-label">Platform</span><select id="station-platform"><option value="">Any platform</option>${list(game.platforms.map(platform => html`<option value="${platform.value}" ${raw(station.platform === platform.value ? 'selected' : '')}>${platform.label}</option>`))}</select></label>`, actions: [
+      { label: 'Cancel', kind: 'text' }, { label: 'Save station', kind: 'filled', onClick: dlg => {
+        const label = dlg.querySelector('#station-label').value.trim(); if (!label) { snack('Enter a station label.'); return false; }
+        store.apply('stations', id, { label, platform: dlg.querySelector('#station-platform').value || null }); snack('Station updated'); rerender(); return true;
+      } },
+    ] });
+});
+
+on('event-document-edit', ({ document: documentId }) => {
+  const eventId = currentEventId(); const event = store.getEvent(eventId);
+  const old = event.documents?.find(doc => doc.id === documentId);
+  dialog({ title: old ? `Edit ${old.title}` : 'Add a document', body: html`
+    <label class="field"><span class="field-label">Document title</span><input id="document-title" maxlength="160" value="${old?.title || ''}"></label>
+    <label class="field"><span class="field-label">Complete text shown to players</span><textarea id="document-body" aria-label="Complete text shown to players" rows="9" maxlength="30000">${documentText(old, event)}</textarea></label>
+    <label class="row-tight" style="min-height:44px"><input id="document-required" type="checkbox" ${raw(old?.required ? 'checked' : '')}><span>Required before check-in</span></label>
+    <p class="field-help">Editing a title or text creates a new version. Existing agreements stay recorded; players must sign the new version.</p>
+    <p id="document-error" role="alert"></p>`, actions: [
+      { label: 'Cancel', kind: 'text' }, { label: 'Preview', kind: 'tonal', onClick: dlg => {
+        let preview = dlg.querySelector('.document-body');
+        if (!preview) { preview = document.createElement('div'); preview.className = 'document-body'; dlg.querySelector('#document-error').after(preview); }
+        preview.textContent = dlg.querySelector('#document-body').value || 'Add the complete text before saving.'; return false;
+      } }, { label: 'Save document', kind: 'filled', onClick: dlg => {
+        const title = dlg.querySelector('#document-title').value.trim(); const body = dlg.querySelector('#document-body').value.trim();
+        if (!title || !body) { dlg.querySelector('#document-error').textContent = 'Enter a title and the complete document text.'; return false; }
+        const changed = old && (old.title !== title || documentText(old, event) !== body);
+        const doc = { id: old?.id || store.uid('doc'), title, body, required: dlg.querySelector('#document-required').checked, version: (old?.version || 1) + (changed ? 1 : 0) };
+        const current = store.getEvent(eventId);
+        const documents = old ? current.documents.map(item => item.id === old.id ? doc : item) : [...(current.documents || []), doc];
+        const writes = [{ collection: 'events', id: eventId, patch: { documents } }];
+        if (changed) for (const entry of store.entriesFor(eventId)) writes.push({ collection: 'entries', id: entry.id, patch: { signedDocuments: (entry.signedDocuments || []).filter(id => id !== doc.id) } });
+        store.applyMany(writes); snack('Document saved'); rerender(); return true;
+      } },
+    ] });
 });
 
 on('event-document-required', ({ document }, el) => {
   const eventId = currentEventId();
   const event = store.getEvent(eventId);
   if (!(event.documents || []).some((doc) => doc.id === document)) return;
+  if (el.checked && !documentText(event.documents.find(doc => doc.id === document), event)) { snack('Add document text before making it required.'); rerender(); return; }
   const documents = event.documents.map((doc) => doc.id === document
     ? { ...doc, required: el.checked } : { ...doc });
   store.apply('events', eventId, { documents });
@@ -2111,6 +2217,7 @@ on('live-setting', ({ field, type }, el) => {
   let next;
   if (type === 'toggle') next = el.checked;
   else if (type === 'number') next = Number(el.value);
+  else if (type === 'multi') { const values = new Set(data.ruleset.values[field] || []); if (el.checked) values.add(el.dataset.value); else values.delete(el.dataset.value); next = [...values]; }
   else next = el.value;
 
   const overrides = { ...(data.event.overrides || {}) };
@@ -2178,7 +2285,7 @@ on('entrant-dq', ({ id }) => {
 
 /* ---- guidance actions ---- */
 
-on('guide-action', ({ suggestion, actionId, payload }) => {
+on('guide-action', async ({ suggestion, actionId, payload }) => {
   const data = contextFor(currentEventId());
   const args = JSON.parse(payload || '{}');
   const eventId = data.event.id;
@@ -2279,18 +2386,20 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
     case 'view-missing':
     case 'view-missing-ids':
     case 'view-unsigned':
+      ui.filters = new Set(actionId === 'view-unsigned' ? ['unsigned'] : ['review-missing', 'view-missing'].includes(actionId) ? ['not-in'] : []);
+      ui.search = ''; ui.selected.clear();
       window.location.hash = `#/e/${eventId}/admin/entrants`;
       return;
 
     case 'open-payments':
+      ui.filters = new Set(['unpaid']); ui.search = ''; ui.selected.clear();
       window.location.hash = `#/e/${eventId}/admin/entrants`;
       return;
 
     case 'mark-all-paid': {
-      const unpaid = data.entries.filter((e) => e.checkedInAt && !e.paidAt);
-      store.checkpoint(`marked ${unpaid.length} paid`, unpaid.map((e) => ({ collection: 'entries', id: e.id })));
-      store.applyMany(unpaid.map((e) => ({ collection: 'entries', id: e.id, patch: { paidAt: new Date().toISOString() } })));
-      snack(`${unpaid.length} marked paid`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
+      const unpaid = data.entries.filter((e) => !e.waitlisted && e.checkedInAt && !paymentFor(e, data.event).paid);
+      try { for (const entry of unpaid) await recordPayment(entry.id, { amountDue: entry.amountDue ?? null, amountPaid: paymentFor(entry, data.event).due, note: entry.paymentNote || '' }); snack(`${unpaid.length} marked paid`); }
+      catch (error) { snack(`Payment update stopped: ${error.message}`); }
       break;
     }
 
@@ -2310,9 +2419,10 @@ on('guide-action', ({ suggestion, actionId, payload }) => {
     case 'ping-players':
     case 'chase-signatures':
     case 'request-ids':
-      /* Not wired to a bot yet. Saying so is better than a button that looks
-         like it did something -- see the README on what is and is not built. */
-      snack('Notifications need the Discord bot, which is not built yet. See the README.');
+      { const { copy } = await import('../lib/ui.js');
+        const link = data.event.inviteCode ? joinUrl(data.event.inviteCode) : '';
+        await copy(`${data.event.name}: ${actionId === 'chase-signatures' ? 'Please review and sign the required documents.' : 'Please check in with the host before matches start.'}${link ? ` ${link}` : ''}`);
+        snack('Reminder copied — paste it into your event chat'); }
       return;
 
     case 'raise-tolerance':

@@ -52,7 +52,7 @@ select public.bkt_identity('Owner')->>'id' as owner_id \gset
 select pg_temp.assert_true(public.bkt_identity()->>'id'= :'owner_id','identity idempotent');
 select pg_temp.assert_true(:'owner_id'<>'00000000-0000-0000-0000-000000000001','player separate from auth');
 select public.bkt_create_event('10000000-0000-0000-0000-000000000001',
- '{"org_name":"One","name":"Public","game_id":"tokon","capacity":2,"format":"single","venue_type":"offline","venue":"Hall","platforms":["ps5"],"starts_at":"2026-10-01T18:00:00Z","entry_fee":0,"currency":"USD","preset_id":"local","overrides":{"dq":300},"documents":[{"id":"conduct","version":1,"required":true}],"stations":[{"label":"Stream","platform":"ps5"}]}') as created \gset
+ '{"org_name":"One","name":"Public","game_id":"tokon","capacity":2,"format":"single","venue_type":"offline","venue":"Hall","platforms":["ps5"],"starts_at":"2026-10-01T18:00:00Z","entry_fee":0,"currency":"USD","preset_id":"local","overrides":{"dq":300},"documents":[{"id":"conduct","title":"Code of conduct","body":"Respect players and follow host instructions.","version":1,"required":true}],"stations":[{"label":"Stream","platform":"ps5"}]}') as created \gset
 select pg_temp.assert_true((:'created'::jsonb->'event'->>'status')='registration','server status');
 select pg_temp.assert_true((:'created'::jsonb->'stations'->0->>'label')='Stream','station labels roundtrip');
 select public.bkt_create_event('10000000-0000-0000-0000-000000000002',
@@ -63,7 +63,7 @@ select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-
 select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
  '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"owner_id":"spoof"}')$q$);
 select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
- '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"entry_fee":10}')$q$);
+ '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"entry_fee":-1}')$q$);
 select pg_temp.fails($q$select public.bkt_create_event('10000000-0000-0000-0000-000000000003',
  '{"org_name":"One","name":"Bad","game_id":"tokon","capacity":2,"documents":[{"id":"conduct","version":1},{"id":"conduct","version":1}]}')$q$);
 select pg_temp.assert_true(jsonb_array_length(public.bkt_list_events()->'events')=2,'owner sees hidden');

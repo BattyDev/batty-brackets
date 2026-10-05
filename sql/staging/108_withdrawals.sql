@@ -68,7 +68,7 @@ begin
    select type into v_bracket_type from public.bkt_brackets where event_id=p_event_id;
    select count(*) into v_losses from public.bkt_results where event_id=p_event_id
      and loser_player_id=v_me and not superseded;
-   if v_losses >= case when v_bracket_type='double' then 2 else 1 end then
+   if v_losses >= (case when v_bracket_type='double' then 2 else 1 end) then
      raise exception 'already_eliminated' using errcode='55000'; end if;
    v_status:='pending';
  else

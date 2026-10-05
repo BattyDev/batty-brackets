@@ -26,6 +26,8 @@ import { gameHero, gameMark } from '../data/themes.js';
 import { standings } from '../lib/bracket.js';
 import { formatMoney } from '../lib/guidance.js';
 import { reportButton } from './report.js';
+import { guestForm } from './home.js';
+import { documentText, paymentFor } from '../lib/registration.js';
 
 export function view(ctx) {
   const event = store.getEvent(ctx.params.eventId);
@@ -112,10 +114,11 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
         ${raw(eventHeader(event, game, entries))}
         <div class="card card-elevated" style="margin-top:16px;text-align:center">
           <p class="eyebrow">YOUR EVENT COMPANION</p><h2 class="title-large">Your next set starts here.</h2>
-          <p class="body-large">Sign in to see your entry, check-in tasks, and station calls.</p>
+          <p class="body-large">Enter with your nickname, then follow check-in tasks and station calls here.</p>
           <p class="body-small dim" style="margin-top:8px">Signing in does not enter you automatically. You will review and confirm first.</p>
           <button class="btn btn-filled btn-lg" data-act="sign-in" style="margin-top:8px">Sign in</button>
         </div>
+        ${['registration', 'checkin'].includes(event.status) ? raw(guestForm(event, Boolean(event.capacity && entries.filter(e => !e.waitlisted).length >= event.capacity))) : ''}
         ${!store.syncState().configured ? html`
           <div class="banner banner-info" style="margin-top:16px">${raw(icon('station'))}
             <div><b>On this device only</b><p class="body-small" style="margin:4px 0 0">This copy is not connected to a server. Another phone cannot open or join this event; ask the host to add you at the desk.</p></div>
@@ -125,7 +128,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 
   if (!myEntry) {
     const full = event.capacity && entries.filter(e => !e.waitlisted).length >= event.capacity;
-    const open = event.status === 'registration';
+    const open = ['registration', 'checkin'].includes(event.status);
     return html`
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
@@ -176,6 +179,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       ${withdrawal ? html`<div class="banner ${raw(withdrawal.status === 'failed' ? 'banner-warn' : 'banner-info')}" role="status" style="margin-bottom:16px"><div><b>Withdrawal</b><p class="body-small">${withdrawal.status === 'pending' ? 'Request sent. The host must record a DQ or forfeit in your next open set; the bracket has not changed yet.' : withdrawal.status === 'resolved' ? 'The host recorded your DQ. Check the bracket for your opponent’s next state.' : withdrawal.status === 'sending' ? 'Sending your withdrawal request…' : withdrawal.status === 'failed' ? 'Delivery was not confirmed. Retry the saved request when connected.' : 'Your entry was withdrawn before bracket generation.'}</p>${withdrawal.status === 'failed' ? html`<button class="btn btn-filled btn-sm" data-act="withdraw-entry" data-event="${event.id}">Retry withdrawal</button>` : ''}</div></div>` : ''}
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
       ${needsEntryAction ? raw(nextTaskCard({ event, myEntry, unsigned })) : ''}
+      ${Number(event.entryFee) || myEntry.amountDue || myEntry.amountPaid ? html`<section class="card card-outlined" style="margin-bottom:16px"><b class="title-medium">Entry payment</b><p class="body-medium">${formatMoney(paymentFor(myEntry, event).received, event.currency)} recorded · ${formatMoney(paymentFor(myEntry, event).balance, event.currency)} remaining</p><p class="body-small dim">Pay the host at the desk. Ask them to update your payment record.</p></section>` : ''}
       ${!current && !next && !waiting && !out && !needsEntryAction ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Finish required consent or check in here when it opens.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
       ${current ? html`
         <section class="card card-elevated next-set" aria-labelledby="current-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
@@ -494,6 +498,7 @@ function rulesTab({ event, game, ruleset }) {
           </div>` : ''}
       </div>
 
+      ${(event.documents || []).length ? html`<section class="rules-group"><h3>Event documents</h3>${list(event.documents.map(doc => html`<details class="card card-outlined" style="margin-bottom:8px"><summary>${doc.title} · v${doc.version || 1}${doc.required ? ' · required' : ''}</summary><div class="document-body" style="margin-top:12px">${documentText(doc, event) || 'The host has not added this document’s text yet.'}</div></details>`))}</section>` : ''}
       ${list(game.settingGroups
         .filter((group) => fieldVisible(group, context))
         .map((group) => html`
@@ -633,14 +638,11 @@ on('sign-doc', ({ entry: entryId, doc: docId }) => {
   const event = store.getEvent(entry.eventId);
   const doc = (event.documents || []).find((d) => d.id === docId);
   const me = auth.currentPlayer();
-  const game = gameById(event.gameId);
-  const ruleset = game ? resolveRuleset(game, event.presetId, event.overrides || {}) : null;
-
-  /* The code of conduct lives in the ruleset, so it is versioned with it. */
-  const text = docId === 'doc_coc'
-    ? (ruleset?.values?.codeOfConduct
-      || 'The organiser has not written a code of conduct for this event. Sign only if you are happy to be bound by whatever they tell you on the day.')
-    : `${doc?.title}. The organiser has not attached text to this document yet.`;
+  const text = documentText(doc, event);
+  if (!doc || !text) {
+    snack('This document has no text yet. Ask the host to add it before signing.');
+    return;
+  }
 
   dialog({
     title: doc?.title || 'Document',
@@ -666,7 +668,7 @@ on('sign-doc', ({ entry: entryId, doc: docId }) => {
             store.apply('signatures', sigId, {
               id: sigId, entryId, eventId: entry.eventId, playerId: entry.playerId,
               documentId: docId, documentVersion: doc?.version ?? 1,
-              typedName: name, signedAt: new Date().toISOString(),
+              typedName: name, signedAt: new Date().toISOString(), documentBody: text, documentTitle: doc.title,
             });
             store.apply('entries', entryId, {
               signedDocuments: [...new Set([...(entry.signedDocuments || []), docId])],
