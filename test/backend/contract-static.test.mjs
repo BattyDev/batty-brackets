@@ -17,7 +17,10 @@ const guest = read('sql/staging/105_guest_join.sql');
 const admin = read('sql/staging/106_admin.sql');
 const submissions = read('sql/staging/107_match_submissions.sql');
 const withdrawals = read('sql/staging/108_withdrawals.sql');
-const run = read('test/backend/run.sql');
+const fullRun = read('test/backend/run.sql');
+assert.match(fullRun, /\\ir registration-run\.sql[\s\S]*\\ir admin-security\.sql/,
+  'the full harness must retain the registration and admin permission checks');
+const run = fullRun.replace('\\ir registration-run.sql', read('test/backend/registration-run.sql'));
 const adapter = read('lib/backend.js');
 
 assert.match(run, /100_foundation\.sql[\s\S]*101_commands\.sql[\s\S]*102_claims\.sql[\s\S]*103_operations\.sql[\s\S]*104_hardening\.sql[\s\S]*105_guest_join\.sql[\s\S]*106_admin\.sql[\s\S]*107_match_submissions\.sql[\s\S]*108_withdrawals\.sql[\s\S]*security\.sql[\s\S]*admin-security\.sql/,

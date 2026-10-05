@@ -21,7 +21,7 @@ assert.equal(
 );
 
 const workflow = read('.github/workflows/ci.yml');
-assert.match(workflow, /needs: test/);
+assert.match(workflow, /needs: \[test, backend\]/);
 assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
 assert.match(workflow, /pages: write/);
 assert.match(workflow, /id-token: write/);

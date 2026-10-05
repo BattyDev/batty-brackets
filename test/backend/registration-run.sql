@@ -1,0 +1,16 @@
+\set ON_ERROR_STOP on
+-- Focused permissions/document/payment gate. run.sql also runs platform-admin checks.
+\ir bootstrap.sql
+set bkt.staging='on';
+\ir ../../sql/staging/100_foundation.sql
+\ir ../../sql/staging/101_commands.sql
+\ir ../../sql/staging/102_claims.sql
+\ir ../../sql/staging/103_operations.sql
+\ir ../../sql/staging/104_hardening.sql
+\ir ../../sql/staging/105_guest_join.sql
+\ir ../../sql/staging/106_admin.sql
+\ir ../../sql/staging/107_match_submissions.sql
+\ir ../../sql/staging/108_withdrawals.sql
+\ir ../../sql/staging/20261005202914_registration_ux.sql
+\ir security.sql
+\ir registration-security.sql
