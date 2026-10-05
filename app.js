@@ -985,7 +985,15 @@ on('undo', () => {
      a hash does. */
   const params = new URLSearchParams(window.location.search);
   const joinCode = params.get('join');
-  if (joinCode) go(`/join/${joinCode.toUpperCase()}`, { replace: true });
+  if (joinCode) {
+    // Consume the shortcut once. Keeping it in the URL sends a player back to
+    // joining whenever they refresh their payment, check-in, or called set.
+    params.delete('join');
+    const query = params.toString();
+    const hash = window.location.hash;
+    history.replaceState(history.state, '', `${window.location.pathname}${query ? `?${query}` : ''}${hash}`);
+    if (!hash || hash === '#' || hash === '#/') go(`/join/${joinCode.toUpperCase()}`, { replace: true });
+  }
 }());
 
 export { store, auth };

@@ -47,7 +47,8 @@ async function exercise(width) {
     const store = await import('./lib/store.js');
     store.apply('events', eventId, { status: 'registration' }, { queueIt: false });
   }, DEMO_EVENT);
-  await goTo(page, base, '#/join/TKN14B');
+  await page.goto(`${base}index.html?demo=1&join=TKN14B`);
+  await page.waitForSelector('[data-act-submit="guest-join"]');
 
   report.ok(`${width}px: invite resolves to the intended event`,
     (await page.locator('main').innerText()).includes('Tokon Tuesdays #14'));
@@ -68,6 +69,10 @@ async function exercise(width) {
   }, DEMO_EVENT));
 
   await page.waitForSelector('.player-now');
+  report.ok(`${width}px: invite query is consumed after arrival`, !new URL(page.url()).searchParams.has('join'));
+  await page.reload();
+  await page.waitForSelector('.player-now');
+  report.ok(`${width}px: refreshing preserves the current event screen`, new URL(page.url()).hash === `#/e/${DEMO_EVENT}`);
   report.ok(String(width) + 'px: joining does not interrupt with an account-upgrade dialog',
     await page.getByText('You’re in — save your record', { exact: true }).count() === 0);
   report.ok(String(width) + 'px: consent stays available while rules and bracket stay secondary',
