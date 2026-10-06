@@ -294,4 +294,37 @@ assert.ok(active.entryFor(eventId, playerId), 'active request keeps the bracket 
 assert.equal((await active.withdrawRemoteEntry(eventId)).status, 'pending');
 assert.equal(withdrawalCalls, 2, 'repeat taps do not send another active request');
 
+// Exercise actual SQL column decoding before cache validation, then reload the
+// durable snapshot. A nullable optional column must not erase a saved bracket.
+const { createBackend } = await import('../lib/backend.js');
+const { singleElimination, doubleElimination } = await import('../lib/bracket.js');
+const seeds = [entryId, '30000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000005'].map(id => ({ id }));
+const bracketFixtures = [
+  { built: singleElimination(seeds.slice(0, 2)), losers: null },
+  { built: doubleElimination(seeds), losers: null }, // already stored before this fix
+  { built: doubleElimination(seeds.slice(0, 2)), losers: 0 },
+  { built: doubleElimination(seeds), losers: 2 },
+].map((fixture, i) => ({ ...fixture, id: `40000000-0000-4000-8000-00000000000${i}` }));
+const bracketProject = 'https://bracket-roundtrip.supabase.co';
+const bracketStore = await import(`../lib/store.js?bracket-roundtrip=${Date.now()}`);
+bracketStore.boot({ scope: { projectUrl: bracketProject, accountId: 'host' } });
+bracketStore.attachBackend(createBackend({ async rpc(name, args) {
+  assert.equal(name, 'bkt_read_event');
+  const fixture = bracketFixtures.find(row => row.id === args.p_event_id);
+  const { type, size, rounds, matches } = fixture.built;
+  return { data: { event: { id: fixture.id, name: 'Saved bracket', game_id: 'mvci', revision: 1 }, revision: 1,
+    brackets: [{ event_id: fixture.id, revision: 1, type, size, rounds, losers_rounds: fixture.losers, matches }] } };
+} }), { projectUrl: bracketProject, accountId: 'host' });
+for (const fixture of bracketFixtures) {
+  await bracketStore.readRemoteEvent(fixture.id);
+  assert.deepEqual(bracketStore.get().brackets[fixture.id]?.matches, fixture.built.matches,
+    'server acknowledgements retain both legacy and current bracket shapes');
+}
+const bracketReloaded = await import(`../lib/store.js?bracket-reloaded=${Date.now()}`);
+bracketReloaded.boot({ scope: { projectUrl: bracketProject, accountId: 'host' } });
+for (const fixture of bracketFixtures) {
+  assert.deepEqual(bracketReloaded.get().brackets[fixture.id]?.matches, fixture.built.matches,
+    'connected brackets survive a fresh client load');
+}
+
 console.log('PASS connected boundary: RPC boot, blank config, fail-closed publish, and account isolation');
