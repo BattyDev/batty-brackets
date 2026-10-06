@@ -1864,6 +1864,7 @@ on('generate-bracket', () => {
     store.applyMany([...invalidationWrites(fresh), { collection: 'brackets', id: eventId, patch: {
       id: eventId, eventId,
       type: built.type, size: built.size, rounds: built.rounds,
+      losersRounds: built.losersRounds ?? null,
       matches: built.matches,
       generatedAt: new Date().toISOString(),
     } }, { collection: 'events', id: eventId, patch: { status: 'running', completedAt: null } }]);
