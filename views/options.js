@@ -42,10 +42,10 @@ export function openOptions({ storedTheme, previewTheme, commitTheme, signIn, si
           ${list(appearance.PRESETS.map((preset) => html`
             <button type="button" class="ink-choice" data-ink="${preset.color}" style="--swatch:${raw(preset.color)}">
               <span class="ink-swatch" aria-hidden="true"></span>${preset.label}</button>`))}
-          <button type="button" class="ink-choice" data-ink="custom">
-            <span class="ink-swatch" aria-hidden="true" data-custom-swatch></span>Your color</button>
         </div>
         <div class="ink-custom">
+          <button type="button" class="ink-choice ink-custom-choice" data-ink="custom">
+            <span class="ink-swatch" aria-hidden="true" data-custom-swatch></span>Your color</button>
           <label class="field-label" for="ink-custom-input" style="margin:0">Favorite color</label>
           <input type="color" id="ink-custom-input" value="${start.color}">
           <output for="ink-custom-input" data-ink-output>${start.color.toUpperCase()}</output>
