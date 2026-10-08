@@ -51,7 +51,8 @@ async function exercise(width) {
   await page.waitForSelector('[data-act-submit="guest-join"]');
 
   report.ok(`${width}px: invite resolves to the intended event`,
-    (await page.locator('main').innerText()).includes('Tokon Tuesdays #14'));
+    /* textContent: poster headings are capitalised by CSS, not in the DOM. */
+    (await page.locator('main').textContent()).includes('Tokon Tuesdays #14'));
   report.ok(`${width}px: invite screen fits`, (await fits(page)).overflow <= 2,
     JSON.stringify(await fits(page)));
 
@@ -144,7 +145,7 @@ async function exercise(width) {
     return { station: station.label, opponent: store.getPlayer(opponent.playerId).tag };
   }, { eventId: DEMO_EVENT, width });
   await goTo(page, base, `#/e/${DEMO_EVENT}`);
-  const current = await page.locator('[aria-labelledby="current-set-heading"]').innerText();
+  const current = await page.locator('[aria-labelledby="current-set-heading"]').textContent();
   report.ok(`${width}px: current call leads with station and opponent`,
     current.includes('GO NOW') && current.includes(call.station) && current.includes(call.opponent), current);
 

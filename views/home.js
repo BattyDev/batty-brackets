@@ -86,12 +86,12 @@ export function view(ctx) {
 
 function roleChoice() {
   return html`<div class="pane role-choice" aria-labelledby="role-choice-heading">
-    <section class="role-choice-card card card-elevated">
-      <p class="eyebrow">WELCOME TO BATTY BRACKETS</p><h1 id="role-choice-heading" class="headline-large">I'm a…</h1>
+    <section class="role-choice-card">
+      <p class="stamp-label">Welcome to Batty Brackets</p><h1 id="role-choice-heading" style="margin-top:14px">I'm a…</h1>
       <p class="body-large role-choice-intro">Start with the view that fits tonight. You can switch any time — this remembers your preferred layout, never what you’re allowed to do.</p>
       <div class="role-choice-options">
-        <button class="role-choice-option role-choice-player" type="button" data-act="choose-role" data-role="player"><span class="role-choice-icon">${raw(icon('esports'))}</span><span class="role-choice-copy"><b>Player</b><span>Join a tournament, check in, and find your next set.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
-        <button class="role-choice-option role-choice-host" type="button" data-act="choose-role" data-role="host"><span class="role-choice-icon">${raw(icon('tune'))}</span><span class="role-choice-copy"><b>Host</b><span>Run your bracket, manage arrivals, and keep the room moving.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+        <button class="role-choice-option role-choice-player" type="button" data-act="choose-role" data-role="player"><span class="role-choice-icon">${raw(icon('controller', 'icon-lg'))}</span><span class="role-choice-copy"><b>Player</b><span>Join a tournament, check in, and find your next set.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
+        <button class="role-choice-option role-choice-host" type="button" data-act="choose-role" data-role="host"><span class="role-choice-icon">${raw(icon('cabinet', 'icon-lg'))}</span><span class="role-choice-copy"><b>Host</b><span>Run your bracket, manage arrivals, and keep the room moving.</span></span><span class="role-choice-arrow">${raw(icon('chevron'))}</span></button>
       </div>
       <p class="role-choice-footnote">Have a tournament code? <a href="#/join">Join directly</a> — you won’t need to choose a role first. <a href="./demo.html">Explore the sample demo</a>.</p>
     </section></div>`;
@@ -101,44 +101,70 @@ function roleChoice() {
    Signed out
    -------------------------------------------------------------------------- */
 
-/* A first visit starts with the actual event list. The separate demo page is
-   the explicit route into the sample tournament and its walkthroughs. */
+/* The noticeboard. A first visit gets the poster, then straight into the two
+   things a stranger can actually do: read what is on, or type the code they
+   were given -- the code box is on this page, not a click away. */
 function landing(ctx) {
   const live = store.listEvents().filter(e => ['registration', 'checkin', 'seeding', 'running'].includes(e.status));
   const demo = isDemoMode() && store.getEvent('evt_demo_tokon')?.demo;
   return html`
     <div class="pane lobby publication">
-      <header class="lobby-heading">
-        <div><p class="eyebrow publication-edition">LOCAL SCENE. BIG SETS. · By BattyDev</p>
-          <h1 class="publication-wordmark">${raw(brandMark())}Batty Brackets<span>.</span></h1>
-          <p class="lobby-deck">Find your local. Get your games in.</p></div>
-        <a class="btn btn-filled" href="#/join">${raw(icon('key'))} Join with a code</a>
-      </header>
+      <section class="press-hero" aria-labelledby="press-headline">
+        <div class="press-copy">
+          <p class="stamp-label publication-edition">Batty Brackets / Local fighting games / By BattyDev</p>
+          <h1 class="press-headline" id="press-headline">Local<br><span>legends.</span></h1>
+          <p class="press-deck">Good players. Bad venue chairs.<br>One more set before last call.</p>
+          <div class="press-actions">
+            <a class="btn btn-lg btn-lead" href="#/join">Got a code? Get in ${raw(icon('arrowOut'))}</a>
+            ${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="player">${raw(icon('play', 'icon-sm'))} Take the player seat</button>` : html`<a class="btn btn-text" href="./demo.html">Explore the sample demo</a>`}
+          </div>
+        </div>
+        <div class="press-visual" aria-hidden="true">
+          <span class="press-bat"></span>
+          <span class="press-stamp">Everyone<br>plays.<small>Bring your pad</small></span>
+        </div>
+      </section>
+      <p class="ticker" aria-label="Community motto"><span>Pass the pad</span><span>Run it back</span><span>Support your local</span></p>
       <div class="lobby-grid">
         <section class="event-directory" aria-labelledby="events-heading">
-          <div class="section-heading"><div><p class="eyebrow">THE LINEUP</p><h2 id="events-heading">On the card</h2></div>
-            <span class="chip chip-static">${live.length} active</span></div>
-          <div class="stack">${live.length ? list(live.map(e => eventCard(e, ctx))) : html`<div class="empty"><p>No active events on this device.</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}</div>
+          <div class="section-heading"><h2 id="events-heading">${raw(icon('controller', 'icon-xl'))}On the bill.</h2>
+            <span class="section-note">${live.length} active</span></div>
+          ${live.length ? html`<div class="bill">${list(live.map(e => eventCard(e, ctx)))}</div>` : html`<div class="empty"><p>No active events on this device.</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}
           <p class="local-device-note">${store.syncState().configured ? 'Browse events or enter the code from your host.' : 'These events are saved on this device. Online registration and sharing are not connected yet.'}</p>
         </section>
         <aside class="lobby-aside">
-          <section class="player-door">
-            <span class="door-icon">${raw(icon('esports'))}</span>
-            <p class="eyebrow">FOR PLAYERS</p>
-            <h3>Your next challenger awaits.</h3><p>Check in, find your opponent, and know which station to head to.</p>
-            ${demo ? html`<button class="btn btn-filled btn-block" data-act="tour-start" data-tour="player">${raw(icon('play'))} Take the player seat</button>` : html`<a class="btn btn-filled" href="#/me">Open my profile</a>`}
-          </section>
-          <section class="host-door publication-story">
-            <span class="door-icon host-door-icon">${raw(icon('tune'))}</span>
-            <p class="eyebrow">FOR HOSTS</p><h3>You run the room.</h3>
-            <p>Your roster, seeding, stations, and results in one workspace.</p>
-            <a class="btn btn-outlined btn-block" href="#/host">Open host workspace ${raw(icon('chevron'))}</a>
-            <a class="btn btn-text btn-block" href="#/new">Create an event</a>
+          ${raw(joinSlip())}
+          <section class="host-note host-door publication-story">
+            ${raw(icon('cabinet'))}
+            <p class="eyebrow">Running the room?</p><h3>Your room.<br>Your rules.</h3>
+            <p>Arrivals, seeding, station calls and results. All in one host desk.</p>
+            <div class="host-note-links">
+              <a class="btn btn-outlined" href="#/host">Open the host desk ${raw(icon('arrowOut', 'icon-sm'))}</a>
+              <a class="btn btn-text" href="#/new">Create an event</a>
+            </div>
           </section>
         </aside>
       </div>
-      <footer class="lobby-footer"><span>Good games. Same time next week. · By BattyDev.</span><a class="btn btn-text" href="./demo.html">Explore the sample demo</a>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station'))} Try the venue display</button>` : ''}</footer>
+      <footer class="lobby-footer"><span>No VIPs. Just good sets.</span><span>Batty Brackets / By BattyDev</span>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station', 'icon-sm'))} Try the venue display</button>` : ''}</footer>
     </div>`;
+}
+
+/* The code box, usable where it stands. Submitting goes to the same join
+   route a typed URL or a flyer QR code lands on. */
+function joinSlip() {
+  return html`<section class="join-slip player-door" aria-labelledby="join-slip-heading">
+    ${raw(icon('ticket'))}
+    <p class="eyebrow">Your invite to the local</p>
+    <h3 id="join-slip-heading">Got the code?<br>Get in.</h3>
+    <p>Enter the code your host shared. No account needed.</p>
+    <form data-act-submit="join-lookup">
+      <label for="join-slip-code">Event code</label>
+      <div class="join-row">
+        <input id="join-slip-code" name="code" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="TKN14B">
+        <button class="btn btn-filled" type="submit">Join ${raw(icon('arrowOut', 'icon-sm'))}</button>
+      </div>
+    </form>
+  </section>`;
 }
 
 function hostHome(ctx) {
@@ -153,12 +179,12 @@ function hostHome(ctx) {
   const past = events.filter(e => e.status === 'complete');
   const demo = isDemoMode() && store.getEvent('evt_demo_tokon')?.demo;
   return html`<div class="pane host-home">
-    <header class="workspace-heading"><div><p class="eyebrow">HOST WORKSPACE</p><h2>Put on a good local.</h2><p>Pick an event to manage arrivals, seed the bracket, and run the room.</p></div>
-      <a class="btn btn-filled" href="#/new">${raw(icon('plus'))} Create event</a></header>
+    <header class="workspace-heading"><div><p class="stamp-label">Host desk</p><h2 style="margin-top:12px">Run the room.</h2><p>Pick an event to manage arrivals, seed the bracket, and call sets.</p></div>
+      <a class="btn btn-filled btn-lg" href="#/new">${raw(icon('plus'))} Create event</a></header>
     <div class="host-summary"><div><b>${active.length}</b><span>Active events</span></div><div><b>${active.reduce((n,e) => n + store.entriesFor(e.id).length, 0)}</b><span>Registered entries</span></div><div><b>${past.length}</b><span>Completed events</span></div></div>
-    <div class="section-heading"><h3>Your events</h3>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="organiser">${raw(icon('play'))} Walk through hosting</button>` : ''}</div>
-    <div class="stack">${active.length ? list(active.map(e => eventCard(e, ctx))) : html`<div class="empty"><p>Your next local starts here.</p><a class="btn btn-tonal" href="#/new">Create your first event</a></div>`}</div>
-    ${past.length ? html`<details class="past-events"><summary>Completed events (${past.length})</summary><div class="stack">${list(past.map(e => eventCard(e, ctx)))}</div></details>` : ''}
+    <div class="section-heading"><h3>${raw(icon('cabinet', 'icon-xl'))}Your events</h3>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="organiser">${raw(icon('play', 'icon-sm'))} Walk through hosting</button>` : ''}</div>
+    ${active.length ? html`<div class="bill">${list(active.map(e => eventCard(e, ctx)))}</div>` : html`<div class="empty"><p>Your next local starts here.</p><a class="btn btn-tonal" href="#/new">Create your first event</a></div>`}
+    ${past.length ? html`<details class="past-events"><summary>Completed events (${past.length})</summary><div class="bill">${list(past.map(e => eventCard(e, ctx)))}</div></details>` : ''}
     <div class="workspace-help"><div>${raw(icon('station'))}<b>Taking it to the venue?</b><p>Open an event for station controls and its venue display.</p></div><div>${raw(icon('undo'))}<b>Keep your night backed up.</b><p>Download a device backup before play starts.</p><a href="#/recovery">Backup and recovery</a></div></div>
   </div>`;
 }
@@ -178,16 +204,24 @@ function dashboard(ctx) {
   const mine = (e) => e.ownerId === me.id || e.orgId === me.defaultOrgId || entered.has(e.id);
   const events = store.listEvents({ all: true }).filter((e) => e.visibility !== 'unlisted' || mine(e));
 
+  /* Each event appears once, under the heading that says why it is here. An
+     event you are in is "yours" first; it is not repeated under On now. */
   const yours = events.filter(e => entered.has(e.id) && e.status !== 'complete');
-  const running = events.filter((e) => ['checkin', 'seeding', 'running'].includes(e.status));
-  const upcoming = events.filter((e) => e.status === 'registration' || e.status === 'draft');
+  const shown = new Set(yours.map((e) => e.id));
+  const running = events.filter((e) => ['checkin', 'seeding', 'running'].includes(e.status) && !shown.has(e.id));
+  const upcoming = events.filter((e) => (e.status === 'registration' || e.status === 'draft') && !shown.has(e.id));
   const past = events.filter((e) => e.status === 'complete');
+  const group = (title, rows, note = '') => html`
+    <section style="margin-bottom:32px">
+      <div class="section-heading"><h2>${title}</h2>${note ? html`<span class="section-note">${note}</span>` : ''}</div>
+      <div class="bill">${list(rows.map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
+    </section>`;
 
   return html`
     <div class="pane player-dashboard">
-      <header class="workspace-heading"><div><p class="eyebrow">PLAYER LOUNGE</p><h2>Ready, ${me.tag}?</h2><p>Your events, your next set, your results.</p></div><a class="btn btn-filled" href="#/join">Join with a code</a></header>
+      <header class="workspace-heading"><div><p class="stamp-label">The local</p><h2 style="margin-top:12px">Ready, <span class="player-name">${me.tag}</span>?</h2><p>Your events, your next set, your results.</p></div><a class="btn btn-filled btn-lg" href="#/join">Got a code? ${raw(icon('arrowOut'))}</a></header>
       ${ctx.session?.needsPasswordFallback ? html`
-        <div class="banner banner-warn" style="margin-bottom:16px">
+        <div class="banner banner-warn" style="margin-bottom:24px">
           ${raw(icon('key'))}
           <div class="spacer">
             <b>Add a password to your account</b>
@@ -198,32 +232,19 @@ function dashboard(ctx) {
           </div>
         </div>` : ''}
 
-      ${yours.length ? html`<section class="your-events"><h2 class="title-large">Your next events</h2><div class="stack">${list(yours.map(e => eventCard(e, ctx, true)))}</div></section>` : ''}
-      ${running.length ? html`
-        <section style="margin-bottom:24px">
-          <h2 class="title-large" style="margin-bottom:12px">Live</h2>
-          <div class="stack-sm">${list(running.map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
-        </section>` : ''}
-
-      <section style="margin-bottom:24px">
-        <div class="row" style="margin-bottom:12px">
-          <h2 class="title-large spacer">Upcoming</h2>
-          <button class="btn btn-text btn-sm" data-act="go" data-path="/join">${raw(icon('key'))} Join with a code</button>
-        </div>
-        ${upcoming.length
-          ? html`<div class="stack-sm">${list(upcoming.map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>`
-          : html`<div class="empty">${raw(icon('calendar'))}<p class="body-medium">Nothing coming up.</p></div>`}
-      </section>
-
-      ${past.length ? html`
-        <section>
-          <h2 class="title-large" style="margin-bottom:12px">Finished</h2>
-          <div class="stack-sm">${list(past.slice(0, 6).map((e) => eventCard(e, ctx, entered.has(e.id))))}</div>
-        </section>` : ''}
+      ${yours.length ? html`<div class="your-events">${raw(group('You’re in', yours, 'Open one for your next set'))}</div>` : ''}
+      ${running.length ? raw(group('On now', running)) : ''}
+      ${upcoming.length ? raw(group('Coming up', upcoming)) : ''}
+      ${!yours.length && !running.length && !upcoming.length ? html`
+        <div class="empty" style="margin-bottom:32px">${raw(icon('ticket'))}<p class="body-large">Nothing on the bill yet.</p>
+          <a class="btn btn-tonal" href="#/join">Join with a code</a></div>` : ''}
+      ${past.length ? raw(group('Finished', past.slice(0, 6))) : ''}
     </div>
 `;
 }
 
+/* One row of the bill: a date stamp, the event, and one target. The whole row
+   is the link, so there is no second "View event" control to aim at. */
 function eventCard(event, ctx, isEntered = false) {
   const game = gameById(event.gameId);
   const status = STATUS[event.status] || STATUS.draft;
@@ -236,31 +257,31 @@ function eventCard(event, ctx, isEntered = false) {
   const canAdmin = !ctx.session || (event.ownerId
     ? event.ownerId === ctx.me?.id
     : org?.ownerId === ctx.me?.id);
+  const manage = ctx.route === 'host' && canAdmin;
+  const when = event.startsAt ? new Date(event.startsAt) : null;
+  const stamp = when && !Number.isNaN(when.getTime()) ? {
+    day: new Intl.DateTimeFormat(undefined, { day: '2-digit' }).format(when),
+    weekday: new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(when),
+  } : { day: '—', weekday: 'TBA' };
 
   return html`
-    <article class="card card-outlined event-card">
-      <a class="event-card-main" href="#/e/${event.id}${ctx.route === 'host' && canAdmin ? '/admin' : ''}">
-      <div class="row" style="gap:12px;flex-wrap:nowrap;align-items:flex-start">
-        ${raw(gameMark(game))}
-        <div class="spacer" style="min-width:0">
-          <div class="row-tight" style="gap:8px">
-            <b class="title-medium">${event.name}</b>
-            ${event.demo ? html`<span class="body-small dim">Demo</span>` : ''}
-            <span class="chip chip-static chip-sm ${raw(status.chip)}" style="min-height:22px;padding:0 8px;font:var(--label-small)">${status.label}</span>
-            ${isEntered ? html`<span class="chip chip-static chip-info" style="min-height:22px;padding:0 8px;font:var(--label-small)">Entered</span>` : ''}
-          </div>
-          ${org ? html`<p class="event-attribution">Organized by ${org.name}</p>` : ''}
-          <div class="body-small dim" style="margin-top:2px">
-            ${game?.short || event.gameId} · ${entries.length} entrant${entries.length === 1 ? '' : 's'}
-            ${event.entryFee ? ` · ${formatMoney(event.entryFee, event.currency)}` : ''}
-          </div>
-          <div class="body-small dim">${formatDateTime(event.startsAt)} · ${relativeTime(event.startsAt)}</div>
-        </div>
-        ${raw(icon('chevron'))}
-      </div></a>
-      <div class="event-card-footer"><span>${event.venue || 'Venue to be announced'}</span>
-        <a href="#/e/${event.id}${ctx.route === 'host' && canAdmin ? '/admin' : ''}">${ctx.route === 'host' && canAdmin ? 'Manage event' : 'View event'} ${raw(icon('chevron', 'icon-sm'))}</a>
-      </div>
+    <article class="event-card">
+      <a class="event-card-main bill-row" href="#/e/${event.id}${manage ? '/admin' : ''}">
+        <span class="bill-date" aria-hidden="true"><b>${stamp.day}</b><span>${stamp.weekday}</span></span>
+        <span class="bill-body">
+          <b class="bill-title">${event.name}</b>
+          <span class="bill-sub">${game?.short || event.gameId} / ${event.venue || 'Venue to be announced'}${org ? ` · Organized by ${org.name}` : ''}</span>
+          <span class="bill-meta">
+            <span>${formatDateTime(event.startsAt)} · ${relativeTime(event.startsAt)}</span>
+            <span>${entries.length} entrant${entries.length === 1 ? '' : 's'}${event.entryFee ? ` · ${formatMoney(event.entryFee, event.currency)}` : ''}</span>
+            <span class="chip chip-static ${raw(status.chip)}">${status.label}</span>
+            ${isEntered ? html`<span class="chip chip-static chip-ok">Entered</span>` : ''}
+            ${event.demo ? html`<span class="chip chip-static">Demo</span>` : ''}
+          </span>
+        </span>
+        <span class="bill-go" aria-hidden="true">${raw(icon(manage ? 'tune' : 'arrowOut'))}</span>
+        <span class="sr-only">${manage ? 'Manage event' : 'View event'}</span>
+      </a>
     </article>`;
 }
 
@@ -288,15 +309,17 @@ function joinView(ctx, code) {
     title: 'Join an event',
     back: '/',
     body: html`
-      <div class="pane" style="max-width:560px">
-        <form class="stack" data-act-submit="join-lookup">
+      <div class="pane join-page">
+        <header class="workspace-heading"><div><p class="stamp-label">Your invite to the local</p>
+          <h2 style="margin-top:12px">Got the code?<br>Get in.</h2>
+          <p>Enter the code your host shared, or scan the flyer.</p></div></header>
+        <form class="stack join-lookup" data-act-submit="join-lookup">
           <label class="field">
-            <span class="field-label">Invite code</span>
+            <span class="field-label">Event code</span>
             <input type="text" name="code" value="${code || ''}" autocapitalize="characters"
-                   spellcheck="false" placeholder="TKN14B"
-                   style="font-family:var(--font-mono);letter-spacing:.2em;text-transform:uppercase">
+                   autocomplete="off" spellcheck="false" placeholder="TKN14B">
           </label>
-          <button class="btn btn-filled btn-block" type="submit">Find it</button>
+          <button class="btn btn-filled btn-lg btn-block" type="submit">Find it</button>
         </form>
 
         ${normalizedCode && !event && auth.isRemote() && !auth.isSignedIn() ? guestForm(null, false, normalizedCode) : ''}
@@ -308,11 +331,11 @@ function joinView(ctx, code) {
           </div>` : ''}
 
         ${event ? html`
-          <div class="card card-elevated" style="margin-top:20px">
+          <div class="card card-elevated" style="margin-top:24px">
             <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
               ${raw(gameMark(game))}
-              <div class="spacer">
-                <h2 class="title-large">${event.name}</h2>
+              <div class="spacer" style="min-width:0">
+                <h2 class="headline-small">${event.name}</h2>
                 ${org ? html`<p class="event-attribution">Organized by ${org.name}</p>` : ''}
                 <div class="body-small dim">${game?.name} · ${formatDateTime(event.startsAt)}</div>
                 ${event.venue ? html`<div class="body-small dim">${event.venue}</div>` : ''}
@@ -355,7 +378,7 @@ export function guestForm(event, waitlisted = false, code = '') {
   return html`<form class="guest-entry-form card card-outlined" data-act-submit="guest-join" style="margin-top:16px">
     ${event ? html`<input type="hidden" name="event" value="${event.id}">` : ''}
     <input type="hidden" name="code" value="${code}">
-    <p class="eyebrow">PLAY AS A GUEST</p>
+    <p class="stamp-label" style="margin-bottom:14px">Play as a guest</p>
     <label class="field"><span class="field-label">Player nickname</span>
       <input name="tag" maxlength="${GUEST_TAG_MAX}" autocomplete="nickname" required placeholder="What should the bracket call you?">
     </label>
@@ -372,8 +395,11 @@ export function guestForm(event, waitlisted = false, code = '') {
    -------------------------------------------------------------------------- */
 
 on('join-lookup', (data, form) => {
-  const code = new FormData(form).get('code');
-  window.location.hash = `#/join/${String(code || '').trim().toUpperCase()}`;
+  /* Codes are letters and digits only; anything else typed around one (a
+     space, a dash from a flyer) is dropped rather than failing the route. */
+  const code = String(new FormData(form).get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!code) { snack('Enter the code your host shared.'); form.elements.code?.focus(); return; }
+  window.location.hash = `#/join/${code}`;
 });
 
 on('guest-join', async (_data, form) => {

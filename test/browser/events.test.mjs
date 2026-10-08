@@ -177,10 +177,10 @@ async function signInLocally(page, tag = 'Cody') {
   }, eventId);
   await goTo(page, base, `#/e/${eventId}`);
   report.ok('an unlisted local event still opens at its own address',
-    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
+    await page.evaluate((name) => document.body.innerText.toLowerCase().includes(name.toLowerCase()), 'Invitational'));
   await goTo(page, base, '#/');
   report.ok('the organiser still sees the unlisted event in the same device list',
-    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
+    await page.evaluate((name) => document.body.innerText.toLowerCase().includes(name.toLowerCase()), 'Invitational'));
 
   await page.evaluate(async () => {
     const auth = await import('./lib/auth.js');
@@ -188,7 +188,7 @@ async function signInLocally(page, tag = 'Cody') {
   });
   await goTo(page, base, '#/');
   report.ok('a different local account does not see the unlisted event',
-    await page.evaluate((name) => !document.body.innerText.includes(name), 'Invitational'));
+    await page.evaluate((name) => !document.body.innerText.toLowerCase().includes(name.toLowerCase()), 'Invitational'));
 
   await page.evaluate(async () => {
     const auth = await import('./lib/auth.js');
@@ -209,7 +209,7 @@ async function signInLocally(page, tag = 'Cody') {
   });
   await goTo(page, base, '#/');
   report.ok('a listed event becomes visible to the other local account',
-    await page.evaluate((name) => document.body.innerText.includes(name), 'Invitational'));
+    await page.evaluate((name) => document.body.innerText.toLowerCase().includes(name.toLowerCase()), 'Invitational'));
 
   report.noErrors(errors);
   await ctx.close();

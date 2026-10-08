@@ -6,11 +6,9 @@
 <title>Batty Brackets · By BattyDev</title>
 <meta name="description" content="Tournament brackets for fighting games — built for locals. Runs offline at the venue, bulk import and edit anything, and seeding you can check before you commit.">
 
-<!-- Theme colour is set for both schemes. The app bar is the surface colour,
-     so matching it here is what stops the phone's status bar being a bright
-     band above a dark page. -->
-<meta name="theme-color" content="#f5f6fb" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#10131d" media="(prefers-color-scheme: dark)">
+<!-- The masthead is printed black in both schemes, so the phone's status bar
+     matches it rather than sitting as a pale band above a black bar. -->
+<meta name="theme-color" content="#151614">
 
 <!-- Link preview. Page-level rather than per-event, and that is a real
      limitation rather than an oversight: GitHub Pages serves static files, so
@@ -28,7 +26,7 @@
 <!-- The favicon uses the same bracket mark and violet badge as navigation. -->
 <link rel="icon" type="image/svg+xml" href="assets/brand/bracket-badge.svg?v=2">
 
-<link rel="stylesheet" href="brackets.css?v=11">
+<link rel="stylesheet" href="brackets.css?v=12">
 </head>
 <body>
 
@@ -39,8 +37,8 @@
 <div id="app">
   <div style="min-height:100dvh;display:grid;place-items:center;padding:24px;text-align:center">
     <div>
-      <p class="label-large" style="color:var(--md-primary);margin:0 0 8px">BattyDev</p>
-      <h1 class="publication-wordmark" style="margin-bottom:8px">Batty Brackets<span>.</span></h1>
+      <p class="stamp-label">Made for locals / By BattyDev</p>
+      <h1 class="display-large" style="margin:14px 0 10px">Batty Brackets<span style="color:var(--accent-text)">.</span></h1>
       <p class="body-medium dim">Loading…</p>
       <noscript>
         <div class="banner banner-warn" style="margin-top:24px;text-align:left;max-width:44ch">
@@ -77,7 +75,7 @@
      the module can read synchronously at boot. Blank by default: the app runs
      entirely on-device until this names a project. -->
 <script src="config.js"></script>
-<script type="module" src="app.js?v=12"></script>
+<script type="module" src="app.js?v=13"></script>
 
 </body>
 </html>

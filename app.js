@@ -32,6 +32,8 @@ import * as home from './views/home.js';
 import * as player from './views/player.js';
 import * as publicEvent from './views/event.js';
 import * as authView from './views/auth.js';
+import * as appearance from './lib/appearance.js';
+import { openOptions } from './views/options.js';
 
 /* --------------------------------------------------------------------------
    Supabase
@@ -356,23 +358,34 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
     ? event.ownerId === me?.id
     : eventOrg?.ownerId === me?.id);
   const navigation = host ? [
-    { label: 'My events', icon: 'trophy', path: '/host', current: ['host', 'admin'].includes(route.name) },
-    { label: 'Create event', icon: 'plus', path: '/new', current: route.name === 'new' },
+    { label: 'Host desk', icon: 'cabinet', path: '/host', current: ['host', 'admin'].includes(route.name) },
+    { label: 'New event', icon: 'plus', path: '/new', current: route.name === 'new' },
     { label: 'Backups', icon: 'undo', path: '/recovery', current: route.name === 'recovery' },
   ] : [
-    { label: 'My tournaments', icon: 'trophy', path: '/', current: ['home', 'event'].includes(route.name) },
-    { label: 'Join with code', icon: 'key', path: '/join', current: route.name === 'join' },
-    { label: 'My profile', icon: 'person', path: '/me', current: route.name === 'me' },
+    { label: 'The local', icon: 'controller', path: '/', current: ['home', 'event'].includes(route.name) },
+    { label: 'Got a code?', short: 'Join', icon: 'ticket', path: '/join', current: route.name === 'join', lead: true },
+    { label: 'My record', icon: 'person', path: '/me', current: route.name === 'me' },
   ];
   /* Batty owns the navigation and working tools. Game accents belong to
-     explicitly bounded marks, cards and artwork, never the whole shell. */
+     explicitly bounded marks, cards and artwork, never the whole shell.
+
+     The same destinations are printed twice: inline in the masthead from
+     900px, and as a thumb-reach bar below that. CSS shows exactly one, so a
+     resize or a rotated tablet never re-renders anything. */
 
   return html`
     <a class="skip-link" href="#main">Skip to main content</a>
     <div class="app ${raw(host ? 'experience-host' : 'experience-player')} ${raw(!host && compactViewport() ? 'mobile-player-shell' : '')} ${raw(route.name === 'home' && !me ? 'app-publication' : '')}">
       <header class="top-bar">
         ${back ? html`<button class="btn btn-icon" data-act="go" data-path="${back}" aria-label="Back">${raw(icon('back'))}</button>` : ''}
-        <a class="top-bar-brand" href="#/" aria-label="Home">${raw(brandSignature())}</a>
+        <a class="top-bar-brand" href="#/" aria-label="Batty Brackets home">${raw(brandSignature())}</a>
+        <nav class="masthead-nav" aria-label="${raw(host ? 'Host workspace' : 'Player')}">
+          ${list(navigation.map((item) => html`
+            <a href="#${item.path}" class="${raw(item.lead ? 'masthead-join' : '')}"
+               ${raw(item.current ? 'aria-current="page"' : '')}>
+              ${raw(icon(item.lead ? 'arrowOut' : item.icon, 'icon-sm'))}${item.label}</a>`))}
+          ${!me ? html`<button type="button" data-act="sign-in">${raw(icon('person', 'icon-sm'))}Sign in</button>` : ''}
+        </nav>
         <nav class="experience-switch" aria-label="Experience">
           <a href="#${event ? `/e/${event.id}` : '/'}" ${raw(!host ? 'aria-current="true"' : '')}>Player</a>
           ${canHost ? html`<a href="#${event ? `/e/${event.id}/admin` : '/host'}" ${raw(host ? 'aria-current="true"' : '')}>Host</a>` : ''}
@@ -384,10 +397,11 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
              sighted cue is the icon and they do not have it. -->
         <button class="btn btn-icon" data-act="theme"
                 aria-label="Switch to ${raw(resolvedTheme() === 'dark' ? 'light' : 'dark')} theme">${raw(icon('theme'))}</button>
+        <button type="button" class="options-button" data-act="options" aria-haspopup="dialog" aria-label="Options">
+          <span class="options-swatch" aria-hidden="true"></span><span>Options</span></button>
       </header>
 
       <nav class="nav ${raw(host ? 'host-navigation' : 'player-navigation')}" aria-label="${raw(host ? 'Host workspace navigation' : 'Player navigation')}" data-experience="${raw(host ? 'host' : 'player')}">
-        <div class="rail-identity"><div class="rail-logo">${raw(brandMark())}</div><span>${host ? 'HOST WORKSPACE' : 'PLAYER LOUNGE'}</span></div>
         <!-- aria-current only where it is true. It previously marked "Events"
              on every route that was not the profile, which tells a screen
              reader the user is on a page they are not on. -->
@@ -395,9 +409,9 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
           <a class="nav-item" href="#${item.path}"
              ${raw(item.current ? 'aria-current="page"' : '')}>
             <span class="pill">${raw(icon(item.icon))}</span>
-            <span>${item.label}</span>
+            <span>${item.short || item.label}</span>
           </a>`))}
-        ${!me ? html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('person'))}</span><span>Sign in</span></button>` : html`<button class="nav-item" data-act="sign-out"><span class="pill">${raw(icon('person'))}</span><span>Sign out</span></button>`}
+        ${!me ? html`<button class="nav-item" data-act="sign-in"><span class="pill">${raw(icon('person'))}</span><span>Sign in</span></button>` : ''}
       </nav>
 
       <!-- tabindex="-1" so the skip link and the post-navigation focus move
@@ -405,7 +419,7 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
       <main class="scaffold" id="main" tabindex="-1">
         <!-- Keep route identification for screen readers without duplicating
              the visible page branding in the utility bar. -->
-        ${route.name === 'home' ? '' : html`<h1 class="sr-only">${title}</h1>`}
+        ${route.name === 'home' && !me ? '' : html`<h1 class="sr-only">${title}</h1>`}
         ${raw(inner)}
         ${raw(tour.demoBanner())}
       </main>
@@ -828,6 +842,23 @@ on('theme', () => {
 on('sign-in', () => authView.openSignIn(draw));
 on('sign-out', async () => { await auth.signOut(); go('/'); snack('Signed out'); });
 
+/* Options previews the paper without storing it, then commits on Save. */
+function storedTheme() {
+  const stored = document.documentElement.dataset.theme;
+  return stored === 'dark' || stored === 'light' ? stored : '';
+}
+function previewTheme(next) {
+  if (next) document.documentElement.dataset.theme = next;
+  else delete document.documentElement.dataset.theme;
+}
+on('options', () => openOptions({
+  storedTheme,
+  previewTheme,
+  commitTheme: (next) => setTheme(next),
+  signIn: () => authView.openSignIn(draw),
+  signOut: async () => { await auth.signOut(); go('/'); snack('Signed out'); },
+}));
+
 on('copy-text', async ({ text }) => {
   const { copy } = await import('./lib/ui.js');
   snack(await copy(text) ? 'Copied' : 'Could not copy — select it and copy by hand');
@@ -864,6 +895,9 @@ on('undo', () => {
     const saved = localStorage.getItem('battydev.brackets.theme');
     if (saved) document.documentElement.dataset.theme = saved;
   } catch { /* private mode */ }
+  /* Paint the last ink used here straight away; the right person's ink
+     replaces it as soon as the session is known. */
+  appearance.applyEarly();
 
   bindDelegation(root);
   bindDelegation(chromeRoot);
@@ -899,11 +933,15 @@ on('undo', () => {
     }
   }
 
+  appearance.syncIdentity();
+
   if (demoMode) tour.snapshot();
 
   store.subscribe((_, event) => ['net', 'pull', 'pull-error'].includes(event?.type)
     ? drawForEventRefresh() : draw());
   auth.onAuth(() => {
+    /* A different person at the same browser gets their own ink back. */
+    appearance.syncIdentity();
     draw();
     if (auth.isRemote()) store.pull().then(draw);
   });

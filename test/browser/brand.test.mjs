@@ -15,7 +15,9 @@ const capture = async (page, name) => {
   if (shots) await page.screenshot({ path: path.join(shots, `${name}.png`), fullPage: true });
 };
 const fits = page => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
-const editorial = page => page.locator('.publication-wordmark').evaluate(el => { const s = getComputedStyle(el); return parseInt(s.fontWeight, 10) <= 700 && !s.fontFamily.includes('Impact') && parseFloat(s.letterSpacing) >= 0; });
+// The zine direction: heavy condensed poster lettering, set in capitals. The
+// face is a local() stack declared at weight 400 so it is never faux-bolded.
+const poster = page => page.locator('.press-headline').evaluate(el => { const s = getComputedStyle(el); return s.fontFamily.includes('Batty Poster') && s.textTransform === 'uppercase' && parseInt(s.fontWeight, 10) === 400; });
 // Measure actual painted roles, not the presence of a class. Reintroducing
 // the former broad selector below must make the same invariant fail.
 const palette = page => page.locator('.top-bar').evaluate(el => {
@@ -25,13 +27,13 @@ const palette = page => page.locator('.top-bar').evaluate(el => {
 try {
   for (const scheme of ['light', 'dark']) {
     const { ctx, page } = await openDemo(browser, { base, scheme, errors });
-    report.ok(`${scheme}: publisher masthead is present`, (await page.locator('.publication-wordmark').textContent()).trim() === 'Batty Brackets.');
+    report.ok(`${scheme}: publisher masthead is present`, (await page.locator('.top-bar .masthead-wordmark b').textContent()).trim() === 'Batty Brackets');
     report.ok(`${scheme}: creator is credited`, (await page.locator('.publication-edition').textContent()).includes('By BattyDev'));
-    report.ok(`${scheme}: readable masthead typography is applied`, await editorial(page));
-    await page.locator('.publication-wordmark').evaluate(el => { el.style.fontWeight = '800'; el.style.fontFamily = 'Impact'; });
-    report.ok('type assertion rejects the former heavy condensed presentation', !(await editorial(page)));
-    await page.locator('.publication-wordmark').evaluate(el => { el.style.removeProperty('font-weight'); el.style.removeProperty('font-family'); });
-    report.ok('restored tournament type passes', await editorial(page));
+    report.ok(`${scheme}: poster lettering is applied`, await poster(page));
+    await page.locator('.press-headline').evaluate(el => { el.style.fontFamily = 'Georgia, serif'; el.style.textTransform = 'none'; });
+    report.ok('type assertion rejects the former restrained serif presentation', !(await poster(page)));
+    await page.locator('.press-headline').evaluate(el => { el.style.removeProperty('font-family'); el.style.removeProperty('text-transform'); });
+    report.ok('restored poster type passes', await poster(page));
     report.ok(`${scheme}: local boundary stays explicit`, (await page.locator('.event-directory').innerText()).includes('sharing are not connected'));
     await capture(page, `home-${scheme}`);
     for (const width of [390, 320]) {
@@ -54,7 +56,7 @@ try {
     await page.locator('.publication-story a[href="#/new"]').click();
     await page.waitForSelector('[data-act="wizard-game"]');
     report.ok('primary action opens real setup', await page.locator('[data-act="wizard-game"]').count() > 0);
-    report.ok('utility bar omits repeated branding', await page.locator('.top-bar .brand-signature').count() === 0);
+    report.ok('masthead carries the brand exactly once', await page.locator('.top-bar .masthead-wordmark').count() === 1);
     report.ok('setup retains an accessible page title', (await page.locator('main h1').textContent()).trim().length > 0);
     const product = await palette(page);
     for (const game of ['tokon', 'tekken8', 'ssbu']) {
@@ -71,7 +73,7 @@ try {
     await playSets(page, 0, { leaveLive: 3 });
     await goTo(page, base, `#/e/${DEMO_EVENT}/tv`);
     report.ok('TV has publisher and creator identity', (await page.locator('.tv-brand').textContent()).includes('By BattyDev'));
-    report.ok('TV keeps the actual venue event name', (await page.locator('.tv-title').innerText()).includes('Tokon Tuesdays'));
+    report.ok('TV keeps the actual venue event name', (await page.locator('.tv-title').textContent()).includes('Tokon Tuesdays'));
     report.ok('TV attributes organizer separately from publisher', (await page.locator('.tv-eyebrow').textContent()).includes('Organized by Batty Mac Arcade'));
     report.ok('TV uses product primary', await page.locator('.tv').evaluate((el, primary) => getComputedStyle(el).getPropertyValue('--md-primary').trim() === primary, product[0]));
     report.ok('TV uses square broadcast station rows', await page.locator('.tv-station').first().evaluate(el => getComputedStyle(el).borderRadius === '0px'));

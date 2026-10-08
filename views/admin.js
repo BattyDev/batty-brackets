@@ -217,7 +217,7 @@ export function view(ctx) {
          tabpanel, arrow-key roving focus and no page change; promising that
          and not delivering it is worse for a screen-reader user than plain
          links, which they already know how to use. -->
-    <div class="workspace-context"><span class="eyebrow">HOST CONTROLS</span><span>${data.event.name}</span>
+    <div class="workspace-context"><span class="eyebrow">HOST DESK</span><span>${data.event.name}</span>
       ${store.syncState().configured && !data.event.demo ? html`<button class="btn btn-text btn-sm" data-act="signup-share">${raw(icon('link', 'icon-sm'))} Share signup</button>` : ''}
       <a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
     ${ctx.eventFreshness ? html`<div class="pane" style="padding-top:12px;padding-bottom:0">
@@ -351,7 +351,7 @@ function overviewTab(data, suggestions, ctx) {
 
   return html`
     <div class="pane host-overview">
-      <header class="workspace-heading"><div><p class="eyebrow">EVENT OVERVIEW</p><h2>How's the room?</h2><p>${data.game?.name || event.gameId} · ${event.venue || 'Venue to be announced'}</p></div><span class="chip chip-static chip-info">${FLOW_LABEL[event.status]}</span></header>
+      <header class="workspace-heading"><div><p class="stamp-label">Event overview</p><h2 style="margin-top:12px">How's the room?</h2><p>${data.game?.name || event.gameId} · ${event.venue || 'Venue to be announced'}</p></div><span class="chip chip-static chip-info">${FLOW_LABEL[event.status]}</span></header>
       <div class="operations-pulse" aria-label="Event at a glance">
         <a href="#/e/${event.id}/admin/entrants"><span>Checked in</span><b>${checkedIn}<small> / ${entries.length}</small></b><span>${entries.length - checkedIn} still to arrive</span></a>
         <a href="#/e/${event.id}/admin/run"><span>Stations occupied</span><b>${data.stations.filter(s => (bracket?.matches || []).some(m => m.stationId === s.id && m.calledAt && !m.state)).length}<small> / ${data.stations.length}</small></b><span>Open station controls</span></a>
@@ -364,19 +364,23 @@ function overviewTab(data, suggestions, ctx) {
       ${!store.syncState().configured || event.demo ? html`
         <p class="local-device-note">${event.demo ? 'Demo event' : 'On this device'} · Manage check-in here.
           To show the room, connect this computer to the TV. Join links do not share this event to other devices.</p>` : ''}
+      <!-- What needs doing beside the state of the room, so neither is a
+           scroll away from the other on a desk-sized screen. -->
+      <div class="desk-grid">
+      <div>
       <section class="card card-outlined" style="margin-bottom:16px">
         <div class="row" style="margin-bottom:12px">
-          <b class="title-medium spacer">${FLOW_LABEL[event.status]}</b>
+          <span class="spacer"><span class="eyebrow" style="display:block;margin:0">PHASE</span><b class="title-large">${FLOW_LABEL[event.status]}</b></span>
           ${store.syncState().configured && !event.demo ? html`
             <span class="code">${event.inviteCode}</span>
             <button class="btn btn-icon" data-act="copy-text" data-text="${joinUrl(event.inviteCode)}" aria-label="Copy join link">${raw(icon('copy'))}</button>` : ''}
         </div>
-        <div class="row" style="gap:4px;margin-bottom:12px">
+        <!-- The phases by name. Five unlabelled bars said how far along the
+             night was but not what any of the steps were called. -->
+        <ol class="phase-steps" aria-label="Event phases">
           ${list(FLOW.map((s, i) => html`
-            <div class="progress spacer" title="${FLOW_LABEL[s]}">
-              <i style="width:${i <= at ? 100 : 0}%"></i>
-            </div>`))}
-        </div>
+            <li class="${raw(i < at ? 'done' : i === at ? 'now' : '')}" ${raw(i === at ? 'aria-current="step"' : '')}><span>${i + 1}</span><b>${FLOW_LABEL[s]}</b></li>`))}
+        </ol>
         <div class="row" style="gap:8px">
           ${at > 0 ? html`<button class="btn btn-text btn-sm" data-act="event-status" data-status="${FLOW[at - 1]}">${raw(icon('back', 'icon-sm'))} Back to ${FLOW_LABEL[FLOW[at - 1]]}</button>` : ''}
           <span class="spacer"></span>
@@ -387,8 +391,8 @@ function overviewTab(data, suggestions, ctx) {
       </section>
 
       <section style="margin-bottom:20px">
-        <div class="row" style="gap:8px;margin-bottom:12px">
-          <h2 class="title-large spacer">Next steps</h2>
+        <div class="section-heading">
+          <h2>Next steps</h2>
           ${store.canUndo() ? html`<button class="btn btn-text btn-sm" data-act="undo">${raw(icon('undo', 'icon-sm'))} Undo ${store.undoLabel()}</button>` : ''}
         </div>
         ${suggestions.length ? html`
@@ -412,22 +416,26 @@ function overviewTab(data, suggestions, ctx) {
             <span class="body-medium">Nothing needs you right now.</span></div></div>`}
       </section>
 
+      </div>
+      <aside aria-label="Where things stand">
       <section>
-        <h2 class="title-large" style="margin-bottom:12px">Where things stand</h2>
-        <div class="grid-cards">
+        <div class="section-heading"><h2>Where things stand</h2></div>
+        <div class="grid-cards" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
           ${raw(statCard('Entrants', entries.length, event.capacity ? `of ${event.capacity} cap` : 'no cap', 'group'))}
           ${raw(statCard('Checked in', checkedIn, `${entries.length - checkedIn} still out`, 'check'))}
           ${raw(statCard('Collected', formatMoney(entries.reduce((total, e) => total + paymentFor(e, event).received, 0), event.currency), `${entries.filter(e => !paymentFor(e, event).paid).length} outstanding`, 'money'))}
           ${bracket ? raw(statCard('Sets played', `${played}/${total}`, total - played ? `${total - played} to go` : 'all done', 'bracket')) : ''}
         </div>
       </section>
+      </aside>
+      </div>
     </div>`;
 }
 
 function statCard(label, value, sub, ic) {
   return html`
-    <div class="card card-filled">
-      <div class="row-tight dim" style="margin-bottom:4px">${raw(icon(ic, 'icon-sm'))}<span class="label-large">${label}</span></div>
+    <div class="card card-outlined">
+      <div class="row-tight eyebrow" style="margin-bottom:6px">${raw(icon(ic, 'icon-sm'))}<span>${label}</span></div>
       <div class="headline-medium">${value}</div>
       <div class="body-small dim">${sub}</div>
     </div>`;
@@ -796,12 +804,13 @@ function runTab(data) {
 
   return html`
     <div class="pane">
-      <div class="row" style="margin-bottom:16px;gap:8px">
-        <a class="btn btn-tonal btn-sm" href="#/e/${event.id}/tv" target="_blank" rel="noopener">
+      <header class="workspace-heading compact"><div><h2>Call it. Report it.</h2>
+        <p>${live.length} set${live.length === 1 ? '' : 's'} out · ${queue.length} ready to call · ${bracket.matches.filter((m) => !m.cancelled && !m.state).length} still to play</p></div>
+        <a class="btn btn-outlined" href="#/e/${event.id}/tv" target="_blank" rel="noopener"
+           title="Opens in a new tab — put it on the TV.">
           ${raw(icon('station', 'icon-sm'))} Open the venue display
         </a>
-        <span class="body-small dim">Opens in a new tab — put it on the TV.</span>
-      </div>
+      </header>
 
       ${withdrawals.length ? html`<section class="card card-elevated" style="margin-bottom:20px" aria-label="Pending player withdrawals">
         <h2 class="title-large">Withdrawal requests</h2>
@@ -834,8 +843,12 @@ function runTab(data) {
         }))}</div>
       </section>` : ''}
 
-      <section style="margin-bottom:20px">
-        <h2 class="title-large" style="margin-bottom:12px">Stations</h2>
+      <!-- Stations and the queue side by side on a desk: calling a set means
+           reading both, and the queue used to sit a full scroll below. -->
+      <div class="run-grid" style="margin-bottom:28px">
+      <section>
+        <div class="section-heading"><h2>${raw(icon('cabinet', 'icon-xl'))}Stations</h2>
+          <span class="section-note">${live.length} / ${stations.length} in use</span></div>
         <div class="stations">
           ${list(stations.map((station) => {
             /* A station call is duplicated in the bracket and station rows so
@@ -871,21 +884,43 @@ function runTab(data) {
                             data-act="call-next" data-station="${station.id}" aria-label="Call the next set at ${station.label}">Call the next set here</button>` : ''}`}
               </div>`;
           }))}
-          <button class="station" data-act="station-add" style="border:1px dashed var(--md-outline);background:none;cursor:pointer;color:var(--md-on-surface-variant)">
+          <button class="station" data-act="station-add" style="border:2px dashed var(--md-outline);background:none;cursor:pointer;color:var(--md-on-surface)">
             ${raw(icon('plus'))} Add a station
           </button>
         </div>
       </section>
 
-      ${recentResults.length ? html`<section class="card card-outlined" style="margin-bottom:20px"
+      <aside class="stack" aria-label="Queue and recent results" style="gap:24px">
+      <section>
+        <div class="section-heading">
+          <h2>Up next</h2>
+          <span class="section-note">${queue.length} ready</span>
+        </div>
+        ${queue.length ? html`
+          <div class="card card-outlined" style="padding:4px 14px">
+            ${list(queue.slice(0, 10).map((match, i) => html`
+              <div class="queue-row">
+                <span class="queue-number" aria-hidden="true">${i + 1}</span>
+                <div class="spacer" style="min-width:0">
+                  <div class="body-medium"><b>${nameOf(match.slots[0].entrantId)}</b> <span class="dim">v</span> <b>${nameOf(match.slots[1].entrantId)}</b></div>
+                  <div class="body-small dim">${match.name}</div>
+                </div>
+                <button class="btn btn-tonal btn-sm" data-act="report-open" data-match="${match.id}">Report</button>
+              </div>`))}
+          </div>
+          ${queue.length > 10 ? html`<p class="body-small dim" style="margin:8px 0 0">+ ${queue.length - 10} more ready set${queue.length - 10 === 1 ? '' : 's'}. They move up as these are called.</p>` : ''}`
+        : html`<div class="card card-filled body-medium dim">Nothing is waiting — every playable set is out.</div>`}
+      </section>
+
+      ${recentResults.length ? html`<section
           aria-label="Recent results and corrections">
-        <div class="row" style="margin-bottom:12px">
-          <h2 class="title-large spacer">Recent results</h2>
-          <span class="body-small dim">Correct a score here</span>
+        <div class="section-heading">
+          <h2>Recent results</h2>
+          <span class="section-note">Correct a score here</span>
         </div>
         <div class="stack-sm">
           ${list(recentResults.map(({ result, match }) => html`
-            <div class="card card-filled row" style="flex-wrap:wrap;gap:12px">
+            <div class="card card-outlined row" style="flex-wrap:wrap;gap:12px;padding:10px 14px">
               <div class="spacer" style="min-width:0">
                 <div class="body-small dim">${match.name}</div>
                 <div class="body-medium"><b>${players.get(result.winnerPlayerId)?.tag || 'Winner'}</b>
@@ -898,29 +933,13 @@ function runTab(data) {
         </div>
       </section>` : ''}
 
-      <section style="margin-bottom:20px">
-        <div class="row" style="margin-bottom:12px">
-          <h2 class="title-large spacer">Queue</h2>
-          <span class="body-small dim">${queue.length} ready</span>
-        </div>
-        ${queue.length ? html`
-          <div class="stack-sm">
-            ${list(queue.slice(0, 10).map((match) => html`
-              <div class="card card-outlined row" style="flex-wrap:wrap;gap:12px">
-                <div class="spacer" style="min-width:0">
-                  <div class="body-medium"><b>${nameOf(match.slots[0].entrantId)}</b> <span class="dim">v</span> <b>${nameOf(match.slots[1].entrantId)}</b></div>
-                  <div class="body-small dim">${match.name}</div>
-                </div>
-                <button class="btn btn-tonal btn-sm" data-act="report-open" data-match="${match.id}">Report</button>
-              </div>`))}
-          </div>`
-        : html`<div class="card card-filled body-medium dim">Nothing is waiting — every playable set is out.</div>`}
-      </section>
+      </aside>
+      </div>
 
       <section>
-        <div class="row" style="margin-bottom:8px">
-          <h2 class="title-large spacer">Bracket</h2>
-          <span class="body-small dim">Tap a set to report it</span>
+        <div class="section-heading">
+          <h2>${raw(icon('bracket', 'icon-xl'))}Bracket</h2>
+          <span class="section-note">Tap a set to report it</span>
         </div>
         <!-- tabindex + role so the pane can be scrolled with the arrow keys.
              A scroll container that only responds to a mouse wheel or a swipe
