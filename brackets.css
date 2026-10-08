@@ -1182,6 +1182,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   .ticker { font-size: .8125rem; margin-bottom: 28px; }
 }
 @media (max-width: 599px) {
+  .press-visual { display: none; }
   .press-headline { font-size: clamp(4rem, 23vw, 6.5rem); margin: 16px 0 18px; }
   .press-deck { font-size: .875rem; }
   .press-stamp { width: 92px; height: 92px; font-size: 1.05rem; }
