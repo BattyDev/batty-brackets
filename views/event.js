@@ -64,7 +64,7 @@ export function view(ctx) {
     back: '/',
     gameId: event.gameId,
     body: html`
-      <div class="workspace-context player-context"><span class="eyebrow">PLAYER EXPERIENCE</span><span>${event.venue || game?.name || 'Tournament'}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span>${raw(reportButton('event', event.id))}</div>
+      <div class="workspace-context player-context"><span class="eyebrow">PLAYER VIEW</span><span>${event.name}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span>${raw(reportButton('event', event.id))}</div>
       ${ctx.eventFreshness ? html`<div class="pane" style="max-width:800px;padding-top:12px;padding-bottom:0">
         <div class="banner ${raw(ctx.eventFreshness.kind === 'error' ? 'banner-error' : 'banner-warn')}" role="status">
           ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
@@ -82,8 +82,8 @@ function eventNavigation(event, tab, secondary) {
   return html`
     <div class="pane ${raw(secondary ? 'player-secondary' : '')}" style="max-width:800px;padding-top:${raw(secondary ? '0' : '16px')}">
       ${secondary ? html`
-        <div class="section-heading" style="margin-bottom:8px">
-          <div><p class="eyebrow">EVENT INFORMATION</p><h2 class="title-large">Bracket, field, and rules</h2></div>
+        <div class="section-heading" style="margin-bottom:0;border-bottom:0">
+          <h2>${raw(icon('bracket', 'icon-xl'))}Bracket, field, and rules</h2>
         </div>` : ''}
       <nav class="tabs" aria-label="Event sections">
         ${list([
@@ -112,13 +112,13 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
     return html`
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
-        <div class="card card-elevated" style="margin-top:16px;text-align:center">
-          <p class="eyebrow">YOUR EVENT COMPANION</p><h2 class="title-large">Your next set starts here.</h2>
-          <p class="body-large">Enter with your nickname, then follow check-in tasks and station calls here.</p>
-          <p class="body-small dim" style="margin-top:8px">Signing in does not enter you automatically. You will review and confirm first.</p>
-          <button class="btn btn-filled btn-lg" data-act="sign-in" style="margin-top:8px">Sign in</button>
-        </div>
         ${['registration', 'checkin'].includes(event.status) ? raw(guestForm(event, Boolean(event.capacity && entries.filter(e => !e.waitlisted).length >= event.capacity))) : ''}
+        <div class="card card-outlined" style="margin-top:16px">
+          <p class="eyebrow">ALREADY HAVE AN ACCOUNT?</p><h2 class="title-large">Your next set starts here.</h2>
+          <p class="body-medium" style="margin:8px 0">Sign in to follow check-in tasks and station calls with your saved record.</p>
+          <p class="body-small dim">Signing in does not enter you automatically. You will review and confirm first.</p>
+          <button class="btn btn-outlined" data-act="sign-in" style="margin-top:4px">Sign in</button>
+        </div>
         ${!store.syncState().configured ? html`
           <div class="banner banner-info" style="margin-top:16px">${raw(icon('station'))}
             <div><b>On this device only</b><p class="body-small" style="margin:4px 0 0">This copy is not connected to a server. Another phone cannot open or join this event; ask the host to add you at the desk.</p></div>
@@ -132,8 +132,8 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
     return html`
       <div class="pane">
         ${raw(eventHeader(event, game, entries))}
-        <div class="card card-elevated" style="margin-top:16px">
-          <p class="eyebrow">ENTRY STATUS</p><h2 class="title-large">You are not entered</h2>
+        <div class="card card-elevated" style="margin-top:20px">
+          <p class="eyebrow">ENTRY STATUS</p><h2 class="headline-small">You are not entered</h2>
           <p class="body-medium dim" style="margin:4px 0 12px">
             ${withdrawal?.status === 'withdrawn' ? 'You withdrew before bracket generation. Your player profile and history remain.' : !open ? 'Registration is closed. Ask the host about joining this event.' : full ? `This event is full at ${event.capacity}, but waitlists at locals move.` : 'Registration is open.'}
           </p>
@@ -176,16 +176,16 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
 
   return html`
     <div class="pane player-now" style="max-width:800px">
-      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, ${me.tag}.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static chip-info" style="margin-top:10px">${statusLabel}</span></header>
+      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, <span class="player-name">${me.tag}</span>.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static ${raw(current ? 'chip-warn' : myEntry.checkedInAt && !out && !myEntry.waitlisted ? 'chip-ok' : 'chip-info')}" style="margin-top:12px">${statusLabel}</span></header>
       ${withdrawal ? html`<div class="banner ${raw(withdrawal.status === 'failed' ? 'banner-warn' : 'banner-info')}" role="status" style="margin-bottom:16px"><div><b>Withdrawal</b><p class="body-small">${withdrawal.status === 'pending' ? 'Request sent. The host must record a DQ or forfeit in your next open set; the bracket has not changed yet.' : withdrawal.status === 'resolved' ? 'The host recorded your DQ. Check the bracket for your opponent’s next state.' : withdrawal.status === 'sending' ? 'Sending your withdrawal request…' : withdrawal.status === 'failed' ? 'Delivery was not confirmed. Retry the saved request when connected.' : 'Your entry was withdrawn before bracket generation.'}</p>${withdrawal.status === 'failed' ? html`<button class="btn btn-filled btn-sm" data-act="withdraw-entry" data-event="${event.id}">Retry withdrawal</button>` : ''}</div></div>` : ''}
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
       ${needsEntryAction ? raw(nextTaskCard({ event, myEntry, unsigned })) : ''}
       ${Number(event.entryFee) || myEntry.amountDue || myEntry.amountPaid ? html`<section class="card card-outlined" style="margin-bottom:16px"><b class="title-medium">Entry payment</b><p class="body-medium">${formatMoney(payment.received, event.currency)} recorded · ${formatMoney(payment.balance, event.currency)} remaining</p><p class="body-small dim">${payment.due === 0 ? 'No payment is due for this entry.' : payment.paid ? 'Your host has marked this entry as paid.' : 'Pay the remaining amount to the host at the desk. Ask them to update your payment record.'}</p></section>` : ''}
       ${!current && !next && !waiting && !out && !needsEntryAction ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Finish required consent or check in here when it opens.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
       ${current ? html`
-        <section class="card card-elevated next-set" aria-labelledby="current-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
-          <p class="eyebrow" style="color:var(--md-primary)">GO NOW</p>
-          <h2 id="current-set-heading" class="headline-small" style="margin:6px 0">${station?.label || 'See the host for your station'}</h2>
+        <section class="next-set is-called" aria-labelledby="current-set-heading" style="margin-bottom:20px">
+          <p class="eyebrow">GO NOW</p>
+          <div><h2 id="current-set-heading" class="headline-small" style="margin:12px 0 14px">${station?.label || 'See the host for your station'}</h2></div>
           <p class="title-medium" style="margin:4px 0">vs. ${nameOf(current.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</p>
           <div class="body-medium dim">${current.name}</div>
           ${current.calledAt ? html`
@@ -201,16 +201,16 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
       </div>` : ''}
 
       ${!current && next ? html`
-        <section class="card card-elevated next-set" aria-labelledby="next-set-heading" style="margin-bottom:16px;border-left:6px solid var(--md-primary)">
-          <p class="eyebrow" style="color:var(--md-primary)">UP NEXT</p>
-          <h2 id="next-set-heading" class="headline-small" style="margin:6px 0">vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</h2>
+        <section class="next-set" aria-labelledby="next-set-heading" style="margin-bottom:20px">
+          <p class="eyebrow">UP NEXT</p>
+          <h2 id="next-set-heading" class="plain-name" style="margin:12px 0 6px;font-size:clamp(1.6rem,7vw,2.4rem)">vs. ${nameOf(next.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</h2>
           <div class="body-medium dim">${next.name}</div>
           <p class="body-small" style="margin:12px 0 0">Stay close. Your station appears here when the host calls the set.</p>
         </section>` : ''}
 
       ${!current && !next && waiting ? html`
-        <div class="card card-elevated" style="margin-bottom:16px">
-          <div class="label-large dim">Waiting</div>
+        <div class="card card-outlined" style="margin-bottom:16px">
+          <p class="eyebrow">WAITING</p>
           <h2 class="title-large" style="margin:6px 0">${waiting.name}</h2>
           <p class="body-medium dim">Your opponent has not been decided yet. You will be called when they are.</p>
         </div>` : ''}
@@ -318,9 +318,9 @@ function nextTaskCard({ event, myEntry, unsigned }) {
     copy = 'The tournament is already running and you are not checked in. The host needs to confirm your status.';
   }
   return html`
-    <section class="card card-filled" aria-labelledby="next-task-heading" style="margin-bottom:16px">
-      <p class="eyebrow">NEXT TASK</p>
-      <h2 id="next-task-heading" class="title-large" style="margin:4px 0">${title}</h2>
+    <section class="card card-elevated" aria-labelledby="next-task-heading" style="margin-bottom:20px">
+      <p class="stamp-label">Next task</p>
+      <h2 id="next-task-heading" class="headline-small" style="margin:12px 0 6px">${title}</h2>
       <p class="body-medium" style="margin:0 0 ${raw(action ? '12px' : '0')}">${copy}</p>
       ${raw(action)}
     </section>`;
@@ -332,8 +332,8 @@ function eventHeader(event, game, entries) {
       title: event.name,
       subtitle: [formatDateTime(event.startsAt), event.venue].filter(Boolean).join(' · '),
     }))}
-    <div class="card card-outlined" style="margin-top:12px">
-      <div class="row" style="margin-top:12px;gap:8px">
+    <div style="margin-top:16px">
+      <div class="row" style="gap:8px">
         <span class="chip chip-static chip-assist">${entries.length}${event.capacity ? `/${event.capacity}` : ''} entrants</span>
         <span class="chip chip-static chip-assist">${event.format === 'single' ? 'Single' : 'Double'} elim</span>
         ${event.entryFee ? html`<span class="chip chip-static chip-assist">${formatMoney(event.entryFee, event.currency)}</span>` : ''}
@@ -374,7 +374,7 @@ function bracketTab({ event, entries, players, bracket }) {
     <div class="pane">
       ${event.status === 'complete' && table.length ? html`
         <section class="card card-elevated" style="margin-bottom:16px">
-          <b class="title-large">Final standings</b>
+          <h2 class="headline-small">Final standings</h2>
           <div class="list" style="margin-top:8px">
             ${list(table.slice(0, 8).map((row) => html`
               <a class="list-item" href="#/p/${row.entrant.playerId}">
@@ -384,7 +384,7 @@ function bracketTab({ event, entries, players, bracket }) {
           </div>
         </section>` : ''}
 
-      <h2 class="title-large" style="margin-bottom:8px">Bracket</h2>
+      <div class="section-heading"><h2>${raw(icon('bracket', 'icon-xl'))}Bracket</h2><span class="section-note">Scroll sideways for later rounds</span></div>
       <!-- tabindex + role so the pane can be scrolled with the arrow keys. A
            scroll container that only answers a wheel or a swipe is unreachable
            from a keyboard, and the bracket is the widest thing on the site. -->
@@ -437,7 +437,6 @@ function bracketTab({ event, entries, players, bracket }) {
             </div>`))}
         </div>
       </div>
-      <p class="body-small dim" style="margin-top:8px">Scroll sideways for later rounds.</p>
     </div>`;
 }
 

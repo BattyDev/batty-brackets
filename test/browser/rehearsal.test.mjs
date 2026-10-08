@@ -98,7 +98,7 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: 'Restore and replace', exact: true }).click();
   report.ok('downloaded backup can restore the real event', (await snapshot()).entries.length === 10 && (await snapshot()).results.some(r => r.byDq));
   await goTo(page, base, `#/e/${id}/tv`);
-  report.ok('restored venue display names the rehearsal event', await page.locator('.tv-title').innerText() === 'Pilot rehearsal');
+  report.ok('restored venue display names the rehearsal event', await page.locator('.tv-title').textContent() === 'Pilot rehearsal');
   report.noErrors(errors);
   await ctx.close();
 } finally {
