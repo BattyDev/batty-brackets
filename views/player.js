@@ -250,7 +250,7 @@ function profile(player, ctx, isMe) {
           </div>`
         : html`<div class="empty">${raw(icon('trophy'))}
             <p class="body-medium">No sets yet.</p>
-            ${isMe ? html`<p class="body-small">Played elsewhere? Connect start.gg to bring your record with you — see the README for where that stands.</p>` : ''}
+            ${isMe ? html`<p class="body-small">Your recorded sets appear here after the host accepts a result.</p>` : ''}
           </div>`}
       </section>
     </div>`;

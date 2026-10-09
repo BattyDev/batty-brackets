@@ -54,7 +54,7 @@ async function temporarySession(tag, captchaToken) {
 function ensureRemoteLookup(code) {
   const normalized = String(code || '').trim().toUpperCase();
   if (!normalized || !auth.isRemote() || !auth.isSignedIn()) return;
-  if (codeLookup.code === normalized && ['loading', 'done'].includes(codeLookup.status)) return;
+  if (codeLookup.code === normalized && ['loading', 'done', 'error'].includes(codeLookup.status)) return;
   codeLookup = { code: normalized, status: 'loading', error: null };
   Promise.resolve().then(async () => {
     try {
@@ -114,6 +114,7 @@ function landing(ctx) {
           <p class="stamp-label publication-edition">Batty Brackets / Local fighting games / By BattyDev</p>
           <h1 class="press-headline" id="press-headline">Local<br><span>legends.</span></h1>
           <p class="press-deck">Good players. Bad venue chairs.<br>One more set before last call.</p>
+          <p class="body-medium">Register players, manage check-in, and run local tournament brackets and stations.</p>
           <div class="press-actions">
             <a class="btn btn-lg btn-lead" href="#/join">Got a code? Get in ${raw(icon('arrowOut'))}</a>
             ${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="player">${raw(icon('play', 'icon-sm'))} Take the player seat</button>` : html`<a class="btn btn-text" href="./demo.html">Explore the sample demo</a>`}
@@ -129,7 +130,7 @@ function landing(ctx) {
         <section class="event-directory" aria-labelledby="events-heading">
           <div class="section-heading"><h2 id="events-heading">${raw(icon('controller', 'icon-xl'))}On the bill.</h2>
             <span class="section-note">${live.length} active</span></div>
-          ${live.length ? html`<div class="bill">${list(live.map(e => eventCard(e, ctx)))}</div>` : html`<div class="empty"><p>No active events on this device.</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}
+          ${live.length ? html`<div class="bill">${list(live.map(e => eventCard(e, ctx)))}</div>` : html`<div class="empty"><p>${store.syncState().configured ? 'No listed active events right now.' : 'No active events on this device.'}</p><a class="btn btn-tonal" href="#/join">Find an event by code</a></div>`}
           <p class="local-device-note">${store.syncState().configured ? 'Browse events or enter the code from your host.' : 'These events are saved on this device. Online registration and sharing are not connected yet.'}</p>
         </section>
         <aside class="lobby-aside">
@@ -145,7 +146,7 @@ function landing(ctx) {
           </section>
         </aside>
       </div>
-      <footer class="lobby-footer"><span>No VIPs. Just good sets.</span><span>Batty Brackets / By BattyDev</span>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station', 'icon-sm'))} Try the venue display</button>` : ''}</footer>
+      <footer class="lobby-footer"><span>No VIPs. Just good sets.</span><a href="#/about">About & help</a><span>Batty Brackets / By BattyDev</span>${demo ? html`<button class="btn btn-text" data-act="tour-start" data-tour="tv">${raw(icon('station', 'icon-sm'))} Try the venue display</button>` : ''}</footer>
     </div>`;
 }
 
@@ -160,7 +161,7 @@ function joinSlip() {
     <form data-act-submit="join-lookup">
       <label for="join-slip-code">Event code</label>
       <div class="join-row">
-        <input id="join-slip-code" name="code" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="TKN14B">
+        <input id="join-slip-code" name="code" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="12" placeholder="${auth.isRemote() ? 'ABCD2345EFGH' : 'TKN14B'}">
         <button class="btn btn-filled" type="submit">Join ${raw(icon('arrowOut', 'icon-sm'))}</button>
       </div>
     </form>
@@ -310,28 +311,28 @@ function joinView(ctx, code) {
     back: '/',
     body: html`
       <div class="pane join-page">
-        <header class="workspace-heading"><div><p class="stamp-label">Your invite to the local</p>
+        ${!event ? html`<header class="workspace-heading"><div><p class="stamp-label">Your invite to the local</p>
           <h2 style="margin-top:12px">Got the code?<br>Get in.</h2>
           <p>Enter the code your host shared, or scan the flyer.</p></div></header>
         <form class="stack join-lookup" data-act-submit="join-lookup">
           <label class="field">
             <span class="field-label">Event code</span>
             <input type="text" name="code" value="${code || ''}" autocapitalize="characters"
-                   autocomplete="off" spellcheck="false" placeholder="TKN14B">
+                   autocomplete="off" spellcheck="false" placeholder="${auth.isRemote() ? 'ABCD2345EFGH' : 'TKN14B'}">
           </label>
           <button class="btn btn-filled btn-lg btn-block" type="submit">Find it</button>
-        </form>
+        </form>` : ''}
 
         ${normalizedCode && !event && auth.isRemote() && !auth.isSignedIn() ? guestForm(null, false, normalizedCode) : ''}
         ${normalizedCode && !event && auth.isRemote() && auth.isSignedIn() && codeLookup.code === normalizedCode && codeLookup.status === 'loading' ? html`
           <div class="banner banner-info" style="margin-top:16px">${raw(icon('clock'))}<div>Finding your event…</div></div>` : ''}
         ${normalizedCode && !event && (!auth.isRemote() || (codeLookup.code === normalizedCode && codeLookup.status === 'error')) ? html`
           <div class="banner banner-error" style="margin-top:16px">${raw(icon('alert'))}
-            <div>${auth.isRemote() ? codeLookup.error : `No event with the code <b>${normalizedCode}</b>. Codes never use 0, O, 1 or I — check for a mistyped letter.`}</div>
+            <div><b>We couldn’t find that invitation.</b><p class="body-small">Check the code with your host, or reconnect and retry.</p>${auth.isRemote() ? html`<button class="btn btn-outlined btn-sm" data-act="join-retry" data-code="${normalizedCode}">Retry lookup</button>` : ''}<a href="#/about/code">Code help</a></div>
           </div>` : ''}
 
         ${event ? html`
-          <div class="card card-elevated" style="margin-top:24px">
+          <div class="card card-elevated">
             <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
               ${raw(gameMark(game))}
               <div class="spacer" style="min-width:0">
@@ -365,10 +366,16 @@ function joinView(ctx, code) {
               <button class="btn btn-filled btn-block" data-act="join-event" data-event="${event.id}" style="margin-top:16px">
                 Enter this event
               </button>`}
-          </div>` : ''}
+          </div><a class="btn btn-text" href="#/join" style="margin-top:12px">Use a different code</a>` : ''}
       </div>`,
   };
 }
+
+on('join-retry', ({ code }) => {
+  codeLookup = { code: null, status: 'idle', error: null };
+  ensureRemoteLookup(code);
+  rerender();
+});
 
 export function guestForm(event, waitlisted = false, code = '') {
   const hasDocuments = Boolean(event?.documents?.some((doc) => doc.required));

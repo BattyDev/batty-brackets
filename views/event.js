@@ -64,7 +64,7 @@ export function view(ctx) {
     back: '/',
     gameId: event.gameId,
     body: html`
-      <div class="workspace-context player-context"><span class="eyebrow">PLAYER VIEW</span><span>${event.name}</span><span>${event.status === 'running' ? 'Tournament in progress' : event.status === 'complete' ? 'Final results' : 'Before the first set'}</span>${raw(reportButton('event', event.id))}</div>
+      <div class="workspace-context player-context"><span>${event.name}</span>${raw(reportButton('event', event.id))}<a href="#/about/player">Help</a></div>
       ${ctx.eventFreshness ? html`<div class="pane" style="max-width:800px;padding-top:12px;padding-bottom:0">
         <div class="banner ${raw(ctx.eventFreshness.kind === 'error' ? 'banner-error' : 'banner-warn')}" role="status">
           ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
@@ -172,26 +172,26 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
     .filter(row => row.eventId === event.id && row.playerId === me.id);
   const submission = selectPlayerMatchSubmission(mySubmissions, current?.id);
   const statusLabel = myEntry.waitlisted ? 'Waitlisted' : out ? 'Eliminated'
-    : current ? 'Called now' : myEntry.checkedInAt ? 'Checked in' : 'Entered';
+    : current ? (['pending', 'sending'].includes(submission?.status) ? 'Result sent' : 'Called now') : myEntry.checkedInAt ? 'Checked in' : 'Entered';
 
   return html`
     <div class="pane player-now" style="max-width:800px">
-      <header class="player-greeting"><p class="eyebrow">${event.name}</p><h2>Let's go, <span class="player-name">${me.tag}</span>.</h2><p>${event.venue || game?.name || 'Your tournament'}</p><span class="chip chip-static ${raw(current ? 'chip-warn' : myEntry.checkedInAt && !out && !myEntry.waitlisted ? 'chip-ok' : 'chip-info')}" style="margin-top:12px">${statusLabel}</span></header>
+      <header class="player-greeting player-greeting-compact"><span class="player-name">${me.tag}</span><span class="chip chip-static ${raw(current ? 'chip-warn' : myEntry.checkedInAt && !out && !myEntry.waitlisted ? 'chip-ok' : 'chip-info')}">${statusLabel}</span></header>
       ${withdrawal ? html`<div class="banner ${raw(withdrawal.status === 'failed' ? 'banner-warn' : 'banner-info')}" role="status" style="margin-bottom:16px"><div><b>Withdrawal</b><p class="body-small">${withdrawal.status === 'pending' ? 'Request sent. The host must record a DQ or forfeit in your next open set; the bracket has not changed yet.' : withdrawal.status === 'resolved' ? 'The host recorded your DQ. Check the bracket for your opponent’s next state.' : withdrawal.status === 'sending' ? 'Sending your withdrawal request…' : withdrawal.status === 'failed' ? 'Delivery was not confirmed. Retry the saved request when connected.' : 'Your entry was withdrawn before bracket generation.'}</p>${withdrawal.status === 'failed' ? html`<button class="btn btn-filled btn-sm" data-act="withdraw-entry" data-event="${event.id}">Retry withdrawal</button>` : ''}</div></div>` : ''}
       ${myEntry.waitlisted ? html`<div class="banner banner-warn"><div><b>You are on the waitlist</b><p>Check with the host about an available spot before preparing for your first set.</p></div></div>` : ''}
       ${needsEntryAction ? raw(nextTaskCard({ event, myEntry, unsigned })) : ''}
-      ${Number(event.entryFee) || myEntry.amountDue || myEntry.amountPaid ? html`<section class="card card-outlined" style="margin-bottom:16px"><b class="title-medium">Entry payment</b><p class="body-medium">${formatMoney(payment.received, event.currency)} recorded · ${formatMoney(payment.balance, event.currency)} remaining</p><p class="body-small dim">${payment.due === 0 ? 'No payment is due for this entry.' : payment.paid ? 'Your host has marked this entry as paid.' : 'Pay the remaining amount to the host at the desk. Ask them to update your payment record.'}</p></section>` : ''}
       ${!current && !next && !waiting && !out && !needsEntryAction ? html`<section class="player-status card card-filled"><p class="eyebrow">${event.status === 'complete' ? 'EVENT COMPLETE' : !myEntry.checkedInAt ? 'BEFORE YOU PLAY' : 'YOU ARE CHECKED IN'}</p><h2>${event.status === 'complete' ? 'The results are in.' : !myEntry.checkedInAt ? 'Get ready for your first set.' : 'You’re in. Stay close.'}</h2><p>${event.status === 'complete' ? 'Open the bracket for final standings and your profile for recorded results.' : !myEntry.checkedInAt ? 'Finish required consent or check in here when it opens.' : 'Your matchup will appear here when the bracket is ready. Keep this page handy for your station call.'}</p></section>` : ''}
       ${current ? html`
         <section class="next-set is-called" aria-labelledby="current-set-heading" style="margin-bottom:20px">
-          <p class="eyebrow">GO NOW</p>
+          <p class="eyebrow">${['pending', 'sending'].includes(submission?.status) ? 'WAITING FOR HOST REVIEW' : 'GO NOW'}</p>
           <div><h2 id="current-set-heading" class="headline-small" style="margin:12px 0 14px">${station?.label || 'See the host for your station'}</h2></div>
           <p class="title-medium" style="margin:4px 0">vs. ${nameOf(current.slots.find((s) => s.entrantId !== myEntry.id)?.entrantId)}</p>
           <div class="body-medium dim">${current.name}</div>
-          ${current.calledAt ? html`
+          ${station?.platform ? html`<div class="body-small">${station.platform.toUpperCase()}</div>` : ''}
+          ${current.calledAt && !['pending', 'sending'].includes(submission?.status) ? html`
             <div class="banner banner-warn" style="margin-top:12px">${raw(icon('clock'))}
               <div class="body-small">Called ${relativeTime(current.calledAt)}. The DQ window is
-              ${ruleset?.values?.dqTimer || 5} minutes from when it was called.</div>
+              ${ruleset?.values?.dqTimer || 5} minutes from when it was called. Arrive by ${new Date(Date.parse(current.calledAt) + (ruleset?.values?.dqTimer || 5) * 60000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.</div>
             </div>` : ''}
           ${auth.isRemote() ? raw(matchResultForm({ event, current, entries, players, ruleset, submission })) : ''}
         </section>` : ''}
@@ -224,6 +224,7 @@ function youTab({ event, game, ruleset, entries, players, bracket, me, myEntry }
           </p>
         </div>` : ''}
 
+      ${Number(event.entryFee) || myEntry.amountDue || myEntry.amountPaid ? html`<details class="card card-outlined player-payment" ${raw(payment.paid ? '' : 'open')} style="margin-bottom:16px"><summary class="title-medium">${payment.paid ? 'Entry payment · Paid' : `Entry payment · ${formatMoney(payment.balance, event.currency)} due`}</summary><p class="body-medium">${formatMoney(payment.received, event.currency)} recorded · ${formatMoney(payment.balance, event.currency)} remaining</p><p class="body-small dim">${payment.due === 0 ? 'No payment is due for this entry.' : payment.paid ? 'Your host has marked this entry as paid.' : myEntry.waitlisted ? 'Ask the host whether to pay while waiting for admission.' : 'Pay the remaining amount to the host. Ask them to update your payment record.'} <a href="#/about/payments">Fee help</a></p></details>` : ''}
       ${auth.isRemote() && !['complete', 'draft'].includes(event.status) && !['pending', 'sending', 'resolved', 'withdrawn', 'failed'].includes(withdrawal?.status) ? html`<button class="btn btn-tonal btn-block" data-act="withdraw-entry" data-event="${event.id}" style="margin-bottom:16px">Withdraw from event</button>` : ''}
 
 

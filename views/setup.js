@@ -125,7 +125,7 @@ export function view(ctx) {
     back: draft.step === 0 ? '/host' : null,
     gameId: draft.gameId,
     body: html`
-      <div class="pane setup-workspace" style="max-width:760px">
+      <div class="pane setup-workspace" data-game="${draft.gameId || ''}" style="max-width:760px">
         <header class="setup-heading" tabindex="-1"><p class="eyebrow">CREATE AN EVENT · STEP ${draft.step + 1} OF ${STEPS.length}</p><h2>${STEPS[draft.step]}</h2></header>
         <div class="row setup-draft-status"><span class="body-small dim spacer">${draftSaved ? 'Draft saved on this device · resume here anytime' : 'Browser storage unavailable · keep this tab open to retain your draft'}</span><button class="btn btn-text btn-sm" data-act="wizard-discard">Discard draft</button></div>
         <div class="row" style="margin-bottom:20px;gap:6px">
@@ -141,7 +141,7 @@ export function view(ctx) {
         ${raw([stepGame, stepShape, stepRules, stepSignups, stepPublish][draft.step](ctx, game))}
         <nav class="row setup-actions" aria-label="Event setup navigation">
           ${draft.step > 0 ? html`<button class="btn btn-outlined" data-act="wizard-step" data-step="${draft.step - 1}"><span aria-hidden="true">←</span> Back</button>` : html`<span></span>`}
-          ${draft.step < STEPS.length - 1 ? html`<button class="btn btn-filled" data-act="wizard-step" data-step="${draft.step + 1}" ${raw(!game ? 'disabled' : '')}>Next: ${STEPS[draft.step + 1]} ${raw(icon('chevron', 'icon-sm'))}</button>` : html`<span class="body-small dim">Review, then create above</span>`}
+          ${draft.step < STEPS.length - 1 ? html`<button class="btn btn-filled" data-act="wizard-step" data-step="${draft.step + 1}" ${raw(!game ? 'disabled' : '')}>Next: ${STEPS[draft.step + 1]} ${raw(icon('chevron', 'icon-sm'))}</button>` : html`<button class="btn btn-filled" data-act="wizard-publish" ${raw(validate(game).length || publishing ? 'disabled' : '')}>${publishing ? 'Creating…' : (auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event')}</button>`}
         </nav>
       </div>`,
   };
@@ -153,7 +153,6 @@ export function view(ctx) {
 
 function stepGame() {
   return html`
-    <h2 class="headline-small" style="margin-bottom:4px">What are you running?</h2>
     <p class="body-medium dim" style="margin-bottom:16px">
       Choose the game to see its rules and platforms. Review the game and bracket format before starting matches.
     </p>
@@ -202,10 +201,7 @@ function stepGame() {
     <div class="card card-filled" style="margin-top:20px">
       <b class="title-small">Not here?</b>
       <p class="body-small dim" style="margin:4px 0 0">
-        This is every title from Evo 2025 and Evo 2026, plus Tokon and Smash Ultimate.
-        A game is data — a few lines naming its platforms and which ruleset shape it uses,
-        with the shared settings assembled from <span class="code">data/rulesets.js</span>.
-        Adding one touches neither the bracket engine nor the organiser tools.
+        Missing your game? Suggest one to your host or BattyDev.
       </p>
     </div>`;
 }
@@ -225,8 +221,7 @@ function visibleGames() {
 
 function stepShape(ctx, game) {
   return html`
-    ${raw(gameHero(game, { title: 'The basics', subtitle: 'Set the details players need before they enter.' }))}
-    <h2 class="sr-only">The basics</h2>
+    <p class="body-medium dim">Set the details players need before they enter.</p>
 
     <div class="stack">
       <label class="field">
@@ -330,8 +325,7 @@ function stepRules(ctx, game) {
   const changed = Object.keys(draft.overrides).length;
 
   return html`
-    ${raw(gameHero(game, { title: 'Rules', subtitle: 'Pick a preset and move on — everything below is optional.' }))}
-    <h2 class="sr-only">Rules</h2>
+    <p class="body-medium dim">Review a preset; change individual settings when needed.</p>
 
     <div class="stack" style="margin-bottom:24px">
       ${list(game.presets.map((p) => html`
@@ -509,7 +503,6 @@ function optionHelp(field, value) {
 
 function stepSignups() {
   return html`
-    <h2 class="headline-small" style="margin-bottom:20px">Registration</h2>
 
     <div class="card card-outlined" style="margin-bottom:16px">
       <div class="row-tight" style="margin-bottom:12px;color:var(--md-primary)">
@@ -606,8 +599,7 @@ function stepPublish(ctx, game) {
   const problems = validate(game);
 
   return html`
-    ${raw(gameHero(game, { title: 'Ready?' }))}
-    <h2 class="sr-only">Ready to publish</h2>
+    <p class="body-medium dim" style="margin-bottom:16px">Review the field, fee, and rules before creating.</p>
 
     <div class="card card-elevated" style="margin-bottom:16px">
       <h3 class="title-large">${draft.name || `${game?.short} event`}</h3>
@@ -624,6 +616,9 @@ function stepPublish(ctx, game) {
         ${raw(summaryRow('Signing', draft.documents.filter((d) => d.required).map((d) => d.title).join(', ') || 'Nothing required'))}
         ${remote ? raw(summaryRow('Visible', draft.visibility === 'unlisted' ? 'Unlisted — code or link only' : 'Listed publicly')) : ''}
       </dl>
+      <div class="row" style="margin-top:12px" aria-label="Edit event review">
+        ${list([['0', 'Game'], ['1', 'Details & fee'], ['2', 'Rules'], ['3', 'Documents & visibility']].map(([step, label]) => html`<button class="btn btn-text btn-sm" data-act="wizard-edit" data-step="${step}">Edit ${label}</button>`))}
+      </div>
     </div>
 
     ${preset?.provisional ? html`
@@ -668,10 +663,6 @@ function stepPublish(ctx, game) {
         </div>
       </div>` : ''}
 
-    <button class="btn btn-filled btn-lg btn-block" data-act="wizard-publish"
-            ${raw(problems.length || publishing ? 'disabled' : '')}>
-      ${raw(icon('check'))} ${publishing ? 'Creating…' : (auth.isSignedIn() ? 'Create the event' : 'Sign in and create the event')}
-    </button>
     <p class="body-small dim" style="text-align:center;margin-top:12px">
       Event details and documents can be edited in Settings. Review the game and format before starting the bracket.
     </p>`;
@@ -730,6 +721,7 @@ function changeStep(step) {
   });
 }
 on('wizard-step', ({ step }) => changeStep(step));
+on('wizard-edit', ({ step }) => changeStep(step));
 on('wizard-discard', () => dialog({ title: 'Discard this draft?', body: html`<p>Your unpublished event will be removed from this device.</p>`, actions: [
   { label: 'Keep draft', kind: 'text' }, { label: 'Discard', kind: 'filled', onClick: () => { discardDraft(); rerender(); } },
 ] }));

@@ -224,6 +224,87 @@ for (const reset of [true, false]) {
   eq(`two-player reset=${reset}: grand-final winner is champion`, table[0]?.entrant.id, 'e2');
 }
 
+/* Byes must propagate absent losers without treating a pending result as an
+   absent player. This is the three-person host workflow that used to stall. */
+console.log('double elimination with byes');
+{
+  const roster = entrants(3);
+  const bracket = doubleElimination(roster);
+  const initial = JSON.stringify(bracket.matches);
+  const losersSemi = bracket.matches.find((m) => m.id === 'L1-1');
+  eq('three-player winners bye produces a known empty losers seat', losersSemi.slots[0].bye, true);
+  eq('three-player losers semifinal still waits for the real loser', losersSemi.state, undefined);
+  eq('three-player opening queue contains only the real winners semifinal',
+    readyMatches(bracket.matches).map((m) => m.id), ['W1-2']);
+
+  let matches = reportResult(bracket.matches, 'W1-2', { winnerId: 'e2', scoreA: 2, scoreB: 0 });
+  eq('reporting a real loser resolves the losers semifinal bye',
+    matches.find((m) => m.id === 'L1-1').winnerId, 'e3');
+  eq('that automatic advance has no reported score', matches.find((m) => m.id === 'L1-1').score, undefined);
+  eq('losers final waits for the pending winners-final loser',
+    matches.find((m) => m.id === 'L2-1').state, undefined);
+  eq('three-player next queue is the winners final', readyMatches(matches).map((m) => m.id), ['W2-1']);
+  eq('result propagation preserves the input bracket', JSON.stringify(bracket.matches), initial);
+
+  matches = reportResult(matches, 'W2-1', { winnerId: 'e1', scoreA: 2, scoreB: 0 });
+  eq('both winners results make the real losers final playable',
+    readyMatches(matches).map((m) => m.id), ['L2-1']);
+  eq('losers final seats contain the two real losers',
+    matches.find((m) => m.id === 'L2-1').slots.map((s) => s.entrantId), ['e3', 'e2']);
+}
+
+function finishDouble(matches, upsetFinal = false) {
+  const losses = new Map();
+  let played = 0;
+  while (played <= matches.length) {
+    const ready = readyMatches(matches);
+    if (!ready.length) break;
+    /* Also exercise a different order of independent sets during upset runs. */
+    const match = upsetFinal ? ready.at(-1) : ready[0];
+    const [a, b] = match.slots;
+    const winnerId = match.bracket === 'GF' && upsetFinal ? b.entrantId
+      : a.seed <= b.seed ? a.entrantId : b.entrantId;
+    const loserId = winnerId === a.entrantId ? b.entrantId : a.entrantId;
+    losses.set(loserId, (losses.get(loserId) || 0) + 1);
+    matches = reportResult(matches, match.id, {
+      winnerId, scoreA: winnerId === a.entrantId ? 2 : 0, scoreB: winnerId === b.entrantId ? 2 : 0,
+    });
+    played += 1;
+  }
+  return { matches, losses, played };
+}
+
+for (const n of [3, 5, 6, 7]) {
+  for (const upset of [false, true]) {
+    const roster = entrants(n);
+    const bracket = doubleElimination(roster);
+    const { matches, losses, played } = finishDouble(bracket.matches, upset);
+    const label = `${n} players, ${upset ? 'reset' : 'no reset needed'}`;
+    const champion = upset ? 'e2' : 'e1';
+    eq(`${label}: no matches remain blocked`, matches.filter((m) => !m.state && !m.cancelled).map((m) => m.id), []);
+    eq(`${label}: correct number of played sets`, played, 2 * n - 2 + Number(upset));
+    eq(`${label}: every other entrant loses exactly twice`,
+      roster.filter((e) => e.id !== champion).map((e) => losses.get(e.id)), Array(n - 1).fill(2));
+    eq(`${label}: champion has only applicable losses`, losses.get(champion) || 0, Number(upset));
+    ok(`${label}: automatic advances never record a loss or score`,
+      matches.filter((m) => m.state === 'bye').every((m) => !m.loserId && !m.score));
+    const table = standings({ ...bracket, matches }, new Map(roster.map((e) => [e.id, e])));
+    eq(`${label}: expected champion`, table[0]?.entrant.id, champion);
+    eq(`${label}: every entrant is placed once`, new Set(table.map((row) => row.entrant.id)).size, n);
+  }
+}
+
+{
+  const bracket = doubleElimination(entrants(5));
+  const empty = bracket.matches.find((m) => m.id === 'L1-2');
+  eq('two absent losers resolve an entirely empty losers match', empty.state, 'bye');
+  eq('an entirely empty losers match has no winner', empty.winnerId, null);
+  eq('an empty branch propagates a known empty survivor seat',
+    bracket.matches.find((m) => m.id === 'L2-2').slots[0].bye, true);
+  eq('an empty branch does not advance a pending winners loser',
+    bracket.matches.find((m) => m.id === 'L2-2').state, undefined);
+}
+
 console.log('full simulation');
 {
   const roster = entrants(8);
@@ -296,6 +377,64 @@ console.log('undo');
   const cascaded = clearResult(chain, 'W1-1');
   eq('the downstream result is cleared too', cascaded.find((m) => m.id === 'W2-1').state, undefined);
   eq('the untouched sibling survives', cascaded.find((m) => m.id === 'W1-2').state, 'complete');
+}
+
+{
+  const bracket = doubleElimination(entrants(3));
+  const completed = finishDouble(bracket.matches, true).matches;
+  const snapshot = JSON.stringify(completed);
+  const undone = clearResult(completed, 'W1-2');
+  eq('undo across a losers bye clears every downstream result',
+    undone.filter((m) => m.id !== 'W1-1').map((m) => m.state ?? null), Array(6).fill(null));
+  eq('undo preserves the initial winners bye', undone.find((m) => m.id === 'W1-1').state, 'bye');
+  eq('undo preserves the absent loser of that initial bye', undone.find((m) => m.id === 'L1-1').slots[0].bye, true);
+  eq('undo restores the pending real loser', undone.find((m) => m.id === 'L1-1').slots[1].bye, false);
+  eq('undo restores the opening queue', readyMatches(undone).map((m) => m.id), ['W1-2']);
+  eq('undo deactivates the downstream reset', undone.find((m) => m.id === 'GF-2').conditional, true);
+  eq('undo preserves the completed input bracket', JSON.stringify(completed), snapshot);
+
+  let corrected = reportResult(undone, 'W1-2', { winnerId: 'e3', scoreA: 0, scoreB: 2 });
+  eq('corrected loser replaces the old losers-bye survivor', corrected.find((m) => m.id === 'L1-1').winnerId, 'e2');
+  corrected = finishDouble(corrected).matches;
+  eq('a corrected bracket with byes drains again', corrected.filter((m) => !m.state && !m.cancelled).map((m) => m.id), []);
+  eq('a bye itself has no reported result to undo',
+    clearResult(bracket.matches, 'W1-1'), bracket.matches);
+}
+
+{
+  const bracket = doubleElimination(entrants(5));
+  const completed = finishDouble(bracket.matches).matches;
+  const undone = clearResult(completed, 'W1-2');
+  eq('undo preserves an unrelated entirely empty losers branch', undone.find((m) => m.id === 'L1-2').state, 'bye');
+  eq('undo preserves an independent winners result', undone.find((m) => m.id === 'W2-2').state, 'complete');
+  eq('undo clears the losers bye fed by the corrected set', undone.find((m) => m.id === 'L1-1').state, undefined);
+  const replayed = finishDouble(undone).matches;
+  eq('the five-player bracket drains after undo and replay', replayed.filter((m) => !m.state && !m.cancelled).map((m) => m.id), []);
+}
+
+for (const upset of [false, true]) {
+  const bracket = doubleElimination(entrants(3));
+  const completed = finishDouble(bracket.matches, upset).matches;
+  const undone = clearResult(completed, 'GF-1');
+  const reset = undone.find((m) => m.id === 'GF-2');
+  eq(`undo grand final after ${upset ? 'reset' : 'cancellation'} clears reset result`, reset.state, undefined);
+  eq(`undo grand final after ${upset ? 'reset' : 'cancellation'} restores reset condition`, reset.conditional, true);
+  eq(`undo grand final after ${upset ? 'reset' : 'cancellation'} removes reset cancellation`, reset.cancelled, false);
+  eq(`undo grand final after ${upset ? 'reset' : 'cancellation'} empties both reset seats`,
+    reset.slots.map((s) => s.entrantId), [null, null]);
+  eq(`undo grand final after ${upset ? 'reset' : 'cancellation'} makes GF-1 ready`,
+    readyMatches(undone).map((m) => m.id), ['GF-1']);
+  const replayed = finishDouble(undone, !upset).matches;
+  eq(`correcting grand final reverses ${upset ? 'reset activation' : 'reset cancellation'}`,
+    replayed.find((m) => m.id === 'GF-2').cancelled, upset);
+}
+
+{
+  const completed = finishDouble(doubleElimination(entrants(3)).matches, true).matches;
+  const undone = clearResult(completed, 'GF-2');
+  eq('undoing only the reset preserves GF-1', undone.find((m) => m.id === 'GF-1').state, 'complete');
+  eq('undoing only the reset keeps it active', undone.find((m) => m.id === 'GF-2').conditional, false);
+  eq('undoing only the reset leaves it playable', readyMatches(undone).map((m) => m.id), ['GF-2']);
 }
 
 /* ------------------------------------------------------------- projection */

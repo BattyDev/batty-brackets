@@ -1,0 +1,82 @@
+-- Disposable, rollback-only tests of the expanded phase and existing claim boundary.
+begin;
+do $$
+<<walkup_security>>
+declare host_user uuid:=gen_random_uuid(); player_user uuid:=gen_random_uuid();
+ event_id uuid:=gen_random_uuid(); bundle jsonb; first_entry jsonb; late_entry jsonb;
+ rejected boolean:=false; player_id uuid;
+begin
+ insert into auth.users(id) values(host_user),(player_user);
+ perform set_config('request.jwt.claim.sub',host_user::text,true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',host_user,'role','authenticated','is_anonymous',false)::text,true);
+ execute 'set local role authenticated';
+ perform public.bkt_identity('October UX host');
+ bundle:=public.bkt_create_event(event_id,jsonb_build_object('org_name','Disposable UX fixtures','name','Walk-up boundary test','game_id','sf6','capacity',2,
+   'documents',jsonb_build_array(jsonb_build_object('id','notice','title','Nonbinding test notice','body','Test only.','required',true,'version',1))));
+ first_entry:=public.bkt_create_walkup(event_id,'Registration walk-up');
+ if first_entry->'entry'->>'source' is distinct from 'door' or first_entry->'entry'->>'checked_in_at' is not null then raise exception 'Walk-up source/document boundary lost'; end if;
+ execute 'reset role';
+ update public.bkt_events set status='checkin' where id=event_id;
+ execute 'set local role authenticated';
+ late_entry:=public.bkt_create_walkup(event_id,'Late walk-up');
+ if (late_entry->'entry'->>'waitlisted')::boolean is distinct from false or late_entry->'entry'->>'source' is distinct from 'door' then raise exception 'Check-in walk-up not admitted correctly'; end if;
+ bundle:=public.bkt_create_walkup(event_id,'Overflow walk-up');
+ if (bundle->'entry'->>'waitlisted')::boolean is distinct from true then raise exception 'Check-in walk-up exceeded capacity'; end if;
+ if late_entry->'entry'->>'checked_in_at' is not null or late_entry->'entry'->'signed_documents' is distinct from '[]'::jsonb then raise exception 'Walk-up bypassed document review'; end if;
+ if late_entry->>'claim_expires_at' is null or (late_entry->>'claim_expires_at')::timestamptz <= now() then raise exception 'No usable claim expiry'; end if;
+ perform set_config('request.jwt.claim.sub',player_user::text,true);
+ perform set_config('request.jwt.claim.is_anonymous','true',true);
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',player_user,'role','authenticated','is_anonymous',true)::text,true);
+ player_id:=(public.bkt_identity('October UX player')->>'id')::uuid;
+ begin perform public.bkt_create_walkup(event_id,'Unauthorized'); exception when insufficient_privilege then rejected:=true; end;
+ if not rejected then raise exception 'Player created host walk-up'; end if;
+ if public.bkt_claim_player(late_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Claim bypassed closed registration'; end if;
+ execute 'reset role';
+ update public.bkt_events set status='registration' where id=event_id;
+ update public.bkt_entries set seed=1 where id=(first_entry->'entry'->>'id')::uuid;
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Seeded entry transferred'; end if;
+ execute 'reset role';
+ update public.bkt_entries set seed=null,checked_in_at=now() where id=(first_entry->'entry'->>'id')::uuid;
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Checked-in entry transferred'; end if;
+ execute 'reset role';
+ update public.bkt_entries set checked_in_at=null where id=(first_entry->'entry'->>'id')::uuid;
+ insert into bkt_private.signatures(entry_id,event_id,player_id,document_id,document_version,typed_name)
+ values((first_entry->'entry'->>'id')::uuid,event_id,(first_entry->'player'->>'id')::uuid,'notice',1,'Test only');
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Signed entry transferred'; end if;
+ execute 'reset role';
+ delete from bkt_private.signatures where entry_id=(first_entry->'entry'->>'id')::uuid;
+ insert into public.bkt_results(event_id,match_id,winner_player_id,loser_player_id)
+ values(event_id,'disposable-played',(first_entry->'player'->>'id')::uuid,(late_entry->'player'->>'id')::uuid);
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Played history transferred'; end if;
+ execute 'reset role';
+ delete from public.bkt_results r where r.event_id=walkup_security.event_id and r.match_id='disposable-played';
+ update bkt_private.claims c set expires_at=now()-interval '1 hour' where c.player_id=(first_entry->'player'->>'id')::uuid;
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'invalid_code' then raise exception 'Expired handoff transferred'; end if;
+ execute 'reset role';
+ update bkt_private.claims c set expires_at=now()+interval '24 hours' where c.player_id=(first_entry->'player'->>'id')::uuid;
+ execute 'set local role authenticated';
+ if public.bkt_claim_player(late_entry->>'claim_code')->>'player_id' is distinct from player_id::text then raise exception 'Unused registration handoff failed'; end if;
+ if public.bkt_claim_player(late_entry->>'claim_code')->>'player_id' is distinct from player_id::text then raise exception 'Claim retry not idempotent'; end if;
+ if public.bkt_claim_player(first_entry->>'claim_code')->>'error' is distinct from 'claim_requires_review' then raise exception 'Duplicate entry transferred'; end if;
+ execute 'reset role';
+ update public.bkt_events set status='checkin' where id=event_id;
+ execute 'set local role authenticated';
+ rejected:=false;
+ begin perform public.bkt_self_check_in(event_id); exception when object_not_in_prerequisite_state then rejected:=(sqlerrm='required_documents_incomplete'); end;
+ if not rejected then raise exception 'Unchecked documents allowed check-in'; end if;
+ execute 'reset role';
+ update public.bkt_events set status='running' where id=event_id;
+ perform set_config('request.jwt.claim.sub',host_user::text,true);
+ perform set_config('request.jwt.claim.is_anonymous','false',true);
+ execute 'set local role authenticated';
+ rejected:=false;
+ begin perform public.bkt_create_walkup(event_id,'Too late'); exception when object_not_in_prerequisite_state then rejected:=true; end;
+ if not rejected then raise exception 'Running bracket accepted late entry'; end if;
+ execute 'reset role';
+end $$;
+rollback;

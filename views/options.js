@@ -61,7 +61,7 @@ export function openOptions({ storedTheme, previewTheme, commitTheme, signIn, si
 
       <section class="options-section" aria-labelledby="options-lettering">
         <h3 id="options-lettering">Lettering</h3>
-        <p>Choose your poster lettering. Phones use a matching heavy condensed face when these fonts aren't available.</p>
+        <p>Choose your heading style.</p>
         <div class="segmented segmented-block" role="group" aria-label="Poster lettering">
           ${list(appearance.LETTERING.map((face) => html`
             <button type="button" data-lettering="${face.id}">${face.label}</button>`))}
@@ -114,6 +114,8 @@ export function openOptions({ storedTheme, previewTheme, commitTheme, signIn, si
       previewTheme(startTheme);
     },
   });
+
+  el.classList.add('options-dialog');
 
   function paint() {
     appearance.apply(draft);

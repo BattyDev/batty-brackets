@@ -97,7 +97,7 @@ const FILTERS = [
   { key: 'unpaid', label: 'Owes', test: (r, event) => !paymentFor(r.entry, event).paid },
   { key: 'unsigned', label: 'Not signed', test: (r, event) => missingDocs(r.entry, event).length > 0 },
   { key: 'waitlist', label: 'Waitlist', test: (r) => Boolean(r.entry.waitlisted) },
-  { key: 'walkup', label: 'Walk-ups', test: (r) => Boolean(r.player?.claimable) },
+  { key: 'walkup', label: 'Walk-ups', test: (r) => r.entry.source === 'door' },
   { key: 'unseeded', label: 'No seed', test: (r) => r.entry.seed == null },
 ];
 
@@ -217,7 +217,7 @@ export function view(ctx) {
          tabpanel, arrow-key roving focus and no page change; promising that
          and not delivering it is worse for a screen-reader user than plain
          links, which they already know how to use. -->
-    <div class="workspace-context"><span class="eyebrow">HOST DESK</span><span>${data.event.name}</span>
+    <div class="workspace-context host-context"><span class="eyebrow">HOST DESK</span><span>${data.event.name}</span>
       ${store.syncState().configured && !data.event.demo ? html`<button class="btn btn-text btn-sm" data-act="signup-share">${raw(icon('link', 'icon-sm'))} Share signup</button>` : ''}
       <a href="#/e/${eventId}/tv">${raw(icon('station', 'icon-sm'))} Venue display</a></div>
     ${ctx.eventFreshness ? html`<div class="pane" style="padding-top:12px;padding-bottom:0">
@@ -225,7 +225,7 @@ export function view(ctx) {
         ${raw(icon('alert'))}<div>${ctx.eventFreshness.message}</div>
       </div>
     </div>` : ''}
-    <nav class="tabs" aria-label="Organiser sections">
+    <nav class="tabs host-tabs" aria-label="Organiser sections">
       ${list(TABS.map((t) => html`
         <a class="tab" href="#/e/${eventId}/admin/${t.id}"
            ${raw(t.id === tab ? 'aria-current="page"' : '')}>
@@ -308,7 +308,14 @@ function finishProblem(data) {
 function nextStep(data) {
   if (data.event.status === 'complete') return 'Finished. Review standings or download a backup. Correcting a result reopens the event.';
   if (data.entries.filter((e) => !e.waitlisted).length < 2) return 'Next: add or import at least two admitted entrants in Entrants.';
+  const pending = Object.values(store.get().matchSubmissions || {}).filter(row => row.eventId === data.event.id && row.status === 'pending');
+  if (pending.length) return `Review ${pending.length} player result${pending.length === 1 ? '' : 's'} in Run. The bracket advances after acceptance.`;
+  const unsigned = data.entries.filter(e => !e.waitlisted && (data.event.documents || []).some(doc => doc.required && !(e.signedDocuments || []).includes(doc.id)));
+  if (unsigned.length) return `Review ${unsigned.length} admitted entrant${unsigned.length === 1 ? '' : 's'} with missing documents in Entrants before check-in.`;
   if (!data.bracket) return 'Next: check in arrivals in Entrants, then choose the entrant scope and review matchups in Seeding. Generating starts the event.';
+  const ready = readyMatches(data.bracket.matches).filter(m => !m.calledAt);
+  if (ready.length) return `${ready.length} set${ready.length === 1 ? '' : 's'} ready to call. Open Run to assign a free station.`;
+  if (data.bracket.matches.some(m => m.calledAt && !m.state)) return 'Called sets are in play. Review or report their results in Run.';
   return finishProblem(data) || 'All sets are decided. Next: review standings and finish the event.';
 }
 
@@ -387,7 +394,6 @@ function overviewTab(data, suggestions, ctx) {
           ${at < FLOW.length - 1 ? html`<button class="btn btn-filled btn-sm" data-act="event-status" data-status="${FLOW[at + 1]}"
             ${raw(FLOW[at + 1] === 'complete' && finishProblem(data) ? 'disabled' : '')}>${FLOW[at + 1] === 'running' && !bracket ? 'Review seeding to start' : `Move to ${FLOW_LABEL[FLOW[at + 1]]}`} ${raw(icon('chevron', 'icon-sm'))}</button>` : ''}
         </div>
-        <p class="body-medium" data-operation-guidance style="margin-top:12px">${nextStep(data)}</p>
       </section>
 
       <section style="margin-bottom:20px">
@@ -395,6 +401,7 @@ function overviewTab(data, suggestions, ctx) {
           <h2>Next steps</h2>
           ${store.canUndo() ? html`<button class="btn btn-text btn-sm" data-act="undo">${raw(icon('undo', 'icon-sm'))} Undo ${store.undoLabel()}</button>` : ''}
         </div>
+        <div class="card card-filled" style="margin-bottom:12px"><p class="body-medium" data-operation-guidance>${nextStep(data)}</p><a class="btn btn-text btn-sm" href="#/e/${event.id}/admin/${data.entries.filter(e => !e.waitlisted).length < 2 || entries.some(e => !e.waitlisted && (event.documents || []).some(d => d.required && !(e.signedDocuments || []).includes(d.id))) ? 'entrants' : !bracket ? 'seeding' : 'run'}">Open the next workspace</a><a class="btn btn-text btn-sm" href="#/about/host">Host help</a></div>
         ${suggestions.length ? html`
           <div class="guide-list">
             ${list(suggestions.map((s) => html`
@@ -412,8 +419,7 @@ function overviewTab(data, suggestions, ctx) {
                 </div>
               </div>`))}
           </div>`
-        : html`<div class="card card-filled"><div class="row-tight">${raw(icon('check'))}
-            <span class="body-medium">Nothing needs you right now.</span></div></div>`}
+        : ''}
       </section>
 
       </div>
@@ -422,7 +428,6 @@ function overviewTab(data, suggestions, ctx) {
         <div class="section-heading"><h2>Where things stand</h2></div>
         <div class="grid-cards" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
           ${raw(statCard('Entrants', entries.length, event.capacity ? `of ${event.capacity} cap` : 'no cap', 'group'))}
-          ${raw(statCard('Checked in', checkedIn, `${entries.length - checkedIn} still out`, 'check'))}
           ${raw(statCard('Collected', formatMoney(entries.reduce((total, e) => total + paymentFor(e, event).received, 0), event.currency), `${entries.filter(e => !paymentFor(e, event).paid).length} outstanding`, 'money'))}
           ${bracket ? raw(statCard('Sets played', `${played}/${total}`, total - played ? `${total - played} to go` : 'all done', 'bracket')) : ''}
         </div>
@@ -468,7 +473,7 @@ function entrantsTab(data) {
         </label>
         ${auth.isRemote() ? '' : html`<button class="btn btn-tonal btn-sm" data-act="import-open">${raw(icon('upload', 'icon-sm'))} Import</button>`}
         <button class="btn btn-outlined btn-sm" data-act="export-entrants">${raw(icon('download', 'icon-sm'))} Export</button>
-        <button class="btn btn-filled btn-sm" data-act="entrant-add">${raw(icon('plus', 'icon-sm'))} Add</button>
+        <button class="btn btn-filled btn-sm" data-act="entrant-add" ${raw(['registration', 'checkin'].includes(event.status) ? '' : 'disabled title="Add during Registration or Check-in"')}>${raw(icon('plus', 'icon-sm'))} Add</button>
       </div>
 
       <div class="row" style="margin-bottom:12px;gap:6px" role="group" aria-label="Filter entrants">
@@ -507,6 +512,11 @@ function entrantsTab(data) {
         </div>` : ''}
 
       ${rows.length ? html`
+        <div class="roster-mobile-sort">
+          <label class="roster-select"><input type="checkbox" data-act-change="select-all" ${raw(selected.length === visible.length && visible.length ? 'checked' : '')}><span class="sr-only">Select all visible entrants</span></label>
+          <label class="field"><span class="sr-only">Sort entrants</span><select data-act-change="entrant-mobile-sort">${list(columns.map(c => html`<option value="${c.key}" ${raw(ui.sortBy === c.key ? 'selected' : '')}>Sort: ${c.label}</option>`))}</select></label>
+          <button class="btn btn-outlined btn-sm" data-act="entrant-sort" data-col="${ui.sortBy}" aria-label="Reverse sort direction">${ui.sortDir === 'asc' ? '↑' : '↓'}</button>
+        </div>
         <div class="table-wrap roster-wrap" data-keep-scroll="entrants">
           <table class="data roster-table">
             <caption class="sr-only">
@@ -563,7 +573,7 @@ function entrantsTab(data) {
                         : html`<input type="text" value="${player?.tag || ''}" data-act-change="player-tag" data-id="${entry.playerId}"
                              data-focus-key="tag-${entry.id}" style="min-width:120px"
                              aria-label="Tag for ${player?.tag || 'entrant'}">`}
-                      ${player?.claimable ? html`<span class="chip chip-static chip-warn" style="min-height:20px;padding:0 6px;font:var(--label-small)" title="Added by an organiser — not claimed by an account yet">walk-up</span>` : ''}
+                      ${entry.source === 'door' ? html`<span class="chip chip-static chip-warn" style="min-height:20px;padding:0 6px;font:var(--label-small)" title="Added at the desk">walk-up</span>` : ''}
                       ${entry.waitlisted ? html`<span class="chip chip-static chip-assist" style="min-height:20px;padding:0 6px;font:var(--label-small)">waitlist</span>` : ''}
                     </div>
                   </td>
@@ -577,8 +587,8 @@ function entrantsTab(data) {
                   <td data-label="Payment"><button class="chip ${raw(paymentFor(entry, event).paid ? 'chip-ok' : 'chip-warn')}" data-act="toggle-paid" data-id="${entry.id}"
                         style="min-height:36px;padding:0 10px"
                         aria-label="Edit payment for ${player?.tag || 'entrant'}"
-                        >${paymentFor(entry, event).due === 0 ? 'Free' : paymentFor(entry, event).paid ? 'Paid' : `${paymentFor(entry, event).received ? 'Partial' : 'Owes'} ${formatMoney(paymentFor(entry, event).balance, event.currency)}`}</button></td>
-                  <td data-label="Documents">${missing.length
+                        >${paymentFor(entry, event).due === 0 ? 'Free' : paymentFor(entry, event).paid ? 'Paid' : `${formatMoney(paymentFor(entry, event).balance, event.currency)} due${paymentFor(entry, event).received ? ' · partial' : ''}`}</button></td>
+                  <td data-label="Documents" class="${raw(missing.length ? 'documents-missing' : 'documents-settled')}">${missing.length
                     ? html`<span class="chip chip-static chip-error" style="min-height:22px;padding:0 8px;font:var(--label-small)" title="${missing.map((d) => d.title).join(', ')}">${missing.length} missing</span>`
                     : html`<span class="chip chip-static chip-ok" style="min-height:22px;padding:0 8px;font:var(--label-small)">ok</span>`}</td>
                   <td data-label="Contact" class="dim body-small">${player?.connections?.discord || player?.email || '—'}</td>
@@ -909,7 +919,7 @@ function runTab(data) {
               </div>`))}
           </div>
           ${queue.length > 10 ? html`<p class="body-small dim" style="margin:8px 0 0">+ ${queue.length - 10} more ready set${queue.length - 10 === 1 ? '' : 's'}. They move up as these are called.</p>` : ''}`
-        : html`<div class="card card-filled body-medium dim">Nothing is waiting — every playable set is out.</div>`}
+        : html`<div class="card card-filled body-medium dim">${called.size ? 'Waiting for the called sets to finish. Review any player results below.' : bracket.matches.some(m => !m.cancelled && !m.state) ? 'No set is ready and none is called. Review the bracket sources or correct the last result before continuing.' : 'All sets are decided. Review standings from Overview to finish the event.'}</div>`}
       </section>
 
       ${recentResults.length ? html`<section
@@ -985,7 +995,7 @@ function matchCard(match, nameOf, called) {
 
   const side = (slot, other) => {
     if (!slot.entrantId) {
-      return html`<span class="match-side tbd"><span class="seed"></span><span class="who">${slot.kind === 'from' ? 'waiting' : 'bye'}</span></span>`;
+      return html`<span class="match-side tbd"><span class="seed"></span><span class="who">${slot.bye || slot.kind !== 'from' ? 'bye' : 'waiting'}</span></span>`;
     }
     const won = done && match.winnerId === slot.entrantId;
     const lost = done && match.winnerId !== slot.entrantId;
@@ -1170,9 +1180,7 @@ function settingsTab(data) {
       <section class="card card-outlined" style="margin-bottom:16px">
         <b class="title-medium">Data</b>
         <p class="body-small dim" style="margin:4px 0 12px">
-          Your event, in a format you can read. There is no lock-in here on purpose —
-          the reason nobody moves between bracket sites is that their history is trapped,
-          and a new site that recreates that deserves to lose for the same reason.
+          Export your entrants or an event backup. <a href="#/about/backup">Backup help</a>
         </p>
         <div class="row">
           <button class="btn btn-tonal btn-sm" data-act="export-entrants">${raw(icon('download', 'icon-sm'))} Entrants CSV</button>
@@ -1253,6 +1261,8 @@ on('entrant-sort', ({ col }) => {
   rerender();
 });
 
+on('entrant-mobile-sort', (_data, el) => { ui.sortBy = el.value; ui.sortDir = 'asc'; rerender(); });
+
 on('entrant-filter', ({ filter }) => {
   if (ui.filters.has(filter)) ui.filters.delete(filter);
   else {
@@ -1326,12 +1336,13 @@ on('toggle-paid', ({ id }) => {
   const entry = store.get().entries[id];
   const event = store.getEvent(entry.eventId);
   const payment = paymentFor(entry, event);
-  dialog({ title: `Payment · ${store.getPlayer(entry.playerId)?.tag || 'Entrant'}`, body: html`
+  const dlg = dialog({ title: `Payment · ${store.getPlayer(entry.playerId)?.tag || 'Entrant'}`, body: html`
     <p class="body-small dim">Manual record of money collected by the host. This does not charge the player.</p>
     <label class="field"><span class="field-label">Player charge (${event.currency || 'USD'})</span><input id="payment-due" type="number" min="0" step="0.01" value="${payment.due}"></label>
     <label class="field"><span class="field-label">Total amount received (${event.currency || 'USD'})</span><input id="payment-received" type="number" min="0" step="0.01" value="${payment.received}"></label>
     <label class="field"><span class="field-label">Payment note (optional)</span><input id="payment-note" maxlength="500" value="${entry.paymentNote || ''}" placeholder="Cash, transfer, discount, or correction"></label>
     <p class="field-help">Set a charge of 0 for a waived entry. Enter the total received, including previous partial payments.</p>
+    ${payment.balance > 0 && !entry.waitlisted ? html`<button class="btn btn-tonal btn-block" id="payment-full" data-total="${Math.max(payment.due, payment.received)}">Mark paid in full · ${formatMoney(payment.due, event.currency)} total received</button><p class="field-help">Sets the total below. Save payment to confirm the manual record.</p>` : ''}
     <p id="payment-error" role="alert" class="body-small"></p>`, actions: [
       { label: 'Cancel', kind: 'text' }, { label: 'Save payment', kind: 'filled', onClick: async dlg => {
         const due = dlg.querySelector('#payment-due').value;
@@ -1342,6 +1353,10 @@ on('toggle-paid', ({ id }) => {
         snack('Payment recorded'); rerender(); return true;
       } },
     ] });
+  dlg.querySelector('#payment-full')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    dlg.querySelector('#payment-received').value = e.currentTarget.dataset.total;
+  });
 });
 
 on('bulk', async ({ op }) => {
@@ -1356,7 +1371,7 @@ on('bulk', async ({ op }) => {
     snack(`${ids.length} ${op === 'checkin' ? 'checked in' : 'un-checked in'}`, { action: 'Undo', onAction: () => { store.undo(); rerender(); } });
   } else if (op === 'paid') {
     try {
-      for (const id of ids) { const entry = store.get().entries[id]; const due = paymentFor(entry, store.getEvent(entry.eventId)).due; await recordPayment(id, { amountDue: entry.amountDue ?? null, amountPaid: due, note: entry.paymentNote || '' }); }
+      for (const id of ids) { const entry = store.get().entries[id]; const payment = paymentFor(entry, store.getEvent(entry.eventId)); await recordPayment(id, { amountDue: entry.amountDue ?? null, amountPaid: Math.max(payment.due, payment.received), note: entry.paymentNote || '' }); }
       snack(`${ids.length} marked paid`);
     } catch (error) { snack(`Payment update stopped: ${error.message}`); }
   } else if (op === 'seed-sequential') {
@@ -1406,71 +1421,70 @@ on('bulk', async ({ op }) => {
 
 on('entrant-add', () => {
   const eventId = currentEventId();
-  dialog({
-    title: 'Add an entrant',
-    body: html`
-      <label class="field"><span class="field-label">Tag</span>
-        <input type="text" id="tag" placeholder="What people call them"></label>
-      <label class="field" style="margin-top:16px"><span class="field-label">Team / venue (optional)</span>
-        <input type="text" id="group"></label>
-      <p class="field-help">
-        This creates a real profile with a claim code. If they make an account later, claiming it
-        moves every set they play tonight onto it — so a walk-up entrant is not a ghost in the record.
-      </p>`,
-    actions: [
-      { label: 'Cancel', kind: 'text' },
-      { label: 'Add', kind: 'filled', onClick: async (dlg) => {
-        const tag = dlg.querySelector('#tag').value.trim();
-        if (!tag) return false;
-        const result = await addWalkUp(eventId, tag, dlg.querySelector('#group').value.trim());
-        if (!result) return false;
+  const event = store.getEvent(eventId);
+  if (!['registration', 'checkin'].includes(event.status)) { snack('Add entrants during Registration or Check-in. Return to that phase before adding a late arrival.'); return; }
+  const required = (event.documents || []).some(doc => doc.required);
+  dialog({ title: 'Add an entrant', body: html`
+    <label class="field"><span class="field-label">Tag</span><input type="text" id="tag" maxlength="64" placeholder="What people call them"></label>
+    <label class="field" style="margin-top:16px"><span class="field-label">Team / venue (optional)</span><input type="text" id="group"></label>
+    <label class="row" style="margin-top:16px"><input type="checkbox" id="walkup-handoff" ${raw(required ? 'checked disabled' : '')}><span>Keep unchecked for player handoff</span></label>
+    <p class="field-help">Share the claim link before check-in, documents, seeding, or play. It expires in 24 hours and works only with Registration open. Played history cannot transfer automatically. ${event.status === 'checkin' ? 'Reopen Registration before the player claims.' : ''} <a href="#/about/walkup">Desk entry help</a></p>
+    ${required ? html`<p class="field-help">Required documents keep this entrant out. The player must claim while Registration is open, review documents themselves, then check in. They can also join directly using your signup link instead of a desk entry.</p>` : ''}
+    <p id="walkup-error" class="body-small" role="alert"></p>`, actions: [
+    { label: 'Cancel', kind: 'text' },
+    { label: 'Add', kind: 'filled', onClick: async dlg => {
+      const tag = dlg.querySelector('#tag').value.trim();
+      const note = dlg.querySelector('#walkup-error');
+      if (!tag) { note.textContent = 'Enter the player’s tag.'; return false; }
+      try {
+        const handoff = dlg.querySelector('#walkup-handoff').checked;
+        const result = await addWalkUp(eventId, tag, dlg.querySelector('#group').value.trim(), handoff);
         rerender();
+        if (handoff) {
+          dlg.addEventListener('close', () => showWalkupHandoff(result, event), { once: true });
+        }
         return true;
-      } },
-    ],
-  });
+      } catch (error) {
+        const code = String(error.message || error);
+        note.textContent = /registration_closed/.test(code) ? 'Adding entrants is closed in this phase. Return to Registration or Check-in, then retry with this tag.'
+          : /staff_required/.test(code) ? 'Your host access was not confirmed. Sign in as the host and refresh the roster.'
+          : /roster_limit/.test(code) ? 'The roster has reached its 512-entry limit. Review duplicates before adding anyone.'
+          : /invalid_tag/.test(code) ? 'Use a tag of 1–64 characters.' : 'Addition was not confirmed. Refresh the roster to check for this tag before retrying.';
+        return false;
+      }
+    } },
+  ] });
 });
 
-async function addWalkUp(eventId, tag, group) {
+function showWalkupHandoff(result, event) {
+  const link = new URL(window.location.href); link.search = ''; link.hash = '/claim/' + result.code;
+  const connected = auth.isRemote();
+  const el = dialog({ title: result.entry.waitlisted ? 'Added to waitlist — event is full' : 'Desk entry added', body: html`
+    <p>${connected ? 'Save and share this private claim link with this player now.' : 'This claim works only on this device; it is not a link for another phone.'}</p>
+    <label class="field"><span class="field-label">${connected ? 'Claim link' : 'Device-only claim code'}</span><input readonly id="walkup-link" value="${connected ? link.href : result.code}"></label>
+    <p class="body-small">${connected ? (result.expiresAt ? 'Expires ' + formatDateTime(result.expiresAt) + '.' : 'Expires 24 hours after creation.') : ''} Keep this entry unchecked and unseeded until claimed. Registration must be open; signatures and played results prevent claiming.</p>
+    ${result.entry.waitlisted ? html`<p>Ask the player to wait for admission before paying a fee.</p>` : ''}
+    <a href="#/about/walkup">Claim limits and documents</a>`, actions: [
+      { label: 'Close', kind: 'text' }, { label: 'Copy handoff', kind: 'filled', onClick: async dlg => { const { copy } = await import('../lib/ui.js'); await copy(dlg.querySelector('#walkup-link').value); snack('Handoff copied'); return false; } },
+    ] });
+}
+
+async function addWalkUp(eventId, tag, group, handoff = false) {
   if (auth.isRemote()) {
-    try {
-      const result = await store.createRemoteWalkup(eventId, tag, group);
-      snack(`${tag} added — claim code ${result.claimCode}`, { action: 'Copy', onAction: async () => {
-        const { copy } = await import('../lib/ui.js');
-        await copy(result.claimCode);
-      } });
-      rerender();
-      return { playerId: result.player.id, code: result.claimCode };
-    } catch (error) {
-      snack(error?.message || 'Could not add that entrant.');
-      return null;
-    }
+    const result = await store.createRemoteWalkup(eventId, tag, group, { handoff });
+    snack(result.entry.waitlisted ? 'Added to waitlist — event is full' : tag + ' added');
+    return { playerId: result.player.id, code: result.claimCode, expiresAt: result.claimExpiresAt, entry: result.entry };
   }
   const event = store.getEvent(eventId);
-  const { id: playerId, code } = auth.createClaimablePlayer({
-    tag, orgId: event.orgId, createdBy: auth.currentPlayer()?.id,
-  });
-  const entryId = store.uid('ent');
-  const entries = store.entriesFor(eventId);
-  /* A walk-up is present, but presence is not admission. Keep an over-cap
-     entrant visible at the desk without silently seeding them into the event.
-     Count admitted entries only: a waitlist is not an occupied place. */
-  const waitlisted = Boolean(event.capacity && entries.filter((entry) => !entry.waitlisted).length >= event.capacity);
-  store.apply('entries', entryId, {
-    id: entryId, eventId, playerId,
-    seed: entries.length + 1,
-    group: group || null,
-    registeredAt: new Date().toISOString(),
-    checkedInAt: !waitlisted && !(event.documents || []).some(doc => doc.required) ? new Date().toISOString() : null,
-    source: 'door',
-    waitlisted,
-    signedDocuments: [],
-  });
-  snack(`${tag} ${waitlisted ? 'waitlisted — event is full' : 'added'} — claim code ${code}`, { action: 'Copy', onAction: async () => {
-    const { copy } = await import('../lib/ui.js');
-    await copy(code);
-  } });
-  return { playerId, code };
+  const { id: playerId, code } = auth.createClaimablePlayer({ tag, orgId: event.orgId, createdBy: auth.currentPlayer()?.id });
+  const entryId = store.uid('ent'); const entries = store.entriesFor(eventId);
+  const waitlisted = Boolean(event.capacity && entries.filter(entry => !entry.waitlisted).length >= event.capacity);
+  const entry = { id: entryId, eventId, playerId, seed: null, group: group || null,
+    registeredAt: new Date().toISOString(), checkedInAt: !handoff && !waitlisted && !(event.documents || []).some(doc => doc.required) ? new Date().toISOString() : null,
+    source: 'door', waitlisted, signedDocuments: [] };
+  store.apply('entries', entryId, entry);
+  snack(waitlisted ? 'Added to waitlist — event is full' : tag + ' added');
+  return { playerId, code, entry };
 }
 
 on('entrant-menu', ({ id }) => {
@@ -1480,14 +1494,14 @@ on('entrant-menu', ({ id }) => {
     title: player?.tag || 'Entrant',
     body: html`
       <div class="list">
-        <a class="list-item" href="#/p/${entry.playerId}">${raw(icon('person'))}<span class="headline">Open their profile</span></a>
+        <label class="field"><span class="field-label">Seed</span><input type="number" value="${entry.seed ?? ''}" data-act-change="entry-seed" data-id="${id}" aria-label="Seed for ${player?.tag}"></label><label class="field"><span class="field-label">Team / venue</span><input value="${entry.group || ''}" data-act-change="entry-group" data-id="${id}" aria-label="Team or venue for ${player?.tag}"></label><p class="body-small">Contact: ${player?.connections?.discord || player?.email || '—'}</p><a class="list-item" href="#/p/${entry.playerId}">${raw(icon('person'))}<span class="headline">Open their profile</span></a>
         ${entry.waitlisted ? html`<button class="list-item" data-act="entrant-admit" data-id="${id}">${raw(icon('check'))}<span class="headline">Admit from waitlist</span></button>` : ''}
         <button class="list-item" data-act="toggle-paid" data-id="${id}">${raw(icon('money'))}<span class="headline">Edit payment amount</span></button>
         ${player?.claimable ? html`
           <button class="list-item" data-act="copy-text" data-text="${player.claimCode}">
             ${raw(icon('key'))}
             <span class="spacer"><span class="headline">Claim code</span>
-            <span class="supporting">${player.claimCode} — read this out so they can take over the entry</span></span>
+            <span class="supporting">${player.claimCode} — device-only claim; see desk entry help</span></span>
           </button>` : ''}
         <button class="list-item" data-act="entrant-dq" data-id="${id}">
           ${raw(icon('close'))}<span class="spacer"><span class="headline">Disqualify</span>
