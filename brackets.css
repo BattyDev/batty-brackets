@@ -851,7 +851,7 @@ table.data td input {
   width: 100%; min-width: 60px; min-height: 32px; padding: 4px 8px;
   border: 1.5px solid transparent; border-radius: 0; background: transparent; color: inherit; font: inherit;
 }
-table.data input[type='checkbox'], .check input[type='checkbox'] {
+table.data input[type='checkbox'], .check input[type='checkbox'], .roster-select input[type='checkbox'] {
   width: 24px; height: 24px; margin: 0; accent-color: var(--ink); cursor: pointer;
 }
 table.data .check { width: 44px; text-align: center; }
@@ -1173,6 +1173,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   font: 700 .75rem/1.4 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
 }
 .lobby-footer .btn-text { text-transform: none; letter-spacing: 0; font: var(--label-large); }
+.lobby-footer > a { display: inline-flex; align-items: center; min-height: 24px; }
 
 @media (max-width: 899px) {
   .press-hero { grid-template-columns: 1fr; gap: 16px; padding-bottom: 28px; }

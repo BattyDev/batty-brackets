@@ -117,8 +117,9 @@ try {
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   // Check the selected hover pair itself, across every preset and both papers.
   await page.evaluate(() => { const chip=document.createElement('button'); chip.id='hover-chip'; chip.className='chip selected'; chip.textContent='Selected'; chip.setAttribute('aria-pressed','true'); document.querySelector('main').prepend(chip); });
+  const presetColors = await page.evaluate(async () => (await import('./lib/appearance.js')).PRESETS.map(preset => preset.color));
   for (const paper of ['light', 'dark']) {
-    for (const color of ['#d6294e', '#8c46d6', '#237344', '#2868d8', '#008a91', '#dc438f', '#d3a511', '#72a82e', '#e45461']) {
+    for (const color of presetColors) {
       await page.evaluate(async ({paper,color}) => { document.documentElement.dataset.theme=paper; (await import('./lib/appearance.js')).apply({ color, lettering:'anton' }); }, {paper,color});
       await page.locator('#hover-chip').hover();
       const ratio=await page.locator('#hover-chip').evaluate(el => {
