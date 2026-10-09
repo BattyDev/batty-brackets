@@ -1,7 +1,7 @@
 import { html, raw } from '../lib/ui.js';
 
 const content = `
-    
+
     <section class="help-hero">
       <h1>Your local. One clear next step.</h1>
       <p>Batty Brackets helps fighting-game communities register players, manage check-in, and run tournament brackets and stations. Hosts run the room. Players join, find their next set, and send results to the host.</p>
