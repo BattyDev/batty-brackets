@@ -13,5 +13,7 @@ set bkt.staging='on';
 \ir ../../sql/staging/108_withdrawals.sql
 \ir ../../sql/staging/20261005202914_registration_ux.sql
 \ir ../../sql/staging/20261005215644_moderation_states.sql
+\ir ../../sql/staging/20261008235701_oct8_walkup_checkin.sql
 \ir security.sql
 \ir registration-security.sql
+\ir walkup-security.sql

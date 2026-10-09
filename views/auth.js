@@ -30,6 +30,8 @@ const RETURN_AFTER_AUTH = 'brackets.returnAfterAuth';
    sessionStorage must never become an open redirect assembled from arbitrary
    input. */
 function joinIntent() {
+  if (/^#\/claim\/[a-z0-9]+$/i.test(window.location.hash)) return { path: window.location.hash,
+    title: 'Sign in to claim your entry', why: 'Return to this claim link after signing in, then confirm the unused entry.' };
   const match = window.location.hash.match(/^#\/join\/([A-Z0-9]+)$/i);
   if (!match) return null;
   const code = match[1].toUpperCase();
@@ -47,7 +49,7 @@ function rememberJoinIntent() {
 }
 
 function validReturnPath(value) {
-  return /^#\/join\/[A-Z0-9]+$/i.test(value || '') ? value : null;
+  return /^#\/(?:join\/[A-Z0-9]+|claim\/[a-z0-9]+)$/i.test(value || '') ? value : null;
 }
 
 export function openSignIn(onDone, why = null) {
@@ -138,7 +140,7 @@ function chooseStep() {
         ${raw(icon('key'))} I have a claim code from an organiser
       </button>
       <p class="body-small dim" style="margin-top:12px">
-        A claim code turns the entry an organiser typed in for you at the door into your own account — with the sets you have already played attached to it.
+        A host can share a claim link for an unused registration entry. Checked-in, signed, seeded, and played entries cannot transfer automatically.
       </p>`,
     actions: [{ label: 'Cancel', kind: 'text' }],
   });
@@ -404,7 +406,7 @@ function claimStep() {
   dialog({
     title: 'Claim your entry',
     body: html`
-      <p class="body-medium">If an organiser signed you up at the door, they can give you an eight-character code. Claiming it moves every set you have played onto your own account.</p>
+      <p class="body-medium">Use the host’s claim link or complete code. Connected claims expire after 24 hours and require an unused entry with Registration open. <a href="#/about/walkup">Claim limits</a></p>
       <label class="field" style="margin-top:16px">
         <span class="field-label">Claim code</span>
         <input type="text" id="code" autocapitalize="characters" spellcheck="false"
@@ -428,7 +430,7 @@ function claimStep() {
           try {
             const claimed = await auth.claim(code);
             dlg.close();
-            snack(`Claimed — ${claimed.tag}'s results are now on your profile.`);
+            snack('Entry claimed. Open your event for documents and check-in.');
             redraw();
           } catch (err) {
             note.textContent = err.message;
@@ -466,7 +468,7 @@ export async function resumeAfterRedirect(onDone) {
   if (claimCode && auth.isSignedIn()) {
     try {
       const claimed = await auth.claim(claimCode);
-      snack(`Claimed — ${claimed.tag}'s results are now on your profile.`);
+      snack('Entry claimed. Open your event for documents and check-in.');
       redraw();
     } catch (err) { snack(err.message); }
   }

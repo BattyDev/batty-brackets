@@ -26,7 +26,7 @@ import { brandMark, brandSignature } from './lib/brand.js';
 import { installThemes, themeFor, gameMark } from './data/themes.js';
 import * as tour from './lib/tour.js';
 import { isDemoMode } from './lib/demo-mode.js';
-import { render, bindDelegation, on, html, raw, list, icon, snack, esc, tickLiveClocks } from './lib/ui.js';
+import { render, bindDelegation, on, html, raw, list, icon, snack, dialog, esc, tickLiveClocks } from './lib/ui.js';
 
 import * as home from './views/home.js';
 import * as player from './views/player.js';
@@ -73,6 +73,8 @@ const ROUTES = [
   { pattern: /^\/new$/, load: (attempt = 0) => import('./views/setup.js' + (attempt ? '?retry=' + attempt : '')), name: 'new' },
   { pattern: /^\/recovery$/, load: (attempt = 0) => import('./views/recovery.js' + (attempt ? '?retry=' + attempt : '')), name: 'recovery' },
   { pattern: /^\/join(?:\/([A-Z0-9]+))?$/i, view: home, name: 'join', keys: ['code'] },
+  { pattern: /^\/about(?:\/([a-z-]+))?$/, load: () => import('./views/about.js'), name: 'about', keys: ['topic'] },
+  { pattern: /^\/claim\/([a-z0-9]+)$/i, load: () => import('./views/claim.js'), name: 'claim', keys: ['code'] },
   { pattern: /^\/e\/([^/]+)\/admin(?:\/([^/]+))?$/, load: (attempt = 0) => import('./views/admin.js' + (attempt ? '?retry=' + attempt : '')), name: 'admin', keys: ['eventId', 'tab'] },
   /* Before the generic event route, which would otherwise match /tv as a tab
      and render the event page with an unknown tab. */
@@ -399,6 +401,8 @@ function shell(inner, { title, subtitle, back, actions = '', gameId = null }) {
                 aria-label="Switch to ${raw(resolvedTheme() === 'dark' ? 'light' : 'dark')} theme">${raw(icon('theme'))}</button>
         <button type="button" class="options-button" data-act="options" aria-haspopup="dialog" aria-label="Options">
           <span class="options-swatch" aria-hidden="true"></span><span>Options</span></button>
+        <button class="btn btn-icon" data-act="account" aria-label="Account" aria-haspopup="dialog">${raw(icon('person'))}</button>
+        <a class="btn btn-icon" href="#/about" aria-label="About & help">${raw(icon('info'))}</a>
       </header>
 
       <nav class="nav ${raw(host ? 'host-navigation' : 'player-navigation')}" aria-label="${raw(host ? 'Host workspace navigation' : 'Player navigation')}" data-experience="${raw(host ? 'host' : 'player')}">
@@ -746,6 +750,7 @@ export function draw() {
     drawChrome();
     announceRoute(out.title);
     focusMainIfNavigated(route.path);
+    out.afterRender?.();
   } catch (err) {
     /* A view that throws must not leave a blank page with no way out -- at a
        venue that is indistinguishable from the site being down. */
@@ -858,6 +863,15 @@ on('options', () => openOptions({
   signIn: () => authView.openSignIn(draw),
   signOut: async () => { await auth.signOut(); go('/'); snack('Signed out'); },
 }));
+
+on('account', () => {
+  const me = auth.currentPlayer();
+  if (!me) { authView.openSignIn(draw); return; }
+  dialog({ title: 'Account', body: html`<p>Signed in as <b>${me.tag}</b>.</p><a class="btn btn-tonal" href="#/me">Open my player record</a>`, actions: [
+    { label: 'Close', kind: 'text' },
+    { label: 'Sign out', kind: 'text', onClick: async () => { await auth.signOut(); go('/'); snack('Signed out'); } },
+  ] });
+});
 
 on('copy-text', async ({ text }) => {
   const { copy } = await import('./lib/ui.js');

@@ -43,7 +43,7 @@ assert.deepEqual(calls.pop(), { name: 'bkt_event_by_code', args: { p_code: 'ABCD
 await assert.rejects(api.redeemCode('foo'), /not valid/);
 reply = { error: 'rate_limited' };
 await assert.rejects(api.redeemCode('ABCDEFGH2345'), /Too many/);
-await assert.rejects(api.claimPlayer('LOCAL123'), /not available/);
+await assert.rejects(api.claimPlayer('LOCAL123'), /complete claim link/);
 reply = { event: { id, revision: 3 }, revision: 3, entries: [], players: [], stations: [], orgs: [], brackets: [], results: [] };
 await api.saveEventState(id, 2, { event: { id }, entries: [], players: [], stations: [], bracket: null, results: [] });
 assert.deepEqual(calls.pop(), { name: 'bkt_save_event_state', args: {

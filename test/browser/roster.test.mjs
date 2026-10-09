@@ -124,7 +124,7 @@ report.ok('individual charges and partial payments survive reload', await page.e
   const store = await import('./lib/store.js'); const row = store.get().entries[id];
   return row.amountDue === 12.50 && row.amountPaid === 5.25 && row.paymentNote === 'Cash' && row.paidAt === null;
 }, paymentEntry));
-report.ok('roster shows the remaining amount with cents', /Partial.*7\.25/.test(await page.locator(`[data-act="toggle-paid"][data-id="${paymentEntry}"]`).innerText()));
+report.ok('roster shows the remaining amount with cents', /7\.25 due · partial/.test(await page.locator(`[data-act="toggle-paid"][data-id="${paymentEntry}"]`).innerText()));
 
 await goTo(page, base, `#/e/${DEMO_EVENT}/admin/settings`);
 await page.locator(`[data-act="event-document-edit"][data-document="${documentId}"]`).click();
