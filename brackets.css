@@ -404,12 +404,14 @@ b, strong { font-weight: 700; }
 .masthead-nav .masthead-join:hover { background: var(--accent); transform: rotate(0); }
 @media (min-width: 900px) {
   .masthead-nav { display: flex; }
-  /* Controls can wrap when the masthead does not fit; sync text can shrink. */
+  /* One row. The sync text is the part that gives way, never a control. */
+  .top-bar { flex-wrap: nowrap; }
   .top-bar > * { flex-shrink: 0; }
-  .top-bar > .sync { flex: 1 1 44px; min-width: 44px; max-width: max-content; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 30px; }
+  .top-bar > .sync { flex-shrink: 1; min-width: 44px; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 30px; }
   .top-bar > .sync .icon, .top-bar > .sync .dot { display: inline-block; vertical-align: -3px; margin-right: 4px; }
 }
 @media (min-width: 900px) and (max-width: 1279px) {
+  .top-bar { flex-wrap: wrap; }
   .top-bar .brand-credit { display: none; }
   .masthead-nav a, .masthead-nav button { padding: 0 8px; }
   .options-button span:not(.options-swatch) { display: none; }
