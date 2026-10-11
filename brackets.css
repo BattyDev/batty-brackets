@@ -410,7 +410,8 @@ b, strong { font-weight: 700; }
   .top-bar > .sync { flex-shrink: 1; min-width: 44px; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 30px; }
   .top-bar > .sync .icon, .top-bar > .sync .dot { display: inline-block; vertical-align: -3px; margin-right: 4px; }
 }
-@media (min-width: 900px) and (max-width: 1199px) {
+@media (min-width: 900px) and (max-width: 1279px) {
+  .top-bar { flex-wrap: wrap; }
   .top-bar .brand-credit { display: none; }
   .masthead-nav a, .masthead-nav button { padding: 0 8px; }
   .options-button span:not(.options-swatch) { display: none; }
@@ -1110,7 +1111,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
 
 .lobby-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 40px; align-items: start; }
 .event-directory { min-width: 0; }
-.lobby-aside { display: grid; gap: 28px; }
+.lobby-aside { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 28px; }
 
 /* ---- an event on the bill ---- */
 .bill { display: grid; }
@@ -1179,7 +1180,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   .press-hero { grid-template-columns: 1fr; gap: 16px; padding-bottom: 28px; }
   .press-visual { min-height: 260px; max-width: 420px; width: 100%; margin: 0 auto; }
   .press-bat { width: min(100%, 340px); }
-  .lobby-grid { grid-template-columns: 1fr; gap: 32px; }
+  .lobby-grid { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .ticker { font-size: .8125rem; margin-bottom: 28px; }
 }
 @media (max-width: 599px) {
@@ -1193,6 +1194,7 @@ table.data th[aria-sort]:not([aria-sort='none']) .th-arrow { opacity: 1; }
   .bill-title { font-size: 1.45rem; }
   .join-slip { padding: 20px; transform: none; }
   .join-slip h3 { font-size: 1.9rem; }
+  .join-slip .join-row { flex-direction: column; }
 }
 
 /* ---- role choice (first phone visit) ---- */
